@@ -1,0 +1,6 @@
+{
+  "name": "Solar Costa CRM",
+  "description": "CRM completo para empresa de energia solar com gestão de leads, propostas, contratos, financeiro e fornecedores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
