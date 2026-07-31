@@ -3,6 +3,7 @@ import {
   DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, Download, Plus, Copy, CheckCircle2, Printer, Trash2, X, FileSpreadsheet, ChevronDown
 } from 'lucide-react';
 import { Boleto, LancamentoFinanceiro, User } from '../types';
+import { maskCPFCNPJ, docLabel } from '../utils/format';
 
 interface FinancialViewProps {
   boletos: Boleto[];
@@ -181,21 +182,58 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
   const [boletoCategoria, setBoletoCategoria] = useState('Venda de sistema');
   const [boletoObraRef, setBoletoObraRef] = useState('OBRA 0184');
 
-  // Monthly 12-Month Chart data (values in thousands R$)
-  const monthlyStats = [
-    { month: 'ago', rev: 85, exp: 35 },
-    { month: 'set', rev: 92, exp: 40 },
-    { month: 'out', rev: 110, exp: 45 },
-    { month: 'nov', rev: 125, exp: 50 },
-    { month: 'dez', rev: 140, exp: 55 },
-    { month: 'jan', rev: 95, exp: 42 },
-    { month: 'fev', rev: 115, exp: 48 },
-    { month: 'mar', rev: 130, exp: 52 },
-    { month: 'abr', rev: 145, exp: 58 },
-    { month: 'mai', rev: 150, exp: 60 },
-    { month: 'jun', rev: 142, exp: 56 },
-    { month: 'jul', rev: 186.4, exp: 74.1, isCurrent: true }
-  ];
+  // Índice do mês (1-12) a partir de "DD/MM" ou "DD/MM/AAAA".
+  const monthFromStr = (value?: string): number => {
+    if (!value) return 0;
+    const parts = value.split('/');
+    return parts.length >= 2 ? parseInt(parts[1], 10) : 0;
+  };
+
+  // ---- Indicadores calculados a partir dos dados ----
+  const entradasMes = lancamentos.filter(l => l.tipo === 'receita').reduce((a, l) => a + (l.valor || 0), 0);
+  const saidasMes = lancamentos.filter(l => l.tipo === 'despesa').reduce((a, l) => a + Math.abs(l.valor || 0), 0);
+  const saldoMes = entradasMes - saidasMes;
+  const margemPct = entradasMes > 0 ? (saldoMes / entradasMes) * 100 : 0;
+  const qtdEntradas = lancamentos.filter(l => l.tipo === 'receita').length;
+  const qtdSaidas = lancamentos.filter(l => l.tipo === 'despesa').length;
+
+  const boletosAtraso = boletos.filter(b => b.tipo === 'A receber' && b.situacao === 'vencido');
+  const totalAtraso = boletosAtraso.reduce((a, b) => a + (b.valor || 0), 0);
+
+  // Evolução mensal (R$ mil): realizado (lançamentos) + contas a vencer (boletos em aberto).
+  const monthlyStats = (() => {
+    const nomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    const s = nomes.map(m => ({ month: m, rev: 0, exp: 0, isCurrent: m === 'jul' }));
+    lancamentos.forEach(l => {
+      const mm = monthFromStr(l.data);
+      if (mm < 1 || mm > 12) return;
+      if (l.tipo === 'receita') s[mm - 1].rev += (l.valor || 0) / 1000;
+      else s[mm - 1].exp += Math.abs(l.valor || 0) / 1000;
+    });
+    boletos.forEach(b => {
+      if (b.situacao === 'pago') return; // já refletido no caixa via lançamento
+      const mm = monthFromStr(b.vencimento);
+      if (mm < 1 || mm > 12) return;
+      if (b.tipo === 'A receber') s[mm - 1].rev += (b.valor || 0) / 1000;
+      else s[mm - 1].exp += (b.valor || 0) / 1000;
+    });
+    return s.slice(4, 9); // mai → set: realizado + próximo horizonte de vencimentos
+  })();
+  const maxMensal = Math.max(1, ...monthlyStats.map(s => Math.max(s.rev, s.exp)));
+
+  // Despesas por categoria (calculado dos lançamentos de saída).
+  const despesasPorCategoria = (() => {
+    const map: Record<string, number> = {};
+    lancamentos.filter(l => l.tipo === 'despesa').forEach(l => {
+      const cat = l.categoria || 'Outros';
+      map[cat] = (map[cat] || 0) + Math.abs(l.valor || 0);
+    });
+    const total = Object.values(map).reduce((a, b) => a + b, 0) || 1;
+    return Object.entries(map)
+      .map(([categoria, valor]) => ({ categoria, valor, pct: (valor / total) * 100 }))
+      .sort((a, b) => b.valor - a.valor);
+  })();
+  const totalDespesas = despesasPorCategoria.reduce((a, c) => a + c.valor, 0);
 
   const handleCopyLinhaDigitavel = (linha: string) => {
     navigator.clipboard.writeText(linha);
@@ -357,10 +395,10 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
             ENTRADAS DO MÊS
           </span>
           <h2 className="text-2xl font-black text-emerald-600">
-            R$ 186.420,00
+            R$ {entradasMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </h2>
           <p className="text-[11px] text-slate-500 font-medium">
-            12 lançamentos · <span className="text-emerald-600 font-bold">+12,4%</span> vs junho
+            {qtdEntradas} {qtdEntradas === 1 ? 'lançamento de entrada' : 'lançamentos de entrada'}
           </p>
         </div>
 
@@ -370,10 +408,10 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
             SAÍDAS DO MÊS
           </span>
           <h2 className="text-2xl font-black text-rose-600">
-            R$ 74.185,30
+            R$ {saidasMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </h2>
           <p className="text-[11px] text-slate-500 font-medium">
-            19 lançamentos · <span className="text-rose-600 font-bold">+4,1%</span> vs junho
+            {qtdSaidas} {qtdSaidas === 1 ? 'lançamento de saída' : 'lançamentos de saída'}
           </p>
         </div>
 
@@ -383,10 +421,10 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
             SALDO DO MÊS
           </span>
           <h2 className="text-2xl font-black text-white">
-            R$ 112.234,70
+            R$ {saldoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </h2>
           <p className="text-[11px] text-blue-200 font-medium">
-            margem de 60,2% sobre as entradas
+            margem de {margemPct.toFixed(1)}% sobre as entradas
           </p>
         </div>
 
@@ -396,10 +434,11 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
             A RECEBER EM ATRASO
           </span>
           <h2 className="text-2xl font-black text-rose-700">
-            R$ 8.220,00
+            R$ {totalAtraso.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </h2>
           <p className="text-[11px] text-slate-500 font-medium">
-            1 título · Auto Peças Ribeiro
+            {boletosAtraso.length} {boletosAtraso.length === 1 ? 'título' : 'títulos'}
+            {boletosAtraso.length > 0 ? ` · ${boletosAtraso[0].clienteNome}` : ''}
           </p>
         </div>
       </div>
@@ -407,7 +446,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
       {/* 12-Month Bar Chart Banner */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-slate-900 text-sm">Evolução mensal · últimos 12 meses</h3>
+          <h3 className="font-bold text-slate-900 text-sm">Evolução mensal · realizado e a vencer</h3>
           <div className="flex items-center gap-4 text-xs font-semibold">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm bg-emerald-500" />
@@ -424,7 +463,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
         {/* Bar Chart Container */}
         <div className="h-44 pt-6 flex items-end justify-between gap-2 border-b border-slate-200 px-2">
           {monthlyStats.map((st) => {
-            const maxVal = 200;
+            const maxVal = maxMensal;
             const revHeight = (st.rev / maxVal) * 100;
             const expHeight = (st.exp / maxVal) * 100;
 
@@ -432,8 +471,8 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
               <div key={st.month} className="flex-1 flex flex-col items-center gap-1 group relative">
                 {/* Hover Tooltip */}
                 <div className="absolute -top-10 hidden group-hover:flex flex-col items-center bg-slate-900 text-white text-[10px] p-1.5 rounded shadow z-20 whitespace-nowrap">
-                  <span>Rec: R$ {st.rev}k</span>
-                  <span>Desp: R$ {st.exp}k</span>
+                  <span>Rec: R$ {st.rev.toFixed(1)}k</span>
+                  <span>Desp: R$ {st.exp.toFixed(1)}k</span>
                 </div>
 
                 <div className="flex items-end gap-1 w-full justify-center h-32">
@@ -541,69 +580,27 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
           <h3 className="font-bold text-slate-900 text-base">Despesas por categoria</h3>
 
           <div className="space-y-4 text-xs">
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-semibold text-slate-700">Equipamentos</span>
-                <span className="font-bold text-slate-900">R$ 38.460,00</span>
+            {despesasPorCategoria.length === 0 && (
+              <p className="text-slate-400 italic py-4 text-center">Nenhuma despesa lançada no período.</p>
+            )}
+            {despesasPorCategoria.map((c, i) => (
+              <div key={c.categoria}>
+                <div className="flex justify-between mb-1">
+                  <span className="font-semibold text-slate-700">{c.categoria}</span>
+                  <span className="font-bold text-slate-900">R$ {c.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${i === 0 ? 'bg-[#004276]' : i === despesasPorCategoria.length - 1 ? 'bg-amber-400' : 'bg-blue-500'}`}
+                    style={{ width: `${Math.max(2, c.pct)}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-[#004276] rounded-full" style={{ width: '52%' }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-semibold text-slate-700">Mão de obra</span>
-                <span className="font-bold text-slate-900">R$ 14.800,00</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-[#004276] rounded-full" style={{ width: '20%' }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-semibold text-slate-700">Impostos</span>
-                <span className="font-bold text-slate-900">R$ 8.360,00</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-[#004276] rounded-full" style={{ width: '11%' }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-semibold text-slate-700">Logística</span>
-                <span className="font-bold text-slate-900">R$ 4.920,00</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-[#004276] rounded-full" style={{ width: '7%' }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-semibold text-slate-700">Administrativo</span>
-                <span className="font-bold text-slate-900">R$ 4.445,00</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-[#004276] rounded-full" style={{ width: '6%' }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-semibold text-slate-700">Marketing</span>
-                <span className="font-bold text-slate-900">R$ 3.200,00</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-400 rounded-full" style={{ width: '4%' }} />
-              </div>
-            </div>
+            ))}
 
             <div className="pt-4 border-t flex justify-between items-center text-sm font-bold">
               <span className="text-slate-600">Total de despesas</span>
-              <span className="text-rose-600 text-base">R$ 74.185,30</span>
+              <span className="text-rose-600 text-base">R$ {totalDespesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
         </div>
@@ -853,11 +850,12 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">CPF / CNPJ</label>
+                  <label className="block font-bold text-slate-600 mb-1 uppercase">{docLabel(boletoCpf)}</label>
                   <input
                     type="text"
+                    inputMode="numeric"
                     value={boletoCpf}
-                    onChange={(e) => setBoletoCpf(e.target.value)}
+                    onChange={(e) => setBoletoCpf(maskCPFCNPJ(e.target.value))}
                     className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
                   />
                 </div>

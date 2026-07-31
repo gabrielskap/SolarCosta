@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StorageService } from './services/storage';
-import { Lead, Proposta, Contrato, Boleto, LancamentoFinanceiro, Produto, Fornecedor, User, LeadStage, Agendamento } from './types';
+import { AuditService, AuditInput } from './services/audit';
+import { computeNotifications, countByCategory } from './utils/notifications';
+import { REFERENCE_TODAY } from './utils/dates';
+import { Lead, Proposta, Contrato, Boleto, LancamentoFinanceiro, Produto, Fornecedor, User, LeadStage, Agendamento, AuditEntry, Obra, PropostaItem } from './types';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { InteractiveCalendar } from './components/InteractiveCalendar';
@@ -12,6 +15,10 @@ import { ContractsView } from './components/ContractsView';
 import { FinancialView } from './components/FinancialView';
 import { SuppliersProductsView } from './components/SuppliersProductsView';
 import { UsersView } from './components/UsersView';
+import { ObrasView } from './components/ObrasView';
+import { ReportsView } from './components/ReportsView';
+import { AuditTrailView } from './components/AuditTrailView';
+import { NotificationCenter } from './components/NotificationCenter';
 import { PDFModal } from './components/PDFModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { Menu, Sun } from 'lucide-react';
@@ -37,6 +44,8 @@ export default function App() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [usuarios, setUsuarios] = useState<User[]>([]);
+  const [obras, setObras] = useState<Obra[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
 
   // PDF Modal State
   const [pdfModal, setPdfModal] = useState<{
@@ -63,17 +72,65 @@ export default function App() {
     setProdutos(StorageService.getProdutos());
     setFornecedores(StorageService.getFornecedores());
     setUsuarios(StorageService.getUsuarios());
+    setObras(StorageService.getObras());
+    setAuditLog(AuditService.getAll());
   }, []);
+
+  // Audit trail helper — records "who changed what". The actor (defaulting to
+  // the current user) is injected here, so callers omit `usuario`/`usuarioId`.
+  // `actor` param allows logging at login time, before currentUser settles.
+  const logAudit = (
+    input: Omit<AuditInput, 'usuario' | 'usuarioId'>,
+    actor: User | null = currentUser,
+  ) => {
+    if (!actor) return;
+    setAuditLog(AuditService.log({ ...input, usuario: actor.nome, usuarioId: actor.id }));
+  };
+
+  // Proactive reminders derived from the current data (Central de notificações).
+  const notifications = useMemo(
+    () => computeNotifications({ leads, boletos, agendamentos }),
+    [leads, boletos, agendamentos],
+  );
+  const notifCounts = useMemo(() => countByCategory(notifications), [notifications]);
 
   // Agendamento CRUD handlers
   const handleSaveAgendamento = (agendamento: Agendamento) => {
+    const isNew = !agendamentos.some((a) => a.id === agendamento.id);
     const updated = StorageService.saveAgendamento(agendamento);
     setAgendamentos(updated);
+    logAudit({
+      acao: isNew ? 'criar' : 'editar',
+      entidade: 'Agendamento',
+      entidadeId: agendamento.id,
+      alvo: `${agendamento.titulo} — ${agendamento.leadNome}`,
+      detalhes: `${agendamento.data} ${agendamento.horarioInicio}–${agendamento.horarioFim} · ${agendamento.responsavel}`,
+    });
   };
 
   const handleDeleteAgendamento = (id: string) => {
+    const alvo = agendamentos.find((a) => a.id === id);
     const updated = StorageService.deleteAgendamento(id);
     setAgendamentos(updated);
+    logAudit({
+      acao: 'excluir',
+      entidade: 'Agendamento',
+      entidadeId: id,
+      alvo: alvo ? `${alvo.titulo} — ${alvo.leadNome}` : `Agendamento ${id}`,
+    });
+  };
+
+  const handleClearAudit = () => {
+    setAuditLog(AuditService.clear());
+  };
+
+  const handleNotificationNavigate = (tab: string, leadId?: string) => {
+    if (tab === 'detalhe_lead' && leadId) {
+      setSelectedLeadId(leadId);
+      setActiveTab('detalhe_lead');
+    } else {
+      setActiveTab(tab);
+    }
   };
 
   // Toast Helper
@@ -96,10 +153,12 @@ export default function App() {
     setCurrentUser(user);
     StorageService.setCurrentUser(user);
     setActiveTab('leads');
+    logAudit({ acao: 'login', entidade: 'Sessão', alvo: `Entrou no sistema` }, user);
     showToast('Acesso realizado', 'success', `Bem-vindo(a) ao CRM Solar Costa, ${user.nome}!`);
   };
 
   const handleLogout = () => {
+    logAudit({ acao: 'logout', entidade: 'Sessão', alvo: 'Saiu do sistema' });
     setCurrentUser(null);
     StorageService.setCurrentUser(null);
     showToast('Sessão encerrada', 'info', 'Você desconectou da plataforma.');
@@ -107,79 +166,202 @@ export default function App() {
 
   // Lead CRUD handlers
   const handleUpdateLeadStage = (leadId: string, newStage: LeadStage) => {
+    const prev = leads.find((l) => l.id === leadId);
     const updated = StorageService.updateLeadStage(leadId, newStage);
     setLeads(updated);
+    if (prev && prev.etapa !== newStage) {
+      logAudit({
+        acao: 'mudanca_etapa',
+        entidade: 'Lead',
+        entidadeId: leadId,
+        alvo: prev.nome,
+        detalhes: `${prev.etapa} → ${newStage}`,
+      });
+    }
   };
 
   const handleUpdateLead = (updatedLead: Lead) => {
     const updated = StorageService.saveLead(updatedLead);
     setLeads(updated);
+    logAudit({ acao: 'editar', entidade: 'Lead', entidadeId: updatedLead.id, alvo: updatedLead.nome });
   };
 
   const handleCreateLead = (newLead: Lead) => {
-    const updated = StorageService.saveLead(newLead);
+    const hojeBR = new Date().toLocaleDateString('pt-BR');
+    // Garante um lead completo mesmo quando o formulário envia campos parciais.
+    const complete: Lead = {
+      ...newLead,
+      id: newLead.id || `lead-${Date.now()}`,
+      numero: newLead.numero || `#${Math.floor(100 + Math.random() * 900)}`,
+      dataCriacao: newLead.dataCriacao || hojeBR,
+      documentos: newLead.documentos || [],
+      historico:
+        newLead.historico && newLead.historico.length
+          ? newLead.historico
+          : [
+              {
+                id: `h-${Date.now()}`,
+                data: hojeBR,
+                descricao: 'Lead cadastrado no sistema',
+                usuario: currentUser?.nome || 'Sistema',
+              },
+            ],
+    };
+    const updated = StorageService.saveLead(complete);
     setLeads(updated);
-    showToast('Novo Lead cadastrado', 'success', `Lead "${newLead.nome}" inserido com sucesso.`);
+    logAudit({ acao: 'criar', entidade: 'Lead', entidadeId: complete.id, alvo: complete.nome });
+    showToast('Novo Lead cadastrado', 'success', `Lead "${complete.nome}" inserido com sucesso.`);
   };
 
   // Proposal CRUD Handlers
   const handleSaveProposal = (proposta: Proposta) => {
+    const isNew = !propostas.some((p) => p.id === proposta.id);
     const updated = StorageService.saveProposta(proposta);
     setPropostas(updated);
+    logAudit({
+      acao: isNew ? 'criar' : 'editar',
+      entidade: 'Proposta',
+      entidadeId: proposta.id,
+      alvo: `Proposta ${proposta.numero} — ${proposta.clienteNome}`,
+      detalhes: `Status: ${proposta.status}`,
+    });
   };
 
   // Contract CRUD Handlers
   const handleSaveContract = (contrato: Contrato) => {
+    const isNew = !contratos.some((c) => c.id === contrato.id);
     const updated = StorageService.saveContrato(contrato);
     setContratos(updated);
+    logAudit({
+      acao: isNew ? 'criar' : 'editar',
+      entidade: 'Contrato',
+      entidadeId: contrato.id,
+      alvo: `Contrato ${contrato.numero} — ${contrato.clienteNome}`,
+    });
   };
 
   // Financial Handlers
   const handleSaveBoleto = (boleto: Boleto) => {
+    const prev = boletos.find((b) => b.id === boleto.id);
+    const isNew = !prev;
+    const isBaixa = prev && prev.situacao !== 'pago' && boleto.situacao === 'pago';
     const updated = StorageService.saveBoleto(boleto);
     setBoletos(updated);
+    logAudit({
+      acao: isBaixa ? 'baixa' : isNew ? 'criar' : 'editar',
+      entidade: 'Boleto',
+      entidadeId: boleto.id,
+      alvo: `Boleto ${boleto.parcela} — ${boleto.clienteNome}`,
+      detalhes: isBaixa ? `Baixa registrada (${boleto.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).` : undefined,
+    });
   };
 
   const handleDeleteBoleto = (id: string) => {
+    const alvo = boletos.find((b) => b.id === id);
     const updated = StorageService.deleteBoleto(id);
     setBoletos(updated);
+    logAudit({
+      acao: 'excluir',
+      entidade: 'Boleto',
+      entidadeId: id,
+      alvo: alvo ? `Boleto ${alvo.parcela} — ${alvo.clienteNome}` : `Boleto ${id}`,
+    });
   };
 
   const handleAddLancamento = (lancamento: LancamentoFinanceiro) => {
     const updated = StorageService.saveLancamento(lancamento);
     setLancamentos(updated);
+    logAudit({
+      acao: 'criar',
+      entidade: 'Lançamento',
+      entidadeId: lancamento.id,
+      alvo: lancamento.descricao,
+      detalhes: `${lancamento.tipo === 'receita' ? 'Entrada' : 'Saída'} · ${Math.abs(lancamento.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
+    });
   };
 
   // Products & Suppliers Handlers
   const handleSaveProduto = (produto: Produto) => {
+    const isNew = !produtos.some((p) => p.id === produto.id);
     const updated = StorageService.saveProduto(produto);
     setProdutos(updated);
+    logAudit({ acao: isNew ? 'criar' : 'editar', entidade: 'Produto', entidadeId: produto.id, alvo: produto.nome });
   };
 
   const handleDeleteProduto = (id: string) => {
+    const alvo = produtos.find((p) => p.id === id);
     const updated = StorageService.deleteProduto(id);
     setProdutos(updated);
+    logAudit({ acao: 'excluir', entidade: 'Produto', entidadeId: id, alvo: alvo ? alvo.nome : `Produto ${id}` });
   };
 
   const handleSaveFornecedor = (fornecedor: Fornecedor) => {
+    const isNew = !fornecedores.some((f) => f.id === fornecedor.id);
     const updated = StorageService.saveFornecedor(fornecedor);
     setFornecedores(updated);
+    logAudit({ acao: isNew ? 'criar' : 'editar', entidade: 'Fornecedor', entidadeId: fornecedor.id, alvo: fornecedor.nome });
   };
 
   const handleDeleteFornecedor = (id: string) => {
+    const alvo = fornecedores.find((f) => f.id === id);
     const updated = StorageService.deleteFornecedor(id);
     setFornecedores(updated);
+    logAudit({ acao: 'excluir', entidade: 'Fornecedor', entidadeId: id, alvo: alvo ? alvo.nome : `Fornecedor ${id}` });
   };
 
   // Users Handlers
   const handleSaveUser = (user: User) => {
+    const isNew = !usuarios.some((u) => u.id === user.id);
     const updated = StorageService.saveUsuario(user);
     setUsuarios(updated);
+    logAudit({ acao: isNew ? 'criar' : 'editar', entidade: 'Usuário', entidadeId: user.id, alvo: `${user.nome} (${user.cargo})` });
   };
 
   const handleDeleteUser = (id: string) => {
+    const alvo = usuarios.find((u) => u.id === id);
     const updated = StorageService.deleteUsuario(id);
     setUsuarios(updated);
+    logAudit({ acao: 'excluir', entidade: 'Usuário', entidadeId: id, alvo: alvo ? alvo.nome : `Usuário ${id}` });
+  };
+
+  // Obras (pós-venda) handlers
+  const handleSaveObra = (obra: Obra) => {
+    const isNew = !obras.some((o) => o.id === obra.id);
+    const updated = StorageService.saveObra(obra);
+    setObras(updated);
+    logAudit({
+      acao: isNew ? 'criar' : 'editar',
+      entidade: 'Obra',
+      entidadeId: obra.id,
+      alvo: `${obra.numero} — ${obra.clienteNome}`,
+      detalhes: `Etapa: ${obra.etapa}`,
+    });
+  };
+
+  const handleDeleteObra = (id: string) => {
+    const alvo = obras.find((o) => o.id === id);
+    const updated = StorageService.deleteObra(id);
+    setObras(updated);
+    logAudit({
+      acao: 'excluir',
+      entidade: 'Obra',
+      entidadeId: id,
+      alvo: alvo ? `${alvo.numero} — ${alvo.clienteNome}` : `Obra ${id}`,
+    });
+  };
+
+  // Baixa de estoque: chamada quando uma obra consome o kit vinculado.
+  const handleBaixarEstoque = (itens: PropostaItem[]) => {
+    if (!itens || itens.length === 0) return;
+    const updated = StorageService.baixarEstoqueKit(itens);
+    setProdutos(updated);
+    const totalItens = itens.reduce((a, i) => a + (i.qtd || 0), 0);
+    logAudit({
+      acao: 'editar',
+      entidade: 'Produto',
+      alvo: 'Baixa de estoque por obra',
+      detalhes: `${totalItens} itens consumidos (${itens.length} produtos do catálogo).`,
+    });
   };
 
   // Open PDF Modal
@@ -239,9 +421,17 @@ export default function App() {
           </div>
         </div>
 
-        <div className="text-right">
-          <p className="text-xs font-bold leading-none">{currentUser.nome ? currentUser.nome.split(' ')[0] : 'Usuário'}</p>
-          <span className="text-[10px] text-[#FFD100] font-semibold">{currentUser.cargo || currentUser.perfil}</span>
+        <div className="flex items-center gap-1">
+          <NotificationCenter
+            notifications={notifications}
+            counts={notifCounts}
+            onNavigate={handleNotificationNavigate}
+            tone="onDark"
+          />
+          <div className="text-right">
+            <p className="text-xs font-bold leading-none">{currentUser.nome ? currentUser.nome.split(' ')[0] : 'Usuário'}</p>
+            <span className="text-[10px] text-[#FFD100] font-semibold">{currentUser.cargo || currentUser.perfil}</span>
+          </div>
         </div>
       </header>
 
@@ -267,8 +457,35 @@ export default function App() {
           />
         )}
 
-        {/* Main Workspace Area */}
-        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px] mx-auto w-full">
+        {/* Right column: desktop top bar + scrollable workspace */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Desktop top utility bar (notifications, user) */}
+          <header className="hidden md:flex items-center justify-between gap-3 bg-white border-b border-slate-200 px-6 py-2.5 shrink-0">
+            <span className="text-xs font-semibold text-slate-500 first-letter:uppercase">
+              {REFERENCE_TODAY.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+            </span>
+            <div className="flex items-center gap-3">
+              <NotificationCenter
+                notifications={notifications}
+                counts={notifCounts}
+                onNavigate={handleNotificationNavigate}
+                tone="onLight"
+              />
+              <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
+                <div className="w-8 h-8 rounded-full bg-[#004276] text-white text-[11px] font-bold flex items-center justify-center">
+                  {currentUser.nome.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()}
+                </div>
+                <div className="leading-tight">
+                  <p className="text-xs font-bold text-slate-800">{currentUser.nome}</p>
+                  <p className="text-[10px] text-slate-400">{currentUser.cargo || currentUser.perfil}</p>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* Main Workspace Area */}
+          <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+            <div className="max-w-[1920px] mx-auto w-full">
           {activeTab === 'dashboard' && (
             <DashboardView
               leads={leads || []}
@@ -385,7 +602,47 @@ export default function App() {
               showToast={showToast}
             />
           )}
-        </main>
+
+          {activeTab === 'obras' && (
+            <ObrasView
+              obras={obras || []}
+              contratos={contratos || []}
+              propostas={propostas || []}
+              produtos={produtos || []}
+              users={usuarios || []}
+              currentUser={currentUser}
+              onSaveObra={handleSaveObra}
+              onDeleteObra={handleDeleteObra}
+              onBaixarEstoque={handleBaixarEstoque}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'relatorios' && (
+            <ReportsView
+              leads={leads || []}
+              contratos={contratos || []}
+              propostas={propostas || []}
+              boletos={boletos || []}
+              lancamentos={lancamentos || []}
+              usuarios={usuarios || []}
+              currentUser={currentUser}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'auditoria' && (
+            <AuditTrailView
+              audit={auditLog}
+              usuarios={usuarios || []}
+              currentUser={currentUser}
+              onClear={handleClearAudit}
+              showToast={showToast}
+            />
+          )}
+            </div>
+          </main>
+        </div>
       </div>
 
       {/* PDF Generation and View Modal */}

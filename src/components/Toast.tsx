@@ -13,10 +13,10 @@ export interface ToastMessage {
 
 interface ToastProps {
   toasts: ToastMessage[];
-  onDismiss: (id: string) => void;
+  onClose: (id: string) => void;
 }
 
-export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
+export const ToastContainer: React.FC<ToastProps> = ({ toasts, onClose }) => {
   return (
     <div id="toast-container" className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
       <AnimatePresence>
@@ -44,7 +44,7 @@ export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
               {toast.description && <p className="mt-1 text-xs text-slate-600">{toast.description}</p>}
             </div>
             <button
-              onClick={() => onDismiss(toast.id)}
+              onClick={() => onClose(toast.id)}
               className="shrink-0 text-slate-400 hover:text-slate-600 ml-2 p-1 rounded-md"
             >
               <X className="w-4 h-4" />

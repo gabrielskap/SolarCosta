@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Users, UserPlus, Shield, CheckCircle2, XCircle, Edit2, Trash2, X } from 'lucide-react';
 import { User } from '../types';
+import { isValidEmail } from '../utils/format';
 
 interface UsersViewProps {
   usuarios: User[];
@@ -50,6 +51,10 @@ export const UsersView: React.FC<UsersViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome || !email) return;
+    if (!isValidEmail(email)) {
+      showToast('E-mail inválido', 'error', 'Informe um e-mail no formato nome@dominio.com.');
+      return;
+    }
 
     const uObj: User = {
       id: editingUser ? editingUser.id : `usr-${Date.now()}`,

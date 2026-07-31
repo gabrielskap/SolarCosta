@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  TrendingUp, 
-  Users, 
-  FileCheck, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Users,
+  FileCheck,
   DollarSign, 
   Zap, 
   Target, 
@@ -31,6 +32,7 @@ import {
   Legend 
 } from 'recharts';
 import { Lead, Contrato, Proposta, LancamentoFinanceiro, User, Agendamento } from '../types';
+import { parseBRDate, daysBetween } from '../utils/dates';
 
 interface DashboardViewProps {
   leads: Lead[];
@@ -86,35 +88,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const faturamentoTotalRealizado = valorTotalContratos > 0 ? valorTotalContratos : receitasLancamentos;
 
-  // 2. Data for "Faturamento Mensal" Chart (Monthly Revenue Trend)
-  const monthlyRevenueData = useMemo(() => {
-    const monthsMap: Record<string, { mes: string; faturamento: number; propostas: number; meta: number }> = {
-      'Jan': { mes: 'Jan', faturamento: 42000, propostas: 65000, meta: 50000 },
-      'Fev': { mes: 'Fev', faturamento: 58000, propostas: 82000, meta: 55000 },
-      'Mar': { mes: 'Mar', faturamento: 71000, propostas: 95000, meta: 60000 },
-      'Abr': { mes: 'Abr', faturamento: 64000, propostas: 88000, meta: 65000 },
-      'Mai': { mes: 'Mai', faturamento: 89000, propostas: 110000, meta: 70000 },
-      'Jun': { mes: 'Jun', faturamento: 105000, propostas: 135000, meta: 75000 },
-      'Jul': { mes: 'Jul', faturamento: 128490, propostas: 162000, meta: 80000 },
-    };
+  // Índice do mês (1-12) a partir de "DD/MM" ou "DD/MM/AAAA".
+  const monthFromStr = (value?: string): number => {
+    if (!value) return 0;
+    const parts = value.split('/');
+    return parts.length >= 2 ? parseInt(parts[1], 10) : 0;
+  };
 
-    // Integrate real contract data if dates match
-    contratos.forEach(c => {
-      if (c.dataEmissao) {
-        const parts = c.dataEmissao.split('/');
-        if (parts.length === 3) {
-          const monthIdx = parseInt(parts[1], 10) - 1;
-          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-          const mName = monthNames[monthIdx];
-          if (mName && monthsMap[mName]) {
-            monthsMap[mName].faturamento += c.valorTotal || 0;
-          }
-        }
-      }
+  // 2. Faturamento mensal (calculado a partir de lançamentos e propostas reais)
+  const REF_MONTH = 7; // julho/2026 é o mês de referência do sistema
+  const monthlyRevenueData = useMemo(() => {
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const series = monthNames.map(m => ({ mes: m, faturamento: 0, propostas: 0 }));
+
+    // Faturamento realizado = receitas lançadas no caixa, por mês.
+    lancamentos.forEach(l => {
+      if (l.tipo !== 'receita') return;
+      const mm = monthFromStr(l.data);
+      if (mm >= 1 && mm <= 12) series[mm - 1].faturamento += l.valor || 0;
     });
 
-    return Object.values(monthsMap);
-  }, [contratos]);
+    // Volume de propostas geradas por mês (valor total proposto).
+    propostas.forEach(p => {
+      const mm = monthFromStr(p.dataCriacao);
+      if (mm >= 1 && mm <= 12) series[mm - 1].propostas += p.valorTotal || 0;
+    });
+
+    // O seletor de período controla a janela exibida (funil até o mês de ref.).
+    const janela = selectedPeriod === '6m' ? 6 : REF_MONTH;
+    const inicio = Math.max(0, REF_MONTH - janela);
+    return series.slice(inicio, REF_MONTH);
+  }, [lancamentos, propostas, selectedPeriod]);
+
+  // Variação do faturamento do mês corrente vs. mês anterior (quando há base).
+  const receitaMesAtual = monthlyRevenueData.length ? monthlyRevenueData[monthlyRevenueData.length - 1].faturamento : 0;
+  const receitaMesAnterior = monthlyRevenueData.length > 1 ? monthlyRevenueData[monthlyRevenueData.length - 2].faturamento : 0;
+  const momDeltaPct = receitaMesAnterior > 0 ? ((receitaMesAtual - receitaMesAnterior) / receitaMesAnterior) * 100 : null;
 
   // 3. Data for "Leads por Etapa" Chart
   const stagesOrder = [
@@ -157,15 +166,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }));
   }, [leads]);
 
-  // 4. Data for "Volume de Vendas" Chart (Closed vs Proposal Volume)
+  // 4. Volume de vendas por responsável (calculado a partir dos leads)
   const salesVolumeData = useMemo(() => {
-    // Sales per Salesperson / Responsible
-    const salesByRep: Record<string, { nome: string; propostasQtd: number; contratosQtd: number; valorVendas: number; potenciaKwp: number }> = {};
+    const salesByRep: Record<string, { nome: string; propostasQtd: number; contratosQtd: number; valorVendas: number }> = {};
 
     leads.forEach(l => {
       const rep = l.responsavel || 'Não atribuído';
       if (!salesByRep[rep]) {
-        salesByRep[rep] = { nome: rep.split(' ')[0] + ' ' + (rep.split(' ')[1]?.[0] || ''), propostasQtd: 0, contratosQtd: 0, valorVendas: 0, potenciaKwp: 0 };
+        salesByRep[rep] = { nome: rep.split(' ')[0] + ' ' + (rep.split(' ')[1]?.[0] || ''), propostasQtd: 0, contratosQtd: 0, valorVendas: 0 };
       }
       if (l.etapa === 'Fechado') {
         salesByRep[rep].contratosQtd += 1;
@@ -175,22 +183,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }
     });
 
-    // Add extra stats from contratos array
-    contratos.forEach(c => {
-      // Find lead or match
-      salesByRep['Solar Costa'] = salesByRep['Solar Costa'] || { nome: 'Solar Costa', propostasQtd: propostas.length, contratosQtd: contratos.length, valorVendas: valorTotalContratos, potenciaKwp: potenciaTotalKwp };
-    });
+    return Object.values(salesByRep)
+      .filter(r => r.propostasQtd > 0 || r.contratosQtd > 0)
+      .sort((a, b) => b.valorVendas - a.valorVendas);
+  }, [leads]);
 
-    const result = Object.values(salesByRep);
-    if (result.length === 0) {
-      return [
-        { nome: 'Rafael M.', propostasQtd: 8, contratosQtd: 4, valorVendas: 98000, potenciaKwp: 38.5 },
-        { nome: 'Ana B.', propostasQtd: 6, contratosQtd: 3, valorVendas: 72000, potenciaKwp: 29.1 },
-        { nome: 'Carlos C.', propostasQtd: 5, contratosQtd: 2, valorVendas: 54000, potenciaKwp: 22.0 },
-      ];
-    }
-    return result;
-  }, [leads, contratos, propostas, valorTotalContratos, potenciaTotalKwp]);
+  // Ciclo médio de venda: dias entre a criação do lead e o seu fechamento
+  // (aproximado pela data mais recente do histórico de leads fechados).
+  const cicloMedioDias = useMemo(() => {
+    const duracoes: number[] = [];
+    leads.filter(l => l.etapa === 'Fechado').forEach(l => {
+      const inicio = parseBRDate(l.dataCriacao);
+      const datasHist = (l.historico || [])
+        .map(h => parseBRDate(h.data))
+        .filter((d): d is Date => !!d)
+        .sort((a, b) => b.getTime() - a.getTime());
+      const fim = datasHist[0];
+      if (inicio && fim) {
+        const d = daysBetween(inicio, fim);
+        if (d >= 0) duracoes.push(d);
+      }
+    });
+    if (!duracoes.length) return null;
+    return Math.round(duracoes.reduce((a, b) => a + b, 0) / duracoes.length);
+  }, [leads]);
+
+  // Origem com maior taxa de conversão (fechados / total por origem).
+  const origemMaiorConversao = useMemo(() => {
+    const byOrigem: Record<string, { total: number; fechados: number }> = {};
+    leads.forEach(l => {
+      const o = l.origem || 'Outros';
+      byOrigem[o] = byOrigem[o] || { total: 0, fechados: 0 };
+      byOrigem[o].total += 1;
+      if (l.etapa === 'Fechado') byOrigem[o].fechados += 1;
+    });
+    let best: { origem: string; pct: number } | null = null;
+    Object.entries(byOrigem).forEach(([origem, v]) => {
+      if (v.fechados <= 0) return;
+      const pct = (v.fechados / v.total) * 100;
+      if (!best || pct > best.pct) best = { origem, pct };
+    });
+    return best as { origem: string; pct: number } | null;
+  }, [leads]);
 
   // Custom Recharts Tooltip Component for Currency Formatting
   const CustomTooltipCurrency = ({ active, payload, label }: any) => {
@@ -294,9 +328,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-2xl font-black text-slate-900 tracking-tight block">
               {formatCurrency(faturamentoTotalRealizado)}
             </span>
-            <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-600 font-bold">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>+18.4% vs mês anterior</span>
+            <div className="flex items-center gap-1.5 mt-2 text-xs font-bold">
+              {momDeltaPct !== null ? (
+                <>
+                  {momDeltaPct >= 0
+                    ? <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                    : <TrendingDown className="w-3.5 h-3.5 text-rose-600" />}
+                  <span className={momDeltaPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                    {momDeltaPct >= 0 ? '+' : ''}{momDeltaPct.toFixed(1)}% vs mês anterior
+                  </span>
+                </>
+              ) : (
+                <>
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-emerald-600">{formatCurrency(receitaMesAtual)} realizados no mês</span>
+                </>
+              )}
             </div>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-400" />
@@ -577,13 +624,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               <div className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-xs">
                 <span className="text-slate-600 font-medium">Ciclo Médio de Venda:</span>
-                <strong className="text-slate-900 font-bold">14 dias</strong>
+                <strong className="text-slate-900 font-bold">{cicloMedioDias !== null ? `${cicloMedioDias} dias` : '—'}</strong>
               </div>
 
               <div className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-xs">
                 <span className="text-slate-600 font-medium">Origem com Maior Conversão:</span>
                 <strong className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded">
-                  Google Ads (42%)
+                  {origemMaiorConversao ? `${origemMaiorConversao.origem} (${origemMaiorConversao.pct.toFixed(0)}%)` : '—'}
                 </strong>
               </div>
             </div>

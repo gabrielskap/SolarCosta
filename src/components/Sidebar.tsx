@@ -1,6 +1,6 @@
 import React from 'react';
-import { 
-  LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, Sun, ChevronRight, Menu, X, Calendar
+import {
+  LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, Sun, ChevronRight, Menu, X, Calendar, BarChart3, History, HardHat
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -50,11 +50,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: 'leads', label: 'Leads', icon: Users },
       { id: 'proposta', label: 'Propostas de orçamento', icon: FileText },
       { id: 'contrato', label: 'Contratos', icon: FileCheck },
+      { id: 'obras', label: 'Obras & Instalação', icon: HardHat },
     ]},
     { section: 'GESTÃO', items: [
       { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
+      { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
       { id: 'fornecedores', label: 'Fornecedores e produtos', icon: Package },
       { id: 'usuarios', label: 'Usuários', icon: UserCheck },
+      { id: 'auditoria', label: 'Auditoria', icon: History },
     ]}
   ];
 

@@ -1,5 +1,5 @@
-import { 
-  User, Lead, Fornecedor, Produto, Proposta, Contrato, Boleto, LancamentoFinanceiro, Agendamento 
+import {
+  User, Lead, Fornecedor, Produto, Proposta, Contrato, Boleto, LancamentoFinanceiro, Agendamento, Obra, PropostaItem
 } from '../types';
 
 const USERS_KEY = 'solar_costa_users_v1';
@@ -11,6 +11,7 @@ const CONTRATOS_KEY = 'solar_costa_contratos_v1';
 const BOLETOS_KEY = 'solar_costa_boletos_v1';
 const LANCAMENTOS_KEY = 'solar_costa_lancamentos_v1';
 const AGENDAMENTOS_KEY = 'solar_costa_agendamentos_v1';
+const OBRAS_KEY = 'solar_costa_obras_v1';
 const CURRENT_USER_KEY = 'solar_costa_current_user_v1';
 
 // Initial Seed Data matching the mockups exactly
@@ -899,6 +900,47 @@ export const StorageService = {
     return updated;
   },
 
+  getObras: (): Obra[] => getStorage(OBRAS_KEY, INITIAL_OBRAS),
+  saveObras: (obras: Obra[]) => setStorage(OBRAS_KEY, obras),
+  saveObra: (o: Obra): Obra[] => {
+    const list = getStorage<Obra[]>(OBRAS_KEY, INITIAL_OBRAS);
+    const idx = list.findIndex(item => item.id === o.id);
+    let updated: Obra[];
+    if (idx >= 0) {
+      updated = [...list];
+      updated[idx] = o;
+    } else {
+      updated = [o, ...list];
+    }
+    setStorage(OBRAS_KEY, updated);
+    return updated;
+  },
+  deleteObra: (id: string): Obra[] => {
+    const list = getStorage<Obra[]>(OBRAS_KEY, INITIAL_OBRAS);
+    const updated = list.filter(item => item.id !== id);
+    setStorage(OBRAS_KEY, updated);
+    return updated;
+  },
+
+  // Baixa de estoque: decrementa a quantidade de cada item do kit que
+  // referencia um produto do catálogo. Retorna o catálogo atualizado.
+  baixarEstoqueKit: (itens: PropostaItem[]): Produto[] => {
+    const produtos = getStorage<Produto[]>(PRODUTOS_KEY, INITIAL_PRODUTOS);
+    const consumo: Record<string, number> = {};
+    (itens || []).forEach(item => {
+      if (item.produtoId) {
+        consumo[item.produtoId] = (consumo[item.produtoId] || 0) + (item.qtd || 0);
+      }
+    });
+    const updated = produtos.map(p =>
+      consumo[p.id] !== undefined
+        ? { ...p, estoque: Math.max(0, (p.estoque || 0) - consumo[p.id]) }
+        : p
+    );
+    setStorage(PRODUTOS_KEY, updated);
+    return updated;
+  },
+
   resetAll: () => {
     localStorage.clear();
     setStorage(USERS_KEY, INITIAL_USERS);
@@ -910,6 +952,7 @@ export const StorageService = {
     setStorage(BOLETOS_KEY, INITIAL_BOLETOS);
     setStorage(LANCAMENTOS_KEY, INITIAL_LANCAMENTOS);
     setStorage(AGENDAMENTOS_KEY, INITIAL_AGENDAMENTOS);
+    setStorage(OBRAS_KEY, INITIAL_OBRAS);
     setStorage(CURRENT_USER_KEY, INITIAL_USERS[0]);
   }
 };
@@ -994,5 +1037,184 @@ const INITIAL_AGENDAMENTOS: Agendamento[] = [
     status: 'agendado',
     observacoes: 'Instalação comercial de grande porte (25 kWp). Checar estrutura metálica.',
     dataCriacao: '2026-07-31'
+  }
+];
+
+const INITIAL_OBRAS: Obra[] = [
+  {
+    id: 'obra-0184',
+    numero: 'OBRA 0184',
+    contratoId: 'cont-0184',
+    leadId: 'lead-184',
+    propostaId: 'prop-184',
+    clienteNome: 'Cristiano Duarte Almeida',
+    cidade: 'Belo Horizonte/MG',
+    endereco: 'Rua dos Ipês, 512 – Santa Mônica',
+    concessionaria: 'CEMIG',
+    potenciaKwp: 8.52,
+    modulosQtd: 12,
+    moduloModelo: 'TLC Tier 1 710 Wp',
+    inversorModelo: '3x Micro Solax X3-MIC',
+    responsavelTecnico: 'Thiago Gonçalves Leal',
+    equipeInstalacao: 'Bruno Oliveira',
+    etapa: 'Projeto / ART',
+    status: 'em_andamento',
+    valorObra: 22490.00,
+    dataInicio: '2026-07-28',
+    previsaoConclusao: '2026-09-10',
+    homologacao: {
+      solicitacaoAcesso: true,
+      parecerAcesso: false,
+      vistoriaAgendada: false,
+      vistoriaAprovada: false,
+      trocaMedidor: false,
+      relatorioConexao: false
+    },
+    kitItens: [
+      { id: 'i1', produtoId: 'p7', descricao: 'Painel TLC Tier 1 710 Wp', qtd: 12, valorUnit: 640.00, total: 7680.00 },
+      { id: 'i2', produtoId: 'p10', descricao: 'Micro inversor Solax X3-MIC', qtd: 3, valorUnit: 2150.00, total: 6450.00 },
+      { id: 'i3', produtoId: 'p9', descricao: 'Estrutura para laje – 12 módulos', qtd: 1, valorUnit: 1980.00, total: 1980.00 }
+    ],
+    estoqueBaixado: true,
+    observacoes: 'Projeto elétrico em elaboração. ART a recolher junto ao CREA-MG.',
+    historico: [
+      { id: 'oh1', data: '28/07/2026', descricao: 'Obra aberta a partir do contrato nº 2026-0184.', usuario: 'Ana Beatriz Santos' },
+      { id: 'oh2', data: '29/07/2026', descricao: 'Kit reservado no estoque. Solicitação de acesso enviada à CEMIG.', usuario: 'Thiago Gonçalves Leal' }
+    ]
+  },
+  {
+    id: 'obra-0181',
+    numero: 'OBRA 0181',
+    leadId: 'l13',
+    clienteNome: 'Supermercado Costa Verde',
+    cidade: 'Betim/MG',
+    endereco: 'Av. Amazonas, 4500 – Jardim da Cidade',
+    concessionaria: 'CEMIG',
+    potenciaKwp: 27.3,
+    modulosQtd: 42,
+    moduloModelo: 'Trina Vertex S+ 445 Wp',
+    inversorModelo: 'Growatt MID 25KTL3-X',
+    responsavelTecnico: 'Thiago Gonçalves Leal',
+    equipeInstalacao: 'Equipe A – Bruno Oliveira',
+    etapa: 'Instalação',
+    status: 'em_andamento',
+    valorObra: 71800.00,
+    dataInicio: '2026-07-10',
+    previsaoConclusao: '2026-08-15',
+    homologacao: {
+      solicitacaoAcesso: true,
+      parecerAcesso: true,
+      vistoriaAgendada: false,
+      vistoriaAprovada: false,
+      trocaMedidor: false,
+      relatorioConexao: false
+    },
+    estoqueBaixado: false,
+    observacoes: 'Instalação em telhado metálico. 2º dia de montagem das estruturas.',
+    historico: [
+      { id: 'oh3', data: '21/07/2026', descricao: 'Parecer de acesso aprovado pela CEMIG.', usuario: 'Thiago Gonçalves Leal' },
+      { id: 'oh4', data: '30/07/2026', descricao: 'Início da instalação física dos módulos.', usuario: 'Bruno Oliveira' }
+    ]
+  },
+  {
+    id: 'obra-0179',
+    numero: 'OBRA 0179',
+    leadId: 'l12',
+    clienteNome: 'Marcelo Ribeiro',
+    cidade: 'Belo Horizonte/MG',
+    endereco: 'Rua Ceará, 1100 – Savassi',
+    concessionaria: 'CEMIG',
+    potenciaKwp: 11.9,
+    modulosQtd: 20,
+    moduloModelo: 'Trina Vertex S+ 445 Wp',
+    inversorModelo: 'Growatt MIN 8000TL-X',
+    responsavelTecnico: 'Thiago Gonçalves Leal',
+    equipeInstalacao: 'Equipe A – Bruno Oliveira',
+    etapa: 'Vistoria / troca',
+    status: 'em_andamento',
+    valorObra: 32900.00,
+    dataInicio: '2026-06-20',
+    previsaoConclusao: '2026-08-02',
+    homologacao: {
+      solicitacaoAcesso: true,
+      parecerAcesso: true,
+      vistoriaAgendada: true,
+      vistoriaAprovada: true,
+      trocaMedidor: false,
+      relatorioConexao: false
+    },
+    estoqueBaixado: false,
+    observacoes: 'Vistoria aprovada. Aguardando troca do medidor bidirecional pela distribuidora.',
+    historico: [
+      { id: 'oh5', data: '18/07/2026', descricao: 'Instalação concluída e comissionada.', usuario: 'Bruno Oliveira' },
+      { id: 'oh6', data: '26/07/2026', descricao: 'Vistoria da CEMIG aprovada sem pendências.', usuario: 'Thiago Gonçalves Leal' }
+    ]
+  },
+  {
+    id: 'obra-0176',
+    numero: 'OBRA 0176',
+    leadId: 'l11',
+    clienteNome: 'Roberto Siqueira',
+    cidade: 'Contagem/MG',
+    endereco: 'Rua das Oliveiras, 303 – Eldorado',
+    concessionaria: 'CEMIG',
+    potenciaKwp: 9.35,
+    modulosQtd: 16,
+    moduloModelo: 'Trina Vertex S+ 445 Wp',
+    inversorModelo: 'Solax X3-MIC',
+    responsavelTecnico: 'Thiago Gonçalves Leal',
+    equipeInstalacao: 'Equipe B – Terceirizada',
+    etapa: 'Concluída',
+    status: 'concluida',
+    valorObra: 26800.00,
+    dataInicio: '2026-05-15',
+    previsaoConclusao: '2026-06-30',
+    dataConclusao: '2026-06-28',
+    homologacao: {
+      solicitacaoAcesso: true,
+      parecerAcesso: true,
+      vistoriaAgendada: true,
+      vistoriaAprovada: true,
+      trocaMedidor: true,
+      relatorioConexao: true
+    },
+    estoqueBaixado: false,
+    observacoes: 'Sistema energizado e gerando. Cliente orientado sobre monitoramento.',
+    historico: [
+      { id: 'oh7', data: '28/06/2026', descricao: 'Troca de medidor realizada e sistema energizado.', usuario: 'Thiago Gonçalves Leal' }
+    ]
+  },
+  {
+    id: 'obra-0182',
+    numero: 'OBRA 0182',
+    leadId: 'l5',
+    clienteNome: 'Sítio Boa Vista',
+    cidade: 'Lagoa Santa/MG',
+    endereco: 'Estrada do Boqueirão, km 4',
+    concessionaria: 'CEMIG',
+    potenciaKwp: 17.8,
+    modulosQtd: 40,
+    moduloModelo: 'TLC Tier 1 710 Wp',
+    inversorModelo: '2x Growatt MIN 8000TL-X',
+    responsavelTecnico: 'Thiago Gonçalves Leal',
+    equipeInstalacao: 'A definir',
+    etapa: 'Aguardando compra',
+    status: 'em_andamento',
+    valorObra: 47300.00,
+    dataInicio: '2026-07-25',
+    previsaoConclusao: '2026-09-20',
+    homologacao: {
+      solicitacaoAcesso: false,
+      parecerAcesso: false,
+      vistoriaAgendada: false,
+      vistoriaAprovada: false,
+      trocaMedidor: false,
+      relatorioConexao: false
+    },
+    estoqueBaixado: false,
+    observacoes: 'Pedido de compra do kit em cotação com fornecedores.',
+    historico: [
+      { id: 'oh8', data: '25/07/2026', descricao: 'Obra aberta. Kit em processo de cotação.', usuario: 'Ana Beatriz Santos' }
+    ]
   }
 ];

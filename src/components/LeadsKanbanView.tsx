@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
-import { Search, Plus, Filter, User, MapPin, Zap, ArrowRight, MoveRight, X, Download, FileSpreadsheet } from 'lucide-react';
+import { Search, Plus, Filter, User, MapPin, Zap, ArrowRight, MoveRight, X, Download, FileSpreadsheet, Loader2, MapPinned } from 'lucide-react';
 import { Lead, LeadStage, User as UserType } from '../types';
+import {
+  maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel,
+  isValidCPFCNPJ, isValidEmail, isValidPhoneBR,
+} from '../utils/format';
+import { parseBRDate, daysBetween, today } from '../utils/dates';
+import { fetchAddressByCep, buildEnderecoLine, buildCidadeUf } from '../services/cep';
+import { SEM_CONTATO_DIAS } from '../utils/notifications';
 
 interface LeadsKanbanViewProps {
   leads?: Lead[];
@@ -48,9 +55,38 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
   const [novoTelhado, setNovoTelhado] = useState('Colonial');
   const [novaOrigem, setNovaOrigem] = useState('Google Ads');
   const [novoResponsavel, setNovoResponsavel] = useState(currentUser.nome);
+  const [novoCep, setNovoCep] = useState('');
+  const [cepLoading, setCepLoading] = useState(false);
 
   // Drag and drop state
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
+
+  // Integração CEP -> endereço (ViaCEP). Preenche endereço e cidade/UF.
+  const handleCepLookup = async (cepValue: string) => {
+    if (onlyDigits(cepValue).length !== 8) return;
+    setCepLoading(true);
+    const result = await fetchAddressByCep(cepValue);
+    setCepLoading(false);
+    if (!result.ok || !result.endereco) {
+      showToast('CEP não encontrado', 'error', result.erro || 'Verifique o CEP informado.');
+      return;
+    }
+    const linha = buildEnderecoLine(result.endereco);
+    if (linha) setNovoEndereco(linha);
+    const cidadeUf = buildCidadeUf(result.endereco);
+    if (cidadeUf) setNovaCidade(cidadeUf);
+    showToast('Endereço preenchido', 'success', `${linha || cidadeUf} (via ViaCEP).`);
+  };
+
+  // Dias desde a última interação registrada (para o filtro "sem contato").
+  const diasSemContato = (l: Lead): number => {
+    const datas = (l.historico || [])
+      .map((h) => parseBRDate(h.data))
+      .filter((d): d is Date => d !== null);
+    const ultima = datas.length ? datas.reduce((m, d) => (d > m ? d : m)) : parseBRDate(l.dataCriacao);
+    if (!ultima) return Infinity;
+    return daysBetween(ultima, today());
+  };
 
   // Filter leads
   const filteredLeads = leads.filter(l => {
@@ -65,8 +101,9 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
     // filter pill
     if (filterMode === 'meus' && l.responsavel !== currentUser.nome) return false;
     if (filterMode === 'semContato') {
-      // simulate sem contato
-      if (!l.historico || l.historico.length === 0) return true;
+      // Leads em aberto sem qualquer interação há 7+ dias.
+      if (l.etapa === 'Fechado') return false;
+      if (diasSemContato(l) < SEM_CONTATO_DIAS) return false;
     }
 
     // select filters
@@ -108,6 +145,20 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
     e.preventDefault();
     if (!novoNome) return;
 
+    // Validação dos campos preenchidos (todos opcionais exceto o nome).
+    if (novoCpfCnpj && !isValidCPFCNPJ(novoCpfCnpj)) {
+      showToast('Documento inválido', 'error', `Verifique o ${docLabel(novoCpfCnpj)} informado.`);
+      return;
+    }
+    if (novoEmail && !isValidEmail(novoEmail)) {
+      showToast('E-mail inválido', 'error', 'Informe um e-mail no formato nome@dominio.com.');
+      return;
+    }
+    if (novoTelefone && !isValidPhoneBR(novoTelefone)) {
+      showToast('Telefone inválido', 'error', 'Informe DDD + número (10 ou 11 dígitos).');
+      return;
+    }
+
     // Estimated value: kWp calculation ~ consumo / 117 * 21000
     const estKwp = Number((novoConsumo / 117.3).toFixed(2));
     const estValor = Math.round(estKwp * 2639);
@@ -119,6 +170,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
       email: novoEmail || `${novoNome.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
       cidade: novaCidade,
       endereco: novoEndereco || `${novaCidade}`,
+      cep: novoCep || undefined,
       consumoKwh: Number(novoConsumo),
       concessionaria: novaConcessionaria,
       telhado: novoTelhado,
@@ -134,6 +186,8 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
     setNovoCpfCnpj('');
     setNovoTelefone('');
     setNovoEmail('');
+    setNovoCep('');
+    setNovoEndereco('');
   };
 
   const handleExportCSV = () => {
@@ -209,6 +263,14 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
 
     showToast('Exportação concluída', 'success', `${filteredLeads.length} leads exportados com sucesso.`);
   };
+
+  // Indicadores de validação em tempo real (só sinalizam quando há conteúdo).
+  const cpfInvalido = !!novoCpfCnpj && !isValidCPFCNPJ(novoCpfCnpj);
+  const emailInvalido = !!novoEmail && !isValidEmail(novoEmail);
+  const telefoneInvalido = !!novoTelefone && !isValidPhoneBR(novoTelefone);
+  const fieldBase = 'w-full p-2.5 bg-slate-50 border rounded-xl text-sm focus:outline-none';
+  const okBorder = 'border-slate-200 focus:border-[#004276]';
+  const errBorder = 'border-rose-300 focus:border-rose-500 bg-rose-50/40';
 
   return (
     <div className="space-y-6">
@@ -435,15 +497,17 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    CPF / CNPJ
+                    {docLabel(novoCpfCnpj)}
                   </label>
                   <input
                     type="text"
+                    inputMode="numeric"
                     value={novoCpfCnpj}
-                    onChange={(e) => setNovoCpfCnpj(e.target.value)}
+                    onChange={(e) => setNovoCpfCnpj(maskCPFCNPJ(e.target.value))}
                     placeholder="000.000.000-00"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
+                    className={`${fieldBase} ${cpfInvalido ? errBorder : okBorder}`}
                   />
+                  {cpfInvalido && <p className="text-[11px] text-rose-600 font-semibold mt-1">{docLabel(novoCpfCnpj)} inválido</p>}
                 </div>
 
                 <div>
@@ -452,11 +516,13 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                   </label>
                   <input
                     type="text"
+                    inputMode="tel"
                     value={novoTelefone}
-                    onChange={(e) => setNovoTelefone(e.target.value)}
+                    onChange={(e) => setNovoTelefone(maskPhone(e.target.value))}
                     placeholder="(31) 99999-8888"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
+                    className={`${fieldBase} ${telefoneInvalido ? errBorder : okBorder}`}
                   />
+                  {telefoneInvalido && <p className="text-[11px] text-rose-600 font-semibold mt-1">Telefone incompleto</p>}
                 </div>
 
                 <div>
@@ -468,8 +534,34 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                     value={novoEmail}
                     onChange={(e) => setNovoEmail(e.target.value)}
                     placeholder="cliente@email.com"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
+                    className={`${fieldBase} ${emailInvalido ? errBorder : okBorder}`}
                   />
+                  {emailInvalido && <p className="text-[11px] text-rose-600 font-semibold mt-1">E-mail inválido</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                    CEP
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={novoCep}
+                      onChange={(e) => {
+                        const masked = maskCEP(e.target.value);
+                        setNovoCep(masked);
+                        if (onlyDigits(masked).length === 8) handleCepLookup(masked);
+                      }}
+                      onBlur={() => handleCepLookup(novoCep)}
+                      placeholder="00000-000"
+                      className={`${fieldBase} ${okBorder} pr-9`}
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                      {cepLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPinned className="w-4 h-4" />}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">Preenche endereço automaticamente (ViaCEP)</p>
                 </div>
 
                 <div>
@@ -481,7 +573,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                     value={novaCidade}
                     onChange={(e) => setNovaCidade(e.target.value)}
                     placeholder="Belo Horizonte/MG"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
+                    className={`${fieldBase} ${okBorder}`}
                   />
                 </div>
 
@@ -494,7 +586,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                     value={novoEndereco}
                     onChange={(e) => setNovoEndereco(e.target.value)}
                     placeholder="Rua, número, bairro..."
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
+                    className={`${fieldBase} ${okBorder}`}
                   />
                 </div>
 

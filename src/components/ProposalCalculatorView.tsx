@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2, MapPinned } from 'lucide-react';
 import { Proposta, PropostaItem, Produto, Lead, User } from '../types';
+import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ } from '../utils/format';
+import { fetchAddressByCep, buildEnderecoLine, buildCidadeUf } from '../services/cep';
 
 interface ProposalCalculatorViewProps {
   propostas: Proposta[];
@@ -35,6 +37,27 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [cidade, setCidade] = useState(linkedLead?.cidade || 'Belo Horizonte/MG');
   const [concessionaria, setConcessionaria] = useState(linkedLead?.concessionaria || 'CEMIG');
   const [telhado, setTelhado] = useState(linkedLead?.telhado || 'Laje');
+  const [cep, setCep] = useState(linkedLead?.cep || '');
+  const [cepLoading, setCepLoading] = useState(false);
+
+  // Integração CEP -> endereço (ViaCEP): preenche endereço e cidade/UF.
+  const handleCepLookup = async (cepValue: string) => {
+    if (onlyDigits(cepValue).length !== 8) return;
+    setCepLoading(true);
+    const result = await fetchAddressByCep(cepValue);
+    setCepLoading(false);
+    if (!result.ok || !result.endereco) {
+      showToast('CEP não encontrado', 'error', result.erro || 'Verifique o CEP informado.');
+      return;
+    }
+    const linha = buildEnderecoLine(result.endereco);
+    if (linha) setEndereco(linha);
+    const cidadeUf = buildCidadeUf(result.endereco);
+    if (cidadeUf) setCidade(cidadeUf);
+    showToast('Endereço preenchido', 'success', `${linha || cidadeUf} (via ViaCEP).`);
+  };
+
+  const cpfInvalido = !!cpfCnpj && !isValidCPFCNPJ(cpfCnpj);
 
   // Sizing inputs
   const [consumoKwh, setConsumoKwh] = useState(1000);
@@ -314,14 +337,18 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
               <div>
                 <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                  CPF / CNPJ
+                  {docLabel(cpfCnpj)}
                 </label>
                 <input
                   type="text"
+                  inputMode="numeric"
                   value={cpfCnpj}
-                  onChange={(e) => setCpfCnpj(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  onChange={(e) => setCpfCnpj(maskCPFCNPJ(e.target.value))}
+                  className={`w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-semibold focus:outline-none ${
+                    cpfInvalido ? 'border-rose-300 focus:border-rose-500 bg-rose-50/40' : 'border-slate-200 focus:border-[#004276]'
+                  }`}
                 />
+                {cpfInvalido && <p className="text-[10px] text-rose-600 font-semibold mt-1">{docLabel(cpfCnpj)} inválido</p>}
               </div>
 
               <div>
@@ -330,13 +357,38 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </label>
                 <input
                   type="text"
+                  inputMode="tel"
                   value={telefone}
-                  onChange={(e) => setTelefone(e.target.value)}
+                  onChange={(e) => setTelefone(maskPhone(e.target.value))}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
                 />
               </div>
 
-              <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
+                    CEP
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={cep}
+                      onChange={(e) => {
+                        const masked = maskCEP(e.target.value);
+                        setCep(masked);
+                        if (onlyDigits(masked).length === 8) handleCepLookup(masked);
+                      }}
+                      onBlur={() => handleCepLookup(cep)}
+                      placeholder="00000-000"
+                      className="w-full p-2.5 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
+                      {cepLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPinned className="w-3.5 h-3.5" />}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
                     ENDEREÇO DA INSTALAÇÃO

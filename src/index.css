@@ -1,1 +1,32 @@
 @import "tailwindcss";
+
+/* ============================ IMPRESSÃO ============================ */
+/* Elementos marcados com .no-print somem em qualquer impressão. */
+@media print {
+  .no-print { display: none !important; }
+  html, body { background: #ffffff !important; }
+  @page { size: A4; margin: 12mm; }
+}
+
+/*
+ * Impressão isolada de relatórios gerenciais.
+ * Quando o app adiciona `print-report` ao <body>, apenas o conteúdo de
+ * #report-root é impresso — o restante da interface (sidebar, top bar, etc.)
+ * é ocultado. Fica restrito a essa classe para não interferir na impressão
+ * do PDFModal (proposta/contrato/boleto).
+ */
+@media print {
+  body.print-report * { visibility: hidden !important; }
+  body.print-report #report-root,
+  body.print-report #report-root * { visibility: visible !important; }
+  body.print-report #report-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+  /* Evita cortar cartões/tabelas no meio da página. */
+  body.print-report .report-block { break-inside: avoid; }
+}

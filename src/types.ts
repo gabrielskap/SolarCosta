@@ -255,3 +255,116 @@ export interface Agendamento {
   observacoes?: string;
   dataCriacao?: string;
 }
+
+// ===== Obras / Instalação (pós-venda) =====
+export type ObraEtapa =
+  | 'Aguardando compra'
+  | 'Projeto / ART'
+  | 'Homologação'
+  | 'Instalação'
+  | 'Vistoria / troca'
+  | 'Concluída';
+
+export type ObraStatus = 'em_andamento' | 'concluida' | 'atrasada' | 'pausada';
+
+// Checklist do processo de homologação de geração distribuída (Brasil)
+export interface HomologacaoChecklist {
+  solicitacaoAcesso: boolean;   // documentação enviada à distribuidora
+  parecerAcesso: boolean;       // parecer de acesso aprovado
+  vistoriaAgendada: boolean;    // vistoria agendada
+  vistoriaAprovada: boolean;    // vistoria aprovada
+  trocaMedidor: boolean;        // troca do medidor bidirecional
+  relatorioConexao: boolean;    // TRC / energização do sistema
+}
+
+export interface Obra {
+  id: string;
+  numero: string;               // ex.: OBRA 0184
+  contratoId?: string;
+  leadId?: string;
+  propostaId?: string;
+  clienteNome: string;
+  cidade: string;
+  endereco: string;
+  concessionaria: string;
+  potenciaKwp: number;
+  modulosQtd: number;
+  moduloModelo: string;
+  inversorModelo: string;
+  responsavelTecnico: string;   // engenheiro
+  equipeInstalacao: string;     // instalador / equipe de campo
+  etapa: ObraEtapa;
+  status: ObraStatus;
+  valorObra: number;
+  dataInicio: string;           // YYYY-MM-DD
+  previsaoConclusao: string;    // YYYY-MM-DD
+  dataConclusao?: string;       // YYYY-MM-DD
+  homologacao: HomologacaoChecklist;
+  kitItens?: PropostaItem[];    // snapshot do kit consumido do estoque
+  estoqueBaixado?: boolean;     // guarda de idempotência da baixa de estoque
+  observacoes?: string;
+  historico: HistoricoItem[];
+}
+
+/* ============================ AUDITORIA ============================ */
+
+export type AuditAction =
+  | 'criar'
+  | 'editar'
+  | 'excluir'
+  | 'mudanca_etapa'
+  | 'baixa'
+  | 'login'
+  | 'logout'
+  | 'exportar';
+
+/** Tipo de entidade afetada por uma ação registrada na trilha de auditoria. */
+export type AuditEntity =
+  | 'Lead'
+  | 'Proposta'
+  | 'Contrato'
+  | 'Boleto'
+  | 'Lançamento'
+  | 'Usuário'
+  | 'Fornecedor'
+  | 'Produto'
+  | 'Agendamento'
+  | 'Obra'
+  | 'Sessão';
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string; // ISO 8601
+  usuario: string;
+  usuarioId?: string;
+  acao: AuditAction;
+  entidade: AuditEntity;
+  entidadeId?: string;
+  /** Rótulo legível do que foi alterado (ex.: nome do cliente / nº do documento). */
+  alvo: string;
+  /** Descrição livre e opcional com o antes/depois relevante. */
+  detalhes?: string;
+}
+
+/* =========================== NOTIFICAÇÕES =========================== */
+
+export type NotificationCategory =
+  | 'boleto_vencido'
+  | 'lead_sem_contato'
+  | 'visita_hoje';
+
+export type NotificationPriority = 'alta' | 'media' | 'baixa';
+
+export interface AppNotification {
+  id: string;
+  categoria: NotificationCategory;
+  prioridade: NotificationPriority;
+  titulo: string;
+  descricao: string;
+  /** Texto curto de tempo/estado (ex.: "vencido há 16 dias", "09:00–10:30"). */
+  meta?: string;
+  /** Aba de destino ao clicar. */
+  destinoTab?: string;
+  /** Id do lead a abrir (quando aplicável). */
+  leadId?: string;
+}

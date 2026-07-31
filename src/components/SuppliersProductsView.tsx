@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Package, Truck, Search, Plus, Edit2, Trash2, ExternalLink, X } from 'lucide-react';
+import { Package, Truck, Search, Plus, Edit2, Trash2, ExternalLink, X, AlertTriangle, TrendingDown, PackageX } from 'lucide-react';
 import { Produto, Fornecedor, User } from '../types';
+import { maskCNPJ, maskPhone } from '../utils/format';
 
 interface SuppliersProductsViewProps {
   produtos: Produto[];
@@ -57,6 +58,22 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     f.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
     f.cnpj.includes(searchQuery)
   );
+
+  // ---- Controle de estoque ----
+  const ESTOQUE_CRITICO = 10;
+  const ESTOQUE_BAIXO = 25;
+  const valorEstoque = produtos.reduce((acc, p) => acc + (p.preco || 0) * (p.estoque || 0), 0);
+  const itensEsgotados = produtos.filter(p => (p.estoque || 0) <= 0);
+  const itensCriticos = produtos.filter(p => (p.estoque || 0) > 0 && (p.estoque || 0) < ESTOQUE_CRITICO);
+  const itensBaixos = produtos.filter(p => (p.estoque || 0) >= ESTOQUE_CRITICO && (p.estoque || 0) < ESTOQUE_BAIXO);
+  const alertas = [...itensEsgotados, ...itensCriticos];
+
+  const stockBadge = (estoque: number) => {
+    if (estoque <= 0) return { txt: 'Esgotado', cls: 'bg-rose-100 text-rose-700 border-rose-200' };
+    if (estoque < ESTOQUE_CRITICO) return { txt: 'Crítico', cls: 'bg-rose-100 text-rose-700 border-rose-200' };
+    if (estoque < ESTOQUE_BAIXO) return { txt: 'Baixo', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
+    return { txt: 'OK', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  };
 
   const handleOpenEditProduct = (p: Produto) => {
     setEditingProduct(p);
@@ -187,7 +204,58 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
       {/* PRODUTOS TAB */}
       {activeTab === 'produtos' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="space-y-4">
+          {/* KPIs de estoque */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Itens no catálogo</span>
+                <Package className="w-4 h-4 text-slate-400" />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 mt-1">{produtos.length}</h3>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valor em estoque</span>
+                <TrendingDown className="w-4 h-4 text-emerald-500" />
+              </div>
+              <h3 className="text-xl font-black text-[#004276] mt-1">R$ {valorEstoque.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+            </div>
+            <div className={`p-4 rounded-2xl border shadow-sm ${itensCriticos.length ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">Estoque crítico</span>
+                <AlertTriangle className={`w-4 h-4 ${itensCriticos.length ? 'text-rose-500' : 'text-slate-300'}`} />
+              </div>
+              <h3 className="text-xl font-black text-rose-700 mt-1">{itensCriticos.length}</h3>
+              <p className="text-[10px] text-slate-500 font-medium">abaixo de {ESTOQUE_CRITICO} un</p>
+            </div>
+            <div className={`p-4 rounded-2xl border shadow-sm ${itensEsgotados.length ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Esgotados</span>
+                <PackageX className={`w-4 h-4 ${itensEsgotados.length ? 'text-rose-500' : 'text-slate-300'}`} />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 mt-1">{itensEsgotados.length}</h3>
+              <p className="text-[10px] text-slate-500 font-medium">sem saldo</p>
+            </div>
+          </div>
+
+          {/* Banner de reposição */}
+          {alertas.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <p className="font-bold text-amber-900">
+                  {alertas.length} {alertas.length === 1 ? 'item precisa' : 'itens precisam'} de reposição
+                </p>
+                <p className="text-amber-800 mt-0.5">
+                  {alertas.slice(0, 4).map(p => `${p.nome} (${p.estoque} un)`).join(' · ')}
+                  {alertas.length > 4 ? ` · +${alertas.length - 4}` : ''}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="border border-slate-200 rounded-xl overflow-hidden">
             <table className="w-full text-left text-xs">
               <thead>
@@ -215,9 +283,15 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                     </td>
                     <td className="p-3 font-medium text-slate-700">{p.potencia || '–'}</td>
                     <td className="p-3">
-                      <span className={`font-bold ${p.estoque < 15 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                        {p.estoque} un
-                      </span>
+                      {(() => {
+                        const b = stockBadge(p.estoque || 0);
+                        return (
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-800">{p.estoque} un</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${b.cls}`}>{b.txt}</span>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="p-3 text-right font-black text-[#004276]">
                       R$ {p.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -243,6 +317,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 ))}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       )}
@@ -435,8 +510,9 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                   <label className="block font-bold text-slate-600 mb-1 uppercase">CNPJ</label>
                   <input
                     type="text"
+                    inputMode="numeric"
                     value={cnpjForn}
-                    onChange={(e) => setCnpjForn(e.target.value)}
+                    onChange={(e) => setCnpjForn(maskCNPJ(e.target.value))}
                     placeholder="00.000.000/0001-00"
                     className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
                   />
@@ -468,8 +544,9 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                   <label className="block font-bold text-slate-600 mb-1 uppercase">Telefone</label>
                   <input
                     type="text"
+                    inputMode="tel"
                     value={telefoneForn}
-                    onChange={(e) => setTelefoneForn(e.target.value)}
+                    onChange={(e) => setTelefoneForn(maskPhone(e.target.value))}
                     placeholder="(11) 4000-0000"
                     className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
                   />
