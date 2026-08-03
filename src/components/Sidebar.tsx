@@ -4,15 +4,15 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 
-export type ActiveTab = 
+export type ActiveTab =
   | 'dashboard'
   | 'agenda'
-  | 'leads' 
+  | 'leads'
   | 'detalhe_lead'
-  | 'proposta' 
-  | 'contrato' 
-  | 'financeiro' 
-  | 'fornecedores' 
+  | 'proposta'
+  | 'contrato'
+  | 'financeiro'
+  | 'fornecedores'
   | 'usuarios'
   | string;
 
@@ -31,7 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   onLogout,
   isOpenMobile = false,
-  setIsOpenMobile = (_open: boolean) => {},
+  setIsOpenMobile = (_open: boolean) => { },
 }) => {
   const getInitials = (name: string) => {
     const parts = name.split(' ');
@@ -42,39 +42,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const navItems = [
-    { section: 'VISÃO GERAL', items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { id: 'agenda', label: 'Agenda & Visitas', icon: Calendar },
-    ]},
-    { section: 'OPERAÇÃO', items: [
-      { id: 'leads', label: 'Leads', icon: Users },
-      { id: 'proposta', label: 'Propostas de orçamento', icon: FileText },
-      { id: 'contrato', label: 'Contratos', icon: FileCheck },
-      { id: 'obras', label: 'Obras & Instalação', icon: HardHat },
-    ]},
-    { section: 'GESTÃO', items: [
-      { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
-      { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
-      { id: 'fornecedores', label: 'Fornecedores e produtos', icon: Package },
-      { id: 'usuarios', label: 'Usuários', icon: UserCheck },
-      { id: 'auditoria', label: 'Auditoria', icon: History },
-    ]}
+    {
+      section: 'VISÃO GERAL', items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'agenda', label: 'Agenda & Visitas', icon: Calendar },
+      ]
+    },
+    {
+      section: 'OPERAÇÃO', items: [
+        { id: 'leads', label: 'Leads', icon: Users },
+        { id: 'proposta', label: 'Propostas de orçamento', icon: FileText },
+        { id: 'contrato', label: 'Contratos', icon: FileCheck },
+        { id: 'obras', label: 'Obras & Instalação', icon: HardHat },
+      ]
+    },
+    {
+      section: 'GESTÃO', items: [
+        { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
+        { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
+        { id: 'fornecedores', label: 'Fornecedores e produtos', icon: Package },
+        { id: 'usuarios', label: 'Usuários', icon: UserCheck },
+        { id: 'auditoria', label: 'Auditoria', icon: History },
+      ]
+    }
   ];
 
   return (
     <>
       {/* Mobile backdrop */}
       {isOpenMobile && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-slate-900/60 lg:hidden"
           onClick={() => setIsOpenMobile(false)}
         />
       )}
 
       <aside
-        className={`fixed lg:static top-0 left-0 bottom-0 z-40 w-64 bg-[#004276] text-white flex flex-col transition-transform duration-300 ease-in-out ${
-          isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        className={`fixed top-0 left-0 bottom-0 z-40 w-64 h-screen bg-[#004276] text-white flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          }`}
       >
         {/* Brand Header */}
         <div className="p-5 flex items-center justify-between border-b border-blue-900/50">
@@ -89,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <p className="text-[10px] font-bold text-[#FFD100] tracking-widest uppercase">ENERGIA SOLAR</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={() => setIsOpenMobile(false)}
             className="lg:hidden text-slate-300 hover:text-white p-1"
           >
@@ -115,11 +120,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         setActiveTab(item.id);
                         setIsOpenMobile(false);
                       }}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                        isActive
-                          ? 'bg-blue-800/80 text-white font-semibold shadow-inner border-l-4 border-[#FFD100]'
-                          : 'text-blue-100 hover:bg-blue-900/40 hover:text-white'
-                      }`}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive
+                          ? 'bg-[#002e5c] text-white font-semibold border border-[#FFD100] shadow-sm'
+                          : 'text-blue-100 hover:bg-blue-900/40 hover:text-white border border-transparent'
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <Icon className={`w-4 h-4 ${isActive ? 'text-[#FFD100]' : 'text-blue-200'}`} />
