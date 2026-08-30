@@ -1,0 +1,26 @@
+# Fim de linha.
+#
+# Scripts e configuração que rodam no Linux PRECISAM de LF. Com CRLF o shell
+# falha com "bad interpreter: /bin/bash^M" — erro que só aparece na VPS,
+# depois do deploy.
+*.sh        text eol=lf
+*.conf      text eol=lf
+*.sql       text eol=lf
+*.mjs       text eol=lf
+Dockerfile  text eol=lf
+.env.example text eol=lf
+
+# Código: normaliza no repositório, o checkout usa o padrão da plataforma.
+*.ts   text
+*.tsx  text
+*.js   text
+*.json text
+*.md   text
+*.css  text
+*.html text
+
+# Binários.
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.pdf  binary

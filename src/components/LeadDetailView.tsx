@@ -223,13 +223,26 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
             
             <div>
               <p className="text-xs text-blue-100 font-semibold">
-                nº {linkedProposal ? linkedProposal.numero : '2026-0184'} · {linkedProposal ? `${linkedProposal.potenciaKwp} kWp` : '8,52 kWp'}
+                {linkedProposal
+                  ? `nº ${linkedProposal.numero} · ${linkedProposal.potenciaKwp} kWp`
+                  : 'nenhuma proposta emitida'}
               </p>
               <h2 className="text-3xl font-black text-white mt-0.5">
-                R$ {linkedProposal ? linkedProposal.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '22.490,00'}
+                {linkedProposal
+                  ? `R$ ${linkedProposal.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                  : '—'}
               </h2>
               <p className="text-xs text-blue-200 mt-1 font-medium">
-                60x de R$ 486,60 - entrada 10%
+                {linkedProposal?.formaPagamento === 'financiamento' && linkedProposal.parcelasFinanciamento
+                  ? `${linkedProposal.parcelasFinanciamento}x` +
+                    (linkedProposal.entradaFinanciamentoPct
+                      ? ` · entrada ${linkedProposal.entradaFinanciamentoPct}%`
+                      : '')
+                  : linkedProposal?.formaPagamento === 'cartao' && linkedProposal.parcelasCartao
+                    ? `${linkedProposal.parcelasCartao}x no cartão`
+                    : linkedProposal
+                      ? 'Pagamento à vista'
+                      : 'Emita uma proposta para este lead'}
               </p>
             </div>
 

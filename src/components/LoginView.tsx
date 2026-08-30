@@ -1,53 +1,61 @@
 import React, { useState } from 'react';
-import { Sun, Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react';
+import { Sun, Eye, EyeOff, Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
 import { User } from '../types';
+import { Auth } from '../services/api';
+import { ErroApi } from '../services/http';
 
 interface LoginViewProps {
-  users?: User[];
-  usuarios?: User[];
   onLoginSuccess?: (user: User) => void;
   onLogin?: (user: User) => void;
   showToast?: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ users, usuarios, onLoginSuccess, onLogin, showToast }) => {
-  const [email, setEmail] = useState('carlos.costa@solarcosta.com.br');
-  const [senha, setSenha] = useState('123');
+export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onLogin, showToast }) => {
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
   const [showSenha, setShowSenha] = useState(false);
   const [manterConectado, setManterConectado] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [entrando, setEntrando] = useState(false);
 
-  const userList = users || usuarios || [];
   const handleSuccess = onLoginSuccess || onLogin;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // A senha é conferida no servidor (bcrypt). O front não conhece nem a lista
+  // de usuários nem os hashes — e a mensagem de erro é a mesma para e-mail
+  // inexistente e senha errada, para não revelar quais contas existem.
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (entrando) return;
+
     setErrorMsg('');
+    setEntrando(true);
 
-    const user = userList.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
-    if (!user) {
-      setErrorMsg('Usuário não encontrado. Verifique o e-mail informado.');
-      if (showToast) showToast('Acesso negado', 'error', 'E-mail não cadastrado no sistema.');
-      return;
+    try {
+      const user = await Auth.login(email.trim(), senha);
+      if (handleSuccess) handleSuccess(user);
+    } catch (erro) {
+      const mensagem =
+        erro instanceof ErroApi
+          ? erro.status === 0
+            ? 'Servidor indisponível. Verifique se a API está no ar.'
+            : erro.mensagemCompleta
+          : 'Não foi possível entrar. Tente de novo.';
+
+      setErrorMsg(mensagem);
+      if (showToast) showToast('Acesso negado', 'error', mensagem);
+    } finally {
+      setEntrando(false);
     }
-
-    if (user.status === 'inativo' || user.situacao === 'Inativo') {
-      setErrorMsg('Usuário inativo. Entre em contato com o administrador.');
-      if (showToast) showToast('Acesso negado', 'error', 'Conta desativada.');
-      return;
-    }
-
-    // In demo environment, any password works or check 123
-    if (showToast) showToast(`Bem-vindo, ${user.nome}!`, 'success', 'Login realizado com sucesso.');
-    if (handleSuccess) handleSuccess(user);
   };
 
   const handleForgotPassword = () => {
-    showToast(
-      'Recuperação de senha',
-      'info',
-      'Entre em contato com o Administrador (thiago@solarcosta.com.br) para redefinir sua senha.'
-    );
+    if (showToast) {
+      showToast(
+        'Recuperação de senha',
+        'info',
+        'Peça ao administrador do sistema para redefinir sua senha.'
+      );
+    }
   };
 
   return (
@@ -107,23 +115,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, usuarios, onLoginSu
             <p className="text-sm text-slate-500 mt-1">
               Entre com seu e-mail e senha de colaborador.
             </p>
-          </div>
-
-          {/* Quick User Selector (for convenience in demo) */}
-          <div className="bg-blue-50/80 border border-blue-100 rounded-xl p-3 text-xs">
-            <p className="font-semibold text-[#004276] mb-1.5">Contas de acesso rápido para testes:</p>
-            <div className="flex flex-wrap gap-2">
-              {users.slice(0, 3).map(u => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => { setEmail(u.email); setSenha('123'); setErrorMsg(''); }}
-                  className="bg-white hover:bg-blue-100 text-slate-700 font-medium px-2.5 py-1 rounded border border-blue-200 transition"
-                >
-                  {u.nome.split(' ')[0]} ({u.perfil})
-                </button>
-              ))}
-            </div>
           </div>
 
           {errorMsg && (
@@ -194,10 +185,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, usuarios, onLoginSu
 
             <button
               type="submit"
-              className="w-full bg-[#004276] hover:bg-[#003159] text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm"
+              disabled={entrando || !email || !senha}
+              className="w-full bg-[#004276] hover:bg-[#003159] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm"
             >
-              <span>Entrar</span>
-              <ArrowRight className="w-4 h-4" />
+              {entrando ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Entrando…</span>
+                </>
+              ) : (
+                <>
+                  <span>Entrar</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
 

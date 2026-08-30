@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { StorageService } from './services/storage';
-import { AuditService, AuditInput } from './services/audit';
-import { computeNotifications, countByCategory } from './utils/notifications';
-import { REFERENCE_TODAY } from './utils/dates';
-import { Lead, Proposta, Contrato, Boleto, LancamentoFinanceiro, Produto, Fornecedor, User, LeadStage, Agendamento, AuditEntry, Obra, PropostaItem } from './types';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Api, Auth, carregarTudo, type ConfigApp } from './services/api';
+import { aoExpirarSessao, ErroApi } from './services/http';
+import {
+  Lead, Proposta, Contrato, Boleto, LancamentoFinanceiro, Produto, Fornecedor,
+  User, LeadStage, Agendamento, AuditEntry, Obra, AppNotification,
+} from './types';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { InteractiveCalendar } from './components/InteractiveCalendar';
@@ -21,20 +22,19 @@ import { AuditTrailView } from './components/AuditTrailView';
 import { NotificationCenter } from './components/NotificationCenter';
 import { PDFModal } from './components/PDFModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { Menu, Sun } from 'lucide-react';
+import { Menu, Sun, Loader2, WifiOff } from 'lucide-react';
 
 export default function App() {
   // Authentication State
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    return StorageService.getCurrentUser();
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [verificandoSessao, setVerificandoSessao] = useState(true);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [selectedLeadId, setSelectedLeadId] = useState<string>('lead-184');
+  const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Data Collections State (Loaded from localStorage via StorageService)
+  // Data Collections State (carregadas da API)
   const [leads, setLeads] = useState<Lead[]>([]);
   const [propostas, setPropostas] = useState<Proposta[]>([]);
   const [contratos, setContratos] = useState<Contrato[]>([]);
@@ -46,337 +46,405 @@ export default function App() {
   const [usuarios, setUsuarios] = useState<User[]>([]);
   const [obras, setObras] = useState<Obra[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [config, setConfig] = useState<ConfigApp | null>(null);
+
+  // Estado de carga da aplicação
+  const [carregando, setCarregando] = useState(false);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
 
   // PDF Modal State
   const [pdfModal, setPdfModal] = useState<{
     isOpen: boolean;
     type: 'proposta' | 'contrato' | 'boleto';
     data: any;
-  }>({
-    isOpen: false,
-    type: 'proposta',
-    data: null,
-  });
+  }>({ isOpen: false, type: 'proposta', data: null });
 
   // Toasts State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Load Initial Data
+  const showToast = useCallback(
+    (title: string, type: 'success' | 'error' | 'info', description?: string) => {
+      setToasts((prev) => [
+        ...prev,
+        { id: `toast-${Date.now()}-${Math.random()}`, title, description, type },
+      ]);
+    },
+    [],
+  );
+
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  /** Traduz a falha da API num toast legível e devolve `false` para o chamador. */
+  const tratarErro = useCallback(
+    (erro: unknown, acao: string): false => {
+      const mensagem =
+        erro instanceof ErroApi ? erro.mensagemCompleta : 'Erro inesperado. Tente de novo.';
+      showToast(acao, 'error', mensagem);
+      return false;
+    },
+    [showToast],
+  );
+
+  /* ----------------------------------------------------------- sessão -- */
+
+  // Tenta reaproveitar a sessão salva (sobrevive ao F5).
   useEffect(() => {
-    setLeads(StorageService.getLeads());
-    setPropostas(StorageService.getPropostas());
-    setContratos(StorageService.getContratos());
-    setBoletos(StorageService.getBoletos());
-    setLancamentos(StorageService.getLancamentos());
-    setAgendamentos(StorageService.getAgendamentos());
-    setProdutos(StorageService.getProdutos());
-    setFornecedores(StorageService.getFornecedores());
-    setUsuarios(StorageService.getUsuarios());
-    setObras(StorageService.getObras());
-    setAuditLog(AuditService.getAll());
+    let ativo = true;
+    Auth.restaurar()
+      .then((user) => {
+        if (ativo && user) setCurrentUser(user);
+      })
+      .finally(() => {
+        if (ativo) setVerificandoSessao(false);
+      });
+    return () => {
+      ativo = false;
+    };
   }, []);
 
-  // Audit trail helper — records "who changed what". The actor (defaulting to
-  // the current user) is injected here, so callers omit `usuario`/`usuarioId`.
-  // `actor` param allows logging at login time, before currentUser settles.
-  const logAudit = (
-    input: Omit<AuditInput, 'usuario' | 'usuarioId'>,
-    actor: User | null = currentUser,
-  ) => {
-    if (!actor) return;
-    setAuditLog(AuditService.log({ ...input, usuario: actor.nome, usuarioId: actor.id }));
-  };
-
-  // Proactive reminders derived from the current data (Central de notificações).
-  const notifications = useMemo(
-    () => computeNotifications({ leads, boletos, agendamentos }),
-    [leads, boletos, agendamentos],
+  // O cliente HTTP avisa quando o refresh token morre de vez.
+  useEffect(
+    () =>
+      aoExpirarSessao(() => {
+        setCurrentUser(null);
+        showToast('Sessão expirada', 'info', 'Entre novamente para continuar.');
+      }),
+    [showToast],
   );
-  const notifCounts = useMemo(() => countByCategory(notifications), [notifications]);
 
-  // Agendamento CRUD handlers
-  const handleSaveAgendamento = (agendamento: Agendamento) => {
-    const isNew = !agendamentos.some((a) => a.id === agendamento.id);
-    const updated = StorageService.saveAgendamento(agendamento);
-    setAgendamentos(updated);
-    logAudit({
-      acao: isNew ? 'criar' : 'editar',
-      entidade: 'Agendamento',
-      entidadeId: agendamento.id,
-      alvo: `${agendamento.titulo} — ${agendamento.leadNome}`,
-      detalhes: `${agendamento.data} ${agendamento.horarioInicio}–${agendamento.horarioFim} · ${agendamento.responsavel}`,
-    });
+  /* ------------------------------------------------------ carga inicial -- */
+
+  const recarregarNotificacoes = useCallback(async () => {
+    try {
+      const r = await Api.getNotificacoes();
+      setNotifications(
+        (r.notificacoes ?? []).map((n: any) => ({
+          id: n.chave,
+          categoria: n.categoria,
+          prioridade: n.prioridade,
+          titulo: n.titulo,
+          descricao: n.descricao,
+          meta: n.meta ?? undefined,
+          destinoTab: n.destino_tab ?? undefined,
+          leadId: n.lead_id ?? undefined,
+        })),
+      );
+    } catch {
+      // Notificação é acessório: falhar aqui não pode atrapalhar o resto.
+    }
+  }, []);
+
+  const carregarDados = useCallback(async () => {
+    setCarregando(true);
+    setErroCarga(null);
+    try {
+      const dados = await carregarTudo();
+      setLeads(dados.leads);
+      setPropostas(dados.propostas);
+      setContratos(dados.contratos);
+      setBoletos(dados.boletos);
+      setLancamentos(dados.lancamentos);
+      setAgendamentos(dados.agendamentos);
+      setProdutos(dados.produtos);
+      setFornecedores(dados.fornecedores);
+      setUsuarios(dados.usuarios);
+      setObras(dados.obras);
+      setAuditLog(dados.auditoria);
+      setConfig(dados.config);
+      if (dados.leads.length > 0 && !selectedLeadId) {
+        setSelectedLeadId(dados.leads[0].id);
+      }
+      await recarregarNotificacoes();
+    } catch (erro) {
+      setErroCarga(
+        erro instanceof ErroApi ? erro.mensagemCompleta : 'Não foi possível carregar os dados.',
+      );
+    } finally {
+      setCarregando(false);
+    }
+  }, [recarregarNotificacoes, selectedLeadId]);
+
+  useEffect(() => {
+    if (currentUser) void carregarDados();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  /** Recarrega a trilha depois de cada escrita — quem audita agora é o banco. */
+  const atualizarAuditoria = useCallback(async () => {
+    try {
+      setAuditLog(await Api.getAuditoria());
+    } catch {
+      // Usuário sem permissão de auditoria: silêncio é o certo aqui.
+    }
+    void recarregarNotificacoes();
+  }, [recarregarNotificacoes]);
+
+  const notifCounts = useMemo(
+    () =>
+      notifications.reduce(
+        (acc, n) => {
+          acc.total += 1;
+          acc[n.categoria] += 1;
+          return acc;
+        },
+        { total: 0, boleto_vencido: 0, lead_sem_contato: 0, visita_hoje: 0 },
+      ),
+    [notifications],
+  );
+
+  /* ------------------------------------------------------------- auth -- */
+
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    setActiveTab('leads');
+    showToast('Acesso realizado', 'success', `Bem-vindo(a) ao CRM Solar Costa, ${user.nome}!`);
   };
 
-  const handleDeleteAgendamento = (id: string) => {
-    const alvo = agendamentos.find((a) => a.id === id);
-    const updated = StorageService.deleteAgendamento(id);
-    setAgendamentos(updated);
-    logAudit({
-      acao: 'excluir',
-      entidade: 'Agendamento',
-      entidadeId: id,
-      alvo: alvo ? `${alvo.titulo} — ${alvo.leadNome}` : `Agendamento ${id}`,
-    });
+  const handleLogout = async () => {
+    await Auth.logout();
+    setCurrentUser(null);
+    setLeads([]);
+    setPropostas([]);
+    setContratos([]);
+    setBoletos([]);
+    setLancamentos([]);
+    setAgendamentos([]);
+    setProdutos([]);
+    setFornecedores([]);
+    setObras([]);
+    setAuditLog([]);
+    setNotifications([]);
+    showToast('Sessão encerrada', 'info', 'Você desconectou da plataforma.');
   };
 
-  const handleClearAudit = () => {
-    setAuditLog(AuditService.clear());
+  /* ------------------------------------------------------------ leads -- */
+
+  const handleUpdateLeadStage = async (leadId: string, newStage: LeadStage) => {
+    try {
+      setLeads(await Api.updateLeadStage(leadId, newStage));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível mover o lead');
+      void carregarDados();
+    }
+  };
+
+  const handleUpdateLead = async (updatedLead: Lead) => {
+    try {
+      setLeads(await Api.saveLead(updatedLead));
+      showToast('Lead atualizado', 'success', updatedLead.nome);
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar o lead');
+    }
+  };
+
+  const handleCreateLead = async (newLead: Lead) => {
+    try {
+      setLeads(await Api.saveLead({ ...newLead, id: '' }));
+      showToast('Novo Lead cadastrado', 'success', `Lead "${newLead.nome}" inserido com sucesso.`);
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível cadastrar o lead');
+    }
+  };
+
+  /* -------------------------------------------------------- propostas -- */
+
+  const handleSaveProposal = async (proposta: Proposta) => {
+    try {
+      setPropostas(await Api.saveProposta(proposta));
+      setLeads(await Api.getLeads());
+      showToast('Proposta salva', 'success', `Proposta de ${proposta.clienteNome}.`);
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar a proposta');
+    }
+  };
+
+  /* -------------------------------------------------------- contratos -- */
+
+  const handleSaveContract = async (contrato: Contrato) => {
+    try {
+      setContratos(await Api.saveContrato(contrato));
+      setLeads(await Api.getLeads());
+      showToast('Contrato salvo', 'success', `Contrato de ${contrato.clienteNome}.`);
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar o contrato');
+    }
+  };
+
+  /* ------------------------------------------------------- financeiro -- */
+
+  const handleSaveBoleto = async (boleto: Boleto) => {
+    try {
+      setBoletos(await Api.saveBoleto(boleto));
+      // A baixa do boleto gera lançamento no banco: recarrega o caixa.
+      setLancamentos(await Api.getLancamentos());
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar o boleto');
+    }
+  };
+
+  const handleDeleteBoleto = async (id: string) => {
+    try {
+      setBoletos(await Api.deleteBoleto(id));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir o boleto');
+    }
+  };
+
+  const handleAddLancamento = async (lancamento: LancamentoFinanceiro) => {
+    try {
+      setLancamentos(await Api.saveLancamento(lancamento));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível registrar o lançamento');
+    }
+  };
+
+  /* --------------------------------------------- produtos e fornecedores -- */
+
+  const handleSaveProduto = async (produto: Produto) => {
+    try {
+      setProdutos(await Api.saveProduto(produto));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar o produto');
+    }
+  };
+
+  const handleDeleteProduto = async (id: string) => {
+    try {
+      setProdutos(await Api.deleteProduto(id));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir o produto');
+    }
+  };
+
+  const handleSaveFornecedor = async (fornecedor: Fornecedor) => {
+    try {
+      setFornecedores(await Api.saveFornecedor(fornecedor));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar o fornecedor');
+    }
+  };
+
+  const handleDeleteFornecedor = async (id: string) => {
+    try {
+      setFornecedores(await Api.deleteFornecedor(id));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir o fornecedor');
+    }
+  };
+
+  /* --------------------------------------------------------- usuários -- */
+
+  const handleSaveUser = async (user: User) => {
+    try {
+      setUsuarios(await Api.saveUsuario(user));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar o usuário');
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    try {
+      setUsuarios(await Api.deleteUsuario(id));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir o usuário');
+    }
+  };
+
+  /* ------------------------------------------------------------ obras -- */
+
+  const handleSaveObra = async (obra: Obra) => {
+    try {
+      setObras(await Api.saveObra(obra));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar a obra');
+    }
+  };
+
+  const handleDeleteObra = async (id: string) => {
+    try {
+      setObras(await Api.deleteObra(id));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir a obra');
+    }
+  };
+
+  /**
+   * Baixa do kit no estoque. A regra mora no banco: a função é idempotente e
+   * recusa deixar saldo negativo, devolvendo a mensagem que aparece no toast.
+   */
+  const handleBaixarEstoque = async (obraId: string) => {
+    try {
+      const { produtos: atualizados, itens } = await Api.baixarEstoqueObra(obraId);
+      setProdutos(atualizados);
+      setObras(await Api.getObras());
+      showToast(
+        itens > 0 ? 'Estoque baixado' : 'Estoque já havia sido baixado',
+        itens > 0 ? 'success' : 'info',
+        itens > 0 ? `${itens} produto(s) do catálogo consumidos.` : undefined,
+      );
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível baixar o estoque');
+    }
+  };
+
+  /* ----------------------------------------------------- agendamentos -- */
+
+  const handleSaveAgendamento = async (agendamento: Agendamento) => {
+    try {
+      setAgendamentos(await Api.saveAgendamento(agendamento));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar o agendamento');
+    }
+  };
+
+  const handleDeleteAgendamento = async (id: string) => {
+    try {
+      setAgendamentos(await Api.deleteAgendamento(id));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir o agendamento');
+    }
+  };
+
+  /* ------------------------------------------------------- navegação -- */
+
+  // Ao abrir o detalhe, busca documentos e timeline (a listagem não os traz).
+  const handleSelectLeadDetail = async (leadId: string) => {
+    setSelectedLeadId(leadId);
+    setActiveTab('detalhe_lead');
+    try {
+      const completo = await Api.getLeadDetalhe(leadId);
+      setLeads((prev) => prev.map((l) => (l.id === leadId ? completo : l)));
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível abrir o lead');
+    }
   };
 
   const handleNotificationNavigate = (tab: string, leadId?: string) => {
     if (tab === 'detalhe_lead' && leadId) {
-      setSelectedLeadId(leadId);
-      setActiveTab('detalhe_lead');
+      void handleSelectLeadDetail(leadId);
     } else {
       setActiveTab(tab);
     }
-  };
-
-  // Toast Helper
-  const showToast = (title: string, type: 'success' | 'error' | 'info', description?: string) => {
-    const newToast: ToastMessage = {
-      id: `toast-${Date.now()}-${Math.random()}`,
-      title,
-      description,
-      type,
-    };
-    setToasts((prev) => [...prev, newToast]);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Auth Handler
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    StorageService.setCurrentUser(user);
-    setActiveTab('leads');
-    logAudit({ acao: 'login', entidade: 'Sessão', alvo: `Entrou no sistema` }, user);
-    showToast('Acesso realizado', 'success', `Bem-vindo(a) ao CRM Solar Costa, ${user.nome}!`);
-  };
-
-  const handleLogout = () => {
-    logAudit({ acao: 'logout', entidade: 'Sessão', alvo: 'Saiu do sistema' });
-    setCurrentUser(null);
-    StorageService.setCurrentUser(null);
-    showToast('Sessão encerrada', 'info', 'Você desconectou da plataforma.');
-  };
-
-  // Lead CRUD handlers
-  const handleUpdateLeadStage = (leadId: string, newStage: LeadStage) => {
-    const prev = leads.find((l) => l.id === leadId);
-    const updated = StorageService.updateLeadStage(leadId, newStage);
-    setLeads(updated);
-    if (prev && prev.etapa !== newStage) {
-      logAudit({
-        acao: 'mudanca_etapa',
-        entidade: 'Lead',
-        entidadeId: leadId,
-        alvo: prev.nome,
-        detalhes: `${prev.etapa} → ${newStage}`,
-      });
-    }
-  };
-
-  const handleUpdateLead = (updatedLead: Lead) => {
-    const updated = StorageService.saveLead(updatedLead);
-    setLeads(updated);
-    logAudit({ acao: 'editar', entidade: 'Lead', entidadeId: updatedLead.id, alvo: updatedLead.nome });
-  };
-
-  const handleCreateLead = (newLead: Lead) => {
-    const hojeBR = new Date().toLocaleDateString('pt-BR');
-    // Garante um lead completo mesmo quando o formulário envia campos parciais.
-    const complete: Lead = {
-      ...newLead,
-      id: newLead.id || `lead-${Date.now()}`,
-      numero: newLead.numero || `#${Math.floor(100 + Math.random() * 900)}`,
-      dataCriacao: newLead.dataCriacao || hojeBR,
-      documentos: newLead.documentos || [],
-      historico:
-        newLead.historico && newLead.historico.length
-          ? newLead.historico
-          : [
-              {
-                id: `h-${Date.now()}`,
-                data: hojeBR,
-                descricao: 'Lead cadastrado no sistema',
-                usuario: currentUser?.nome || 'Sistema',
-              },
-            ],
-    };
-    const updated = StorageService.saveLead(complete);
-    setLeads(updated);
-    logAudit({ acao: 'criar', entidade: 'Lead', entidadeId: complete.id, alvo: complete.nome });
-    showToast('Novo Lead cadastrado', 'success', `Lead "${complete.nome}" inserido com sucesso.`);
-  };
-
-  // Proposal CRUD Handlers
-  const handleSaveProposal = (proposta: Proposta) => {
-    const isNew = !propostas.some((p) => p.id === proposta.id);
-    const updated = StorageService.saveProposta(proposta);
-    setPropostas(updated);
-    logAudit({
-      acao: isNew ? 'criar' : 'editar',
-      entidade: 'Proposta',
-      entidadeId: proposta.id,
-      alvo: `Proposta ${proposta.numero} — ${proposta.clienteNome}`,
-      detalhes: `Status: ${proposta.status}`,
-    });
-  };
-
-  // Contract CRUD Handlers
-  const handleSaveContract = (contrato: Contrato) => {
-    const isNew = !contratos.some((c) => c.id === contrato.id);
-    const updated = StorageService.saveContrato(contrato);
-    setContratos(updated);
-    logAudit({
-      acao: isNew ? 'criar' : 'editar',
-      entidade: 'Contrato',
-      entidadeId: contrato.id,
-      alvo: `Contrato ${contrato.numero} — ${contrato.clienteNome}`,
-    });
-  };
-
-  // Financial Handlers
-  const handleSaveBoleto = (boleto: Boleto) => {
-    const prev = boletos.find((b) => b.id === boleto.id);
-    const isNew = !prev;
-    const isBaixa = prev && prev.situacao !== 'pago' && boleto.situacao === 'pago';
-    const updated = StorageService.saveBoleto(boleto);
-    setBoletos(updated);
-    logAudit({
-      acao: isBaixa ? 'baixa' : isNew ? 'criar' : 'editar',
-      entidade: 'Boleto',
-      entidadeId: boleto.id,
-      alvo: `Boleto ${boleto.parcela} — ${boleto.clienteNome}`,
-      detalhes: isBaixa ? `Baixa registrada (${boleto.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).` : undefined,
-    });
-  };
-
-  const handleDeleteBoleto = (id: string) => {
-    const alvo = boletos.find((b) => b.id === id);
-    const updated = StorageService.deleteBoleto(id);
-    setBoletos(updated);
-    logAudit({
-      acao: 'excluir',
-      entidade: 'Boleto',
-      entidadeId: id,
-      alvo: alvo ? `Boleto ${alvo.parcela} — ${alvo.clienteNome}` : `Boleto ${id}`,
-    });
-  };
-
-  const handleAddLancamento = (lancamento: LancamentoFinanceiro) => {
-    const updated = StorageService.saveLancamento(lancamento);
-    setLancamentos(updated);
-    logAudit({
-      acao: 'criar',
-      entidade: 'Lançamento',
-      entidadeId: lancamento.id,
-      alvo: lancamento.descricao,
-      detalhes: `${lancamento.tipo === 'receita' ? 'Entrada' : 'Saída'} · ${Math.abs(lancamento.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
-    });
-  };
-
-  // Products & Suppliers Handlers
-  const handleSaveProduto = (produto: Produto) => {
-    const isNew = !produtos.some((p) => p.id === produto.id);
-    const updated = StorageService.saveProduto(produto);
-    setProdutos(updated);
-    logAudit({ acao: isNew ? 'criar' : 'editar', entidade: 'Produto', entidadeId: produto.id, alvo: produto.nome });
-  };
-
-  const handleDeleteProduto = (id: string) => {
-    const alvo = produtos.find((p) => p.id === id);
-    const updated = StorageService.deleteProduto(id);
-    setProdutos(updated);
-    logAudit({ acao: 'excluir', entidade: 'Produto', entidadeId: id, alvo: alvo ? alvo.nome : `Produto ${id}` });
-  };
-
-  const handleSaveFornecedor = (fornecedor: Fornecedor) => {
-    const isNew = !fornecedores.some((f) => f.id === fornecedor.id);
-    const updated = StorageService.saveFornecedor(fornecedor);
-    setFornecedores(updated);
-    logAudit({ acao: isNew ? 'criar' : 'editar', entidade: 'Fornecedor', entidadeId: fornecedor.id, alvo: fornecedor.nome });
-  };
-
-  const handleDeleteFornecedor = (id: string) => {
-    const alvo = fornecedores.find((f) => f.id === id);
-    const updated = StorageService.deleteFornecedor(id);
-    setFornecedores(updated);
-    logAudit({ acao: 'excluir', entidade: 'Fornecedor', entidadeId: id, alvo: alvo ? alvo.nome : `Fornecedor ${id}` });
-  };
-
-  // Users Handlers
-  const handleSaveUser = (user: User) => {
-    const isNew = !usuarios.some((u) => u.id === user.id);
-    const updated = StorageService.saveUsuario(user);
-    setUsuarios(updated);
-    logAudit({ acao: isNew ? 'criar' : 'editar', entidade: 'Usuário', entidadeId: user.id, alvo: `${user.nome} (${user.cargo})` });
-  };
-
-  const handleDeleteUser = (id: string) => {
-    const alvo = usuarios.find((u) => u.id === id);
-    const updated = StorageService.deleteUsuario(id);
-    setUsuarios(updated);
-    logAudit({ acao: 'excluir', entidade: 'Usuário', entidadeId: id, alvo: alvo ? alvo.nome : `Usuário ${id}` });
-  };
-
-  // Obras (pós-venda) handlers
-  const handleSaveObra = (obra: Obra) => {
-    const isNew = !obras.some((o) => o.id === obra.id);
-    const updated = StorageService.saveObra(obra);
-    setObras(updated);
-    logAudit({
-      acao: isNew ? 'criar' : 'editar',
-      entidade: 'Obra',
-      entidadeId: obra.id,
-      alvo: `${obra.numero} — ${obra.clienteNome}`,
-      detalhes: `Etapa: ${obra.etapa}`,
-    });
-  };
-
-  const handleDeleteObra = (id: string) => {
-    const alvo = obras.find((o) => o.id === id);
-    const updated = StorageService.deleteObra(id);
-    setObras(updated);
-    logAudit({
-      acao: 'excluir',
-      entidade: 'Obra',
-      entidadeId: id,
-      alvo: alvo ? `${alvo.numero} — ${alvo.clienteNome}` : `Obra ${id}`,
-    });
-  };
-
-  // Baixa de estoque: chamada quando uma obra consome o kit vinculado.
-  const handleBaixarEstoque = (itens: PropostaItem[]) => {
-    if (!itens || itens.length === 0) return;
-    const updated = StorageService.baixarEstoqueKit(itens);
-    setProdutos(updated);
-    const totalItens = itens.reduce((a, i) => a + (i.qtd || 0), 0);
-    logAudit({
-      acao: 'editar',
-      entidade: 'Produto',
-      alvo: 'Baixa de estoque por obra',
-      detalhes: `${totalItens} itens consumidos (${itens.length} produtos do catálogo).`,
-    });
-  };
-
-  // Open PDF Modal
-  const handleOpenPDF = (type: 'proposta' | 'contrato' | 'boleto', data: any) => {
-    setPdfModal({
-      isOpen: true,
-      type,
-      data,
-    });
-  };
-
-  // Navigation callbacks
-  const handleSelectLeadDetail = (leadId: string) => {
-    setSelectedLeadId(leadId);
-    setActiveTab('detalhe_lead');
   };
 
   const handleNavigateToProposal = (leadId: string) => {
@@ -389,17 +457,70 @@ export default function App() {
     setActiveTab('contrato');
   };
 
-  // If user is not logged in, render Login View
+  const handleOpenPDF = (type: 'proposta' | 'contrato' | 'boleto', data: any) => {
+    setPdfModal({ isOpen: true, type, data });
+  };
+
+  /* ----------------------------------------------------------- render -- */
+
+  // Verificando se existe sessão salva antes de decidir entre login e app.
+  if (verificandoSessao) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#f4f6fa]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-[#004276] animate-spin" />
+          <p className="text-sm font-semibold text-slate-500">Carregando…</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return (
       <>
-        <LoginView users={usuarios} onLoginSuccess={handleLogin} showToast={showToast} />
+        <LoginView onLoginSuccess={handleLogin} showToast={showToast} />
         <ToastContainer toasts={toasts} onClose={removeToast} />
       </>
     );
   }
 
-  // Active Lead Object
+  if (erroCarga) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#f4f6fa] p-6">
+        <div className="max-w-md text-center bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
+          <WifiOff className="w-10 h-10 text-red-500 mx-auto mb-4" />
+          <h2 className="font-extrabold text-lg text-slate-900 mb-2">Falha ao carregar os dados</h2>
+          <p className="text-sm text-slate-600 mb-6">{erroCarga}</p>
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={() => void carregarDados()}
+              className="px-4 py-2 rounded-lg bg-[#004276] text-white text-sm font-bold hover:bg-[#003158]"
+            >
+              Tentar novamente
+            </button>
+            <button
+              onClick={() => void handleLogout()}
+              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-bold hover:bg-slate-50"
+            >
+              Sair
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (carregando && leads.length === 0) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#f4f6fa]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-[#004276] animate-spin" />
+          <p className="text-sm font-semibold text-slate-500">Carregando o CRM…</p>
+        </div>
+      </div>
+    );
+  }
+
   const currentLead = leads.find((l) => l.id === selectedLeadId) || leads[0];
 
   return (
@@ -436,7 +557,6 @@ export default function App() {
       </header>
 
       <div className="flex-1 flex h-full overflow-hidden relative">
-        {/* Sidebar Desktop & Mobile Drawer */}
         <Sidebar
           activeTab={activeTab}
           setActiveTab={(tab) => {
@@ -444,19 +564,18 @@ export default function App() {
             setIsMobileSidebarOpen(false);
           }}
           currentUser={currentUser}
-          onLogout={handleLogout}
+          onLogout={() => void handleLogout()}
           isOpenMobile={isMobileSidebarOpen}
           setIsOpenMobile={setIsMobileSidebarOpen}
         />
 
-        {/* Right column: desktop top bar + scrollable workspace */}
         <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden md:pl-64">
-          {/* Desktop top utility bar (notifications, user) */}
           <header className="hidden md:flex items-center justify-between gap-3 bg-white border-b border-slate-200 px-6 py-2.5 shrink-0 z-10">
             <span className="text-xs font-semibold text-slate-500 first-letter:uppercase">
-              {REFERENCE_TODAY.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+              {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
             </span>
             <div className="flex items-center gap-3">
+              {carregando && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
               <NotificationCenter
                 notifications={notifications}
                 counts={notifCounts}
@@ -475,7 +594,6 @@ export default function App() {
             </div>
           </header>
 
-          {/* Main Workspace Area */}
           <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 w-full min-h-0">
             <div className="max-w-[1920px] mx-auto w-full">
           {activeTab === 'dashboard' && (
@@ -541,6 +659,7 @@ export default function App() {
               produtos={produtos}
               leads={leads}
               currentLeadId={selectedLeadId}
+              config={config}
               onSaveProposal={handleSaveProposal}
               onOpenPDF={handleOpenPDF}
               currentUser={currentUser}
@@ -552,7 +671,9 @@ export default function App() {
             <ContractsView
               contratos={contratos}
               leads={leads}
+              propostas={propostas}
               onSaveContract={handleSaveContract}
+              config={config}
               onOpenPDF={handleOpenPDF}
               currentUser={currentUser}
               showToast={showToast}
@@ -628,7 +749,7 @@ export default function App() {
               audit={auditLog}
               usuarios={usuarios || []}
               currentUser={currentUser}
-              onClear={handleClearAudit}
+              onClear={() => showToast('Trilha imutável', 'info', 'A auditoria é append-only e não pode ser apagada pelo sistema.')}
               showToast={showToast}
             />
           )}
@@ -637,7 +758,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* PDF Generation and View Modal */}
       {pdfModal.isOpen && (
         <PDFModal
           type={pdfModal.type}
@@ -646,7 +766,6 @@ export default function App() {
         />
       )}
 
-      {/* Toast Notification Container */}
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );

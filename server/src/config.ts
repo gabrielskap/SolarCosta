@@ -25,6 +25,15 @@ const schema = z.object({
 
   // Origens liberadas no CORS, separadas por vírgula.
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
+
+  // Rotina diária (boletos vencidos, obras atrasadas). Desligue se estiver
+  // rodando a mesma função pelo pg_cron.
+  SCHEDULER_ATIVO: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  SCHEDULER_HORA: z.coerce.number().int().min(0).max(23).default(3),
+  SCHEDULER_MINUTO: z.coerce.number().int().min(0).max(59).default(10),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -3,12 +3,15 @@ import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2,
 import { Proposta, PropostaItem, Produto, Lead, User } from '../types';
 import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ } from '../utils/format';
 import { fetchAddressByCep, buildEnderecoLine, buildCidadeUf } from '../services/cep';
+import { paramNum, type ConfigApp } from '../services/api';
 
 interface ProposalCalculatorViewProps {
   propostas: Proposta[];
   produtos: Produto[];
   leads: Lead[];
   currentLeadId?: string;
+  /** Parâmetros e domínios vindos do banco (substituem os antigos literais). */
+  config: ConfigApp | null;
   onSaveProposal: (proposta: Proposta) => void;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   currentUser: User;
@@ -20,24 +23,28 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   produtos,
   leads,
   currentLeadId,
+  config,
   onSaveProposal,
   onOpenPDF,
   currentUser,
   showToast
 }) => {
-  // Find lead if passed
-  const linkedLead = leads.find(l => l.id === currentLeadId) || leads.find(l => l.id === 'lead-184') || leads[0];
+  // Lead vinculado. Sem lead selecionado o formulário nasce em branco — antes
+  // ele caía num lead fixo de demonstração ("Cristiano Duarte Almeida").
+  const [leadIdSelecionado, setLeadIdSelecionado] = useState(currentLeadId || '');
+  const linkedLead = leads.find(l => l.id === leadIdSelecionado);
 
   // Form states
-  const [clienteNome, setClienteNome] = useState(linkedLead?.nome || 'Cristiano Duarte Almeida');
-  const [cpfCnpj, setCpfCnpj] = useState(linkedLead?.cpfCnpj || '042.318.776-90');
-  const [telefone, setTelefone] = useState(linkedLead?.telefone || '(31) 99412-7708');
-  const [email, setEmail] = useState(linkedLead?.email || 'cristiano.duarte@gmail.com');
-  const [endereco, setEndereco] = useState(linkedLead?.endereco || 'Rua dos Ipês, 512 – Santa Mônica');
-  const [cidade, setCidade] = useState(linkedLead?.cidade || 'Belo Horizonte/MG');
-  const [concessionaria, setConcessionaria] = useState(linkedLead?.concessionaria || 'CEMIG');
-  const [telhado, setTelhado] = useState(linkedLead?.telhado || 'Laje');
+  const [clienteNome, setClienteNome] = useState(linkedLead?.nome || '');
+  const [cpfCnpj, setCpfCnpj] = useState(linkedLead?.cpfCnpj || '');
+  const [telefone, setTelefone] = useState(linkedLead?.telefone || '');
+  const [email, setEmail] = useState(linkedLead?.email || '');
+  const [endereco, setEndereco] = useState(linkedLead?.endereco || '');
+  const [cidade, setCidade] = useState(linkedLead?.cidade || '');
+  const [concessionaria, setConcessionaria] = useState(linkedLead?.concessionaria || '');
+  const [telhado, setTelhado] = useState(linkedLead?.telhado || '');
   const [cep, setCep] = useState(linkedLead?.cep || '');
+
   const [cepLoading, setCepLoading] = useState(false);
 
   // Integração CEP -> endereço (ViaCEP): preenche endereço e cidade/UF.
@@ -59,37 +66,66 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
   const cpfInvalido = !!cpfCnpj && !isValidCPFCNPJ(cpfCnpj);
 
-  // Sizing inputs
-  const [consumoKwh, setConsumoKwh] = useState(1000);
-  const [tarifaKwh, setTarifaKwh] = useState(1.19);
-  const [hsp, setHsp] = useState(5.2);
-  const [perdasPct, setPerdasPct] = useState(24.5);
-  const [moduloWp, setModuloWp] = useState(710);
+  // Parâmetros de dimensionamento — vêm de SolarCosta_Parametros.
+  // Os números abaixo do `??` são só rede de segurança para o caso de a
+  // configuração ainda não ter chegado; a fonte da verdade é o banco.
+  const [consumoKwh, setConsumoKwh] = useState(linkedLead?.consumoKwh || 0);
+  const [tarifaKwh, setTarifaKwh] = useState(() => paramNum(config, 'proposta.tarifa_kwh_padrao', 1.19));
+  const [hsp, setHsp] = useState(() => paramNum(config, 'proposta.hsp_padrao', 5.2));
+  const [perdasPct, setPerdasPct] = useState(() => paramNum(config, 'proposta.perdas_pct_padrao', 24.5));
+  const [moduloWp, setModuloWp] = useState(() => paramNum(config, 'proposta.modulo_wp_padrao', 710));
 
-  // Kit Items State
-  const [kitItens, setKitItens] = useState<PropostaItem[]>([
-    { id: 'i1', produtoId: 'p7', descricao: 'Painel TLC Tier 1 710 Wp', qtd: 12, valorUnit: 640.00, total: 7680.00 },
-    { id: 'i2', produtoId: 'p10', descricao: 'Micro inversor Solax X3-MIC', qtd: 3, valorUnit: 2150.00, total: 6450.00 },
-    { id: 'i3', produtoId: 'p9', descricao: 'Estrutura para laje – 12 módulos', qtd: 1, valorUnit: 1980.00, total: 1980.00 },
-    { id: 'i4', descricao: 'Material, cabos e conexões', qtd: 1, valorUnit: 1480.00, total: 1480.00 },
-    { id: 'i5', descricao: 'Instalação, projeto e homologação do SFCR', qtd: 1, valorUnit: 4900.00, total: 4900.00 }
-  ]);
+  // Kit vazio: o consultor monta a partir do catálogo real.
+  const [kitItens, setKitItens] = useState<PropostaItem[]>([]);
 
   // Payment Options
-  const [formaPagamento, setFormaPagamento] = useState<'avista' | 'cartao' | 'financiamento'>('financiamento');
-  const [descontoAvistaPct, setDescontoAvistaPct] = useState(7);
-  const [parcelasCartao, setParcelasCartao] = useState(12);
-  const [taxaCartaoPct, setTaxaCartaoPct] = useState(4.5);
-  
-  const [entradaFinanciamentoPct, setEntradaFinanciamentoPct] = useState(10);
-  const [parcelasFinanciamento, setParcelasFinanciamento] = useState(60);
-  const [jurosFinanciamentoMesPct, setJurosFinanciamentoMesPct] = useState(1.45);
-  const [bancoFinanciamento, setBancoFinanciamento] = useState('BV Financeira – linha solar');
+  const [formaPagamento, setFormaPagamento] = useState<'avista' | 'cartao' | 'financiamento'>('avista');
+  const [descontoAvistaPct, setDescontoAvistaPct] = useState(() => paramNum(config, 'proposta.desconto_avista_pct', 7));
+  const [parcelasCartao, setParcelasCartao] = useState(() => paramNum(config, 'proposta.parcelas_cartao_padrao', 12));
+  const [taxaCartaoPct, setTaxaCartaoPct] = useState(() => paramNum(config, 'proposta.taxa_cartao_pct', 4.5));
 
-  // Proposal PDF Customization Inputs
-  const [observacoes, setObservacoes] = useState<string>(
-    '📍 Validade da proposta: 10 dias corridos a partir desta data.\n⚡ Incluso projeto elétrico, ART, instalação e homologação técnica na CEMIG.\n🏠 Estrutura para telhado colonial com proteção contra intempéries.\n💳 Desconto especial de 5% concedido para pagamento à vista via PIX.'
-  );
+  const [entradaFinanciamentoPct, setEntradaFinanciamentoPct] = useState(() => paramNum(config, 'financiamento.entrada_pct_padrao', 10));
+  const [parcelasFinanciamento, setParcelasFinanciamento] = useState(() => paramNum(config, 'financiamento.parcelas_padrao', 60));
+  const [jurosFinanciamentoMesPct, setJurosFinanciamentoMesPct] = useState(() => paramNum(config, 'financiamento.juros_mes_pct', 1.45));
+  const [bancoFinanciamento, setBancoFinanciamento] = useState('');
+
+  // Observações da proposta: em branco. Os textos prontos ficam em
+  // SolarCosta_ObservacaoPresets e são inseridos com um clique.
+  const [observacoes, setObservacoes] = useState<string>('');
+
+  // A configuração chega uma vez, depois da carga inicial. Quando chega, os
+  // defaults numéricos se ajustam ao que está cadastrado no banco.
+  useEffect(() => {
+    if (!config) return;
+    setTarifaKwh(paramNum(config, 'proposta.tarifa_kwh_padrao', 1.19));
+    setHsp(paramNum(config, 'proposta.hsp_padrao', 5.2));
+    setPerdasPct(paramNum(config, 'proposta.perdas_pct_padrao', 24.5));
+    setModuloWp(paramNum(config, 'proposta.modulo_wp_padrao', 710));
+    setDescontoAvistaPct(paramNum(config, 'proposta.desconto_avista_pct', 7));
+    setParcelasCartao(paramNum(config, 'proposta.parcelas_cartao_padrao', 12));
+    setTaxaCartaoPct(paramNum(config, 'proposta.taxa_cartao_pct', 4.5));
+    setEntradaFinanciamentoPct(paramNum(config, 'financiamento.entrada_pct_padrao', 10));
+    setParcelasFinanciamento(paramNum(config, 'financiamento.parcelas_padrao', 60));
+    setJurosFinanciamentoMesPct(paramNum(config, 'financiamento.juros_mes_pct', 1.45));
+    if (config.bancos.length > 0) setBancoFinanciamento(config.bancos[0].nome);
+  }, [config]);
+
+  // Ao trocar de lead, o formulário reflete o cliente escolhido.
+  useEffect(() => {
+    const lead = leads.find(l => l.id === leadIdSelecionado);
+    if (!lead) return;
+    setClienteNome(lead.nome || '');
+    setCpfCnpj(lead.cpfCnpj || '');
+    setTelefone(lead.telefone || '');
+    setEmail(lead.email || '');
+    setEndereco(lead.endereco || '');
+    setCidade(lead.cidade || '');
+    setConcessionaria(lead.concessionaria || '');
+    setTelhado(lead.telhado || '');
+    setCep(lead.cep || '');
+    if (lead.consumoKwh) setConsumoKwh(lead.consumoKwh);
+  }, [leadIdSelecionado, leads]);
+
   const [customLogoUrl, setCustomLogoUrl] = useState<string>('');
 
   // Modal to add catalog item
@@ -183,8 +219,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const handleSaveDraft = () => {
     const prop: Proposta = {
       id: `prop-${Date.now()}`,
-      numero: '2026-0184',
-      leadId: linkedLead?.id || 'lead-184',
+      numero: '', // gerado pelo banco ao salvar
+      leadId: linkedLead?.id || '',
       clienteNome,
       cpfCnpj,
       telefone,
@@ -231,8 +267,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const handleGeneratePDF = () => {
     const prop: Proposta = {
       id: `prop-${Date.now()}`,
-      numero: '2026-0184',
-      leadId: linkedLead?.id || 'lead-184',
+      numero: '', // gerado pelo banco ao salvar
+      leadId: linkedLead?.id || '',
       clienteNome,
       cpfCnpj,
       telefone,
@@ -283,7 +319,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
         <div>
           <h1 className="text-2xl font-extrabold text-[#004276]">Proposta de orçamento</h1>
           <p className="text-xs text-slate-500 font-semibold mt-0.5">
-            Nova proposta · nº 2026-0184 · válida por 5 dias
+            {/* O número é gerado pelo banco ao salvar; a validade vem dos parâmetros. */}
+            Nova proposta · nº gerado ao salvar · válida por {paramNum(config, 'proposta.validade_dias', 10)} dias
           </p>
         </div>
 
@@ -318,8 +355,27 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </span>
               <h3 className="font-bold text-slate-900 text-base">Dados do cliente</h3>
               <span className="text-xs text-slate-400 font-medium ml-auto">
-                vinculado ao lead #{linkedLead?.numero || '184'}
+                {linkedLead ? `vinculado ao lead ${linkedLead.numero}` : 'sem lead vinculado'}
               </span>
+            </div>
+
+            {/* Seletor de lead: preenche os campos com o cliente escolhido. */}
+            <div>
+              <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
+                LEAD VINCULADO
+              </label>
+              <select
+                value={leadIdSelecionado}
+                onChange={(e) => setLeadIdSelecionado(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+              >
+                <option value="">Nenhum — preencher manualmente</option>
+                {leads.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.numero} · {l.nome} {l.cidade ? `· ${l.cidade}` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -894,7 +950,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           <div className="bg-amber-50/60 border border-amber-200/80 p-5 rounded-2xl text-xs space-y-2 text-amber-900">
             <h4 className="font-bold text-amber-950 uppercase tracking-wider text-[11px]">CONDIÇÕES COMERCIAIS</h4>
             <p className="leading-relaxed">
-              Proposta válida por 5 dias · despacho em até 30 dias · instalação agendada após a entrega dos equipamentos · crédito sujeito a aprovação.
+              Proposta válida por {paramNum(config, 'proposta.validade_dias', 10)} dias · despacho em até 30 dias · instalação agendada após a entrega dos equipamentos · crédito sujeito a aprovação.
             </p>
           </div>
         </div>

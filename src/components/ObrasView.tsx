@@ -18,7 +18,8 @@ interface ObrasViewProps {
   currentUser: User;
   onSaveObra: (obra: Obra) => void;
   onDeleteObra: (id: string) => void;
-  onBaixarEstoque: (itens: PropostaItem[]) => void;
+  /** Baixa manual do kit de uma obra já existente. */
+  onBaixarEstoque: (obraId: string) => void | Promise<void>;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
 
@@ -305,9 +306,11 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
       ]
     };
 
-    // Baixa de estoque do kit vinculado
+    // Baixa de estoque do kit vinculado.
+    // A baixa em si acontece no servidor, na MESMA transação que cria a obra
+    // (a obra precisa existir antes de consumir estoque em nome dela). Aqui só
+    // sinalizamos a intenção com `estoqueBaixado`.
     if (kit.length) {
-      onBaixarEstoque(kit);
       obra.estoqueBaixado = true;
       obra.historico = [
         {

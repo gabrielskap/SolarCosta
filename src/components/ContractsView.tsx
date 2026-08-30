@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileCheck, Printer, Send, CheckCircle2, FileText, Search, Plus, Trash2 } from 'lucide-react';
-import { Contrato, Lead, User } from '../types';
+import { Contrato, Lead, Proposta, User } from '../types';
+import { param, type ConfigApp } from '../services/api';
 
 interface ContractsViewProps {
   contratos: Contrato[];
   leads: Lead[];
+  /** Propostas disponíveis para gerar o contrato a partir do dimensionamento. */
+  propostas?: Proposta[];
+  /** Empresa, parâmetros e cláusulas padrão vindos do banco. */
+  config: ConfigApp | null;
   onSaveContract: (contrato: Contrato) => void;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   currentUser: User;
@@ -14,6 +19,8 @@ interface ContractsViewProps {
 export const ContractsView: React.FC<ContractsViewProps> = ({
   contratos,
   leads,
+  propostas = [],
+  config,
   onSaveContract,
   onOpenPDF,
   currentUser,
@@ -21,52 +28,107 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'novo' | 'lista'>('novo');
 
+  // Origem do contrato: escolher uma proposta preenche o formulário inteiro.
+  // Antes, o formulário nascia com um cliente fixo de demonstração.
+  const [propostaOrigemId, setPropostaOrigemId] = useState('');
+
   // Form State
-  const [clienteNome, setClienteNome] = useState('Cristiano Duarte Almeida');
-  const [cpfCnpj, setCpfCnpj] = useState('042.318.776-90');
-  const [rgInscricao, setRgInscricao] = useState('MG-14.882.301');
-  const [endereco, setEndereco] = useState('Rua dos Ipês, 512 – Santa Mônica, Belo Horizonte/MG');
-  const [cep, setCep] = useState('31.530-150');
-  const [telefone, setTelefone] = useState('(31) 99412-7708');
+  const [clienteNome, setClienteNome] = useState('');
+  const [cpfCnpj, setCpfCnpj] = useState('');
+  const [rgInscricao, setRgInscricao] = useState('');
+  const [endereco, setEndereco] = useState('');
+  const [cep, setCep] = useState('');
+  const [telefone, setTelefone] = useState('');
 
   // System Specs
-  const [potenciaKwp, setPotenciaKwp] = useState(8.52);
-  const [modulosQtd, setModulosQtd] = useState(12);
-  const [moduloModelo, setModuloModelo] = useState('TLC Tier 1 710 Wp');
-  const [inversorModelo, setInversorModelo] = useState('3x Micro Solax X3-MIC');
-  const [estrutura, setEstrutura] = useState('Laje');
-  const [prazoExecucao, setPrazoExecucao] = useState('45 dias corridos');
-  const [localInstalacao, setLocalInstalacao] = useState('Rua dos Ipês, 512 – Santa Mônica, Belo Horizonte/MG');
+  const [potenciaKwp, setPotenciaKwp] = useState(0);
+  const [modulosQtd, setModulosQtd] = useState(0);
+  const [moduloModelo, setModuloModelo] = useState('');
+  const [inversorModelo, setInversorModelo] = useState('');
+  const [estrutura, setEstrutura] = useState('');
+  const [prazoExecucao, setPrazoExecucao] = useState('');
+  const [localInstalacao, setLocalInstalacao] = useState('');
 
   // Values & Payment
-  const [valorTotal, setValorTotal] = useState(22490.00);
-  const [formaPagamento, setFormaPagamento] = useState('Financiamento bancário');
-  const [entrada, setEntrada] = useState('R$ 2.249,00 (10%)');
-  const [parcelasInfo, setParcelasInfo] = useState('60x R$ 486,60');
-  const [bancoAgente, setBancoAgente] = useState('BV Financeira – linha solar');
-  const [primeiroVencimento, setPrimeiroVencimento] = useState('10/09/2026');
-  const [multaAtraso, setMultaAtraso] = useState('2% + 1% a.m.');
-  const [foroEleito, setForoEleito] = useState('Belo Horizonte/MG');
+  const [valorTotal, setValorTotal] = useState(0);
+  const [formaPagamento, setFormaPagamento] = useState('');
+  const [entrada, setEntrada] = useState('');
+  const [parcelasInfo, setParcelasInfo] = useState('');
+  const [bancoAgente, setBancoAgente] = useState('');
+  const [primeiroVencimento, setPrimeiroVencimento] = useState('');
+  const [multaAtraso, setMultaAtraso] = useState('');
+  const [foroEleito, setForoEleito] = useState('');
 
   // Warranties & Tech Resp
-  const [garantiaModulos, setGarantiaModulos] = useState('12 anos (defeito)');
-  const [garantiaInversores, setGarantiaInversores] = useState('10 anos');
-  const [garantiaInstalacao, setGarantiaInstalacao] = useState('5 anos');
-  const [garantiaHomologacao, setGarantiaHomologacao] = useState('até 60 dias após vistoria');
-  const [responsavelTecnico, setResponsavelTecnico] = useState('Thiago Gonçalves Leal');
-  const [crea, setCrea] = useState('MG0000023481D');
+  const [garantiaModulos, setGarantiaModulos] = useState('');
+  const [garantiaInversores, setGarantiaInversores] = useState('');
+  const [garantiaInstalacao, setGarantiaInstalacao] = useState('');
+  const [garantiaHomologacao, setGarantiaHomologacao] = useState('');
+  const [responsavelTecnico, setResponsavelTecnico] = useState('');
+  const [crea, setCrea] = useState('');
 
-  // Included clauses checkboxes
-  const [clausulas, setClausulas] = useState<string[]>([
-    'Objeto e escopo do fornecimento',
-    'Preço, forma de pagamento e reajuste',
-    'Prazos de entrega, instalação e homologação',
-    'Obrigações do contratante e do contratado',
-    'Exclusões de escopo (obra civil, padrão de entrada)',
-    'Garantias e assistência técnica',
-    'Cessão de crédito ao agente financeiro',
-    'Rescisão, multas e foro'
-  ]);
+  // Cláusulas selecionadas (títulos). A biblioteca vem de SolarCosta_ClausulasPadrao.
+  const [clausulas, setClausulas] = useState<string[]>([]);
+
+  // Prazo, multa, garantias, foro, responsável técnico e CREA saem dos
+  // parâmetros e do cadastro da empresa — não mais de literais no componente.
+  useEffect(() => {
+    if (!config) return;
+    setPrazoExecucao(param(config, 'contrato.prazo_execucao', ''));
+    setMultaAtraso(param(config, 'contrato.multa_atraso', ''));
+    setGarantiaModulos(param(config, 'contrato.garantia_modulos', ''));
+    setGarantiaInversores(param(config, 'contrato.garantia_inversores', ''));
+    setGarantiaInstalacao(param(config, 'contrato.garantia_instalacao', ''));
+    setGarantiaHomologacao(param(config, 'contrato.garantia_homologacao', ''));
+    setForoEleito(config.empresa?.foro_padrao ?? '');
+    setResponsavelTecnico(config.empresa?.responsavel_tecnico ?? '');
+    setCrea(config.empresa?.crea ?? '');
+  }, [config]);
+
+  // Escolher a proposta traz cliente, dimensionamento e condições comerciais.
+  useEffect(() => {
+    const p = propostas.find((x) => x.id === propostaOrigemId);
+    if (!p) return;
+    const lead = leads.find((l) => l.id === p.leadId);
+
+    setClienteNome(p.clienteNome || '');
+    setCpfCnpj(p.cpfCnpj || '');
+    setRgInscricao(lead?.rgInscricao || '');
+    setEndereco(p.endereco || '');
+    setCep(lead?.cep || '');
+    setTelefone(p.telefone || '');
+
+    setPotenciaKwp(p.potenciaKwp || 0);
+    setModulosQtd(p.modulosQtd || 0);
+    setEstrutura(p.telhado || '');
+    setLocalInstalacao(p.endereco || '');
+
+    setValorTotal(p.valorTotal || 0);
+    setFormaPagamento(
+      p.formaPagamento === 'financiamento'
+        ? 'Financiamento bancário'
+        : p.formaPagamento === 'cartao'
+          ? 'Cartão de crédito'
+          : 'À vista',
+    );
+    if (p.entradaFinanciamentoValor) {
+      setEntrada(
+        `${p.entradaFinanciamentoValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` +
+          (p.entradaFinanciamentoPct ? ` (${p.entradaFinanciamentoPct}%)` : ''),
+      );
+    }
+    if (p.parcelasFinanciamento) setParcelasInfo(`${p.parcelasFinanciamento}x`);
+    setBancoAgente(p.bancoFinanciamento || '');
+  }, [propostaOrigemId, propostas, leads]);
+
+  // Biblioteca de cláusulas cadastrada no banco; as marcadas como `padrao`
+  // já vêm selecionadas.
+  const clausulasDisponiveis = config?.clausulas ?? [];
+
+  useEffect(() => {
+    if (!config || clausulas.length > 0) return;
+    setClausulas(config.clausulas.filter((c) => c.padrao).map((c) => c.titulo));
+  }, [config, clausulas.length]);
 
   const toggleClausula = (clause: string) => {
     if (clausulas.includes(clause)) {
@@ -76,10 +138,13 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
     }
   };
 
+  const propostaOrigem = propostas.find((p) => p.id === propostaOrigemId);
+
   const currentContractObj: Contrato = {
-    id: `cont-0184`,
-    numero: '2026-0184',
-    leadId: 'lead-184',
+    // Sem id: a API entende como contrato novo e o banco gera o número.
+    id: '',
+    numero: '',
+    leadId: propostaOrigem?.leadId ?? '',
     clienteNome,
     cpfCnpj,
     rgInscricao,
@@ -155,7 +220,9 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
         <div>
           <h1 className="text-2xl font-extrabold text-[#004276]">Contrato de prestação de serviço</h1>
           <p className="text-xs text-slate-500 font-semibold mt-0.5">
-            Gerado a partir da proposta nº 2026-0184 · Cristiano Duarte Almeida
+            {propostaOrigem
+              ? `Gerado a partir da proposta nº ${propostaOrigem.numero} · ${propostaOrigem.clienteNome}`
+              : 'Novo contrato · número gerado ao emitir'}
           </p>
         </div>
 
@@ -211,6 +278,25 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                   1
                 </span>
                 <h3 className="font-bold text-slate-900 text-base">Contratante</h3>
+              </div>
+
+              {/* Escolher a proposta preenche cliente, sistema e condições. */}
+              <div>
+                <label className="block font-bold text-slate-500 uppercase mb-1 text-xs">
+                  GERAR A PARTIR DA PROPOSTA
+                </label>
+                <select
+                  value={propostaOrigemId}
+                  onChange={(e) => setPropostaOrigemId(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                >
+                  <option value="">Nenhuma — preencher manualmente</option>
+                  {propostas.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.numero} · {p.clienteNome} · {p.potenciaKwp} kWp
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
@@ -509,10 +595,10 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
           {/* RIGHT SIDEBAR (5/12 or 4/12) */}
           <div className="lg:col-span-5 xl:col-span-4 space-y-6">
             
-            {/* Dark Blue Card CONTRATO Nº 2026-0184 */}
+            {/* Resumo do contrato em edição */}
             <div className="bg-[#004276] text-white p-6 rounded-2xl shadow-xl space-y-4">
               <span className="text-[10px] font-bold text-[#FFD100] uppercase tracking-widest block">
-                CONTRATO Nº 2026-0184
+                CONTRATO A EMITIR
               </span>
 
               <div className="space-y-1.5 text-xs">
@@ -547,24 +633,20 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
               <h4 className="font-bold text-slate-900 text-sm">Cláusulas incluídas</h4>
               
               <div className="space-y-2 text-xs">
-                {[
-                  'Objeto e escopo do fornecimento',
-                  'Preço, forma de pagamento e reajuste',
-                  'Prazos de entrega, instalação e homologação',
-                  'Obrigações do contratante e do contratado',
-                  'Exclusões de escopo (obra civil, padrão de entrada)',
-                  'Garantias e assistência técnica',
-                  'Cessão de crédito ao agente financeiro',
-                  'Rescisão, multas e foro'
-                ].map((clause) => (
-                  <label key={clause} className="flex items-start gap-2 cursor-pointer text-slate-700">
+                {clausulasDisponiveis.length === 0 && (
+                  <p className="text-slate-400 italic">
+                    Nenhuma cláusula cadastrada. Configure em SolarCosta_ClausulasPadrao.
+                  </p>
+                )}
+                {clausulasDisponiveis.map(({ titulo }) => (
+                  <label key={titulo} className="flex items-start gap-2 cursor-pointer text-slate-700">
                     <input
                       type="checkbox"
-                      checked={clausulas.includes(clause)}
-                      onChange={() => toggleClausula(clause)}
+                      checked={clausulas.includes(titulo)}
+                      onChange={() => toggleClausula(titulo)}
                       className="mt-0.5 rounded text-[#004276] focus:ring-[#004276]"
                     />
-                    <span>{clause}</span>
+                    <span>{titulo}</span>
                   </label>
                 ))}
               </div>

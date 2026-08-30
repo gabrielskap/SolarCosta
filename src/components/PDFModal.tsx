@@ -222,21 +222,28 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
               const valorInvestimento = prop?.valorTotal || 22490;
               const parcelas12 = Number((valorInvestimento / 12 * 1.14).toFixed(2));
 
-              // Monthly generation profile (Jan - Dez)
-              const monthlyData = [
-                { mes: 'JANEIRO', geracao: 1037.13, consumo: consumo },
-                { mes: 'FEVEREIRO', geracao: 1037.13, consumo: consumo },
-                { mes: 'MARÇO', geracao: 1037.13, consumo: consumo },
-                { mes: 'ABRIL', geracao: 1037.13, consumo: consumo },
-                { mes: 'MAIO', geracao: 1017.93, consumo: consumo },
-                { mes: 'JUNHO', geracao: 994.88, consumo: consumo },
-                { mes: 'JULHO', geracao: 941.10, consumo: consumo },
-                { mes: 'AGOSTO', geracao: 941.10, consumo: consumo },
-                { mes: 'SETEMBRO', geracao: 941.10, consumo: consumo },
-                { mes: 'OUTUBRO', geracao: 1017.93, consumo: consumo },
-                { mes: 'NOVEMBRO', geracao: 998.72, consumo: consumo },
-                { mes: 'DEZEMBRO', geracao: 998.72, consumo: consumo },
+              // Perfil mensal de geração.
+              //
+              // Os fatores abaixo são a sazonalidade da região (1,0 = média
+              // anual) e espelham a tabela SolarCosta_PerfilGeracaoMensal.
+              // A geração de cada mês é a média MENSAL DESTE SISTEMA vezes o
+              // fator do mês — antes eram valores absolutos fixos (~1.000 kWh),
+              // o que fazia o gráfico de um sistema de 27 kWp mostrar a mesma
+              // geração de um de 8 kWp, contradizendo a cobertura da proposta.
+              const FATOR_SAZONAL: [string, number][] = [
+                ['JANEIRO', 1.03713], ['FEVEREIRO', 1.03713], ['MARÇO', 1.03713],
+                ['ABRIL', 1.03713],   ['MAIO', 1.01793],      ['JUNHO', 0.99488],
+                ['JULHO', 0.94110],   ['AGOSTO', 0.94110],    ['SETEMBRO', 0.94110],
+                ['OUTUBRO', 1.01793], ['NOVEMBRO', 0.99872],  ['DEZEMBRO', 0.99872],
               ];
+
+              const geracaoMediaMensal = prop?.geracaoMediaKwh || consumo;
+
+              const monthlyData = FATOR_SAZONAL.map(([mes, fator]) => ({
+                mes,
+                geracao: Number((geracaoMediaMensal * fator).toFixed(2)),
+                consumo: consumo,
+              }));
 
               // 25 Years Expenses without solar
               const projection25Years = [];

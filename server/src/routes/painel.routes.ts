@@ -117,7 +117,7 @@ configRouter.use(exigirLogin);
 configRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
-    const [empresa, parametros, concessionarias, origens, telhados, categorias, pastas, bancos, presets] =
+    const [empresa, parametros, concessionarias, origens, telhados, categorias, pastas, bancos, presets, clausulas] =
       await Promise.all([
         consultarUm(`SELECT * FROM "SolarCosta_Empresa" LIMIT 1`),
         consultar(`SELECT chave, valor, tipo, grupo, descricao FROM "SolarCosta_Parametros" ORDER BY grupo, chave`),
@@ -131,11 +131,13 @@ configRouter.get(
                      FROM "SolarCosta_BancosFinanciamento" WHERE ativo ORDER BY nome`),
         consultar(`SELECT id, contexto, label, texto FROM "SolarCosta_ObservacaoPresets"
                     WHERE ativo ORDER BY ordem`),
+        consultar(`SELECT id, titulo, texto, padrao, ordem FROM "SolarCosta_ClausulasPadrao"
+                    WHERE ativo ORDER BY ordem`),
       ]);
 
     res.json({
       empresa, parametros, concessionarias, origens, telhados,
-      categorias, pastas, bancos, presets,
+      categorias, pastas, bancos, presets, clausulas,
     });
   }),
 );

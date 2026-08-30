@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { Lead, Contrato, Proposta, Boleto, LancamentoFinanceiro, User, LeadStage } from '../types';
 import { formatCurrencyBRL } from '../utils/format';
-import { REFERENCE_TODAY, formatBRDate } from '../utils/dates';
+import { formatBRDate } from '../utils/dates';
 
 interface ReportsViewProps {
   leads: Lead[];
@@ -47,7 +47,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 }) => {
   const [report, setReport] = useState<ReportKey>('vendedores');
 
-  const emissao = formatBRDate(REFERENCE_TODAY);
+  // Data real de emissão do relatório (antes era a data fixa REFERENCE_TODAY).
+  const emissao = formatBRDate(new Date());
 
   /* ----------------------- Vendas por vendedor ----------------------- */
   const vendedores = useMemo(() => {

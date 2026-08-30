@@ -168,19 +168,19 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
   // New Lancamento Form
   const [descricao, setDescricao] = useState('');
   const [categoria, setCategoria] = useState('Venda de sistema');
-  const [obraRef, setObraRef] = useState('OBRA 0184');
+  const [obraRef, setObraRef] = useState('');
   const [valorLancamento, setValorLancamento] = useState('');
   const [tipoLancamento, setTipoLancamento] = useState<'receita' | 'despesa'>('receita');
 
   // New Boleto Form
-  const [boletoCliente, setBoletoCliente] = useState('Cristiano Duarte Almeida');
-  const [boletoCpf, setBoletoCpf] = useState('042.318.776-90');
-  const [boletoValor, setBoletoValor] = useState(2249.00);
-  const [boletoParcela, setBoletoParcela] = useState('1/60 (Entrada)');
-  const [boletoVencimento, setBoletoVencimento] = useState('10/08/2026');
+  const [boletoCliente, setBoletoCliente] = useState('');
+  const [boletoCpf, setBoletoCpf] = useState('');
+  const [boletoValor, setBoletoValor] = useState(0);
+  const [boletoParcela, setBoletoParcela] = useState('');
+  const [boletoVencimento, setBoletoVencimento] = useState('');
   const [boletoTipo, setBoletoTipo] = useState<'A receber' | 'A pagar'>('A receber');
   const [boletoCategoria, setBoletoCategoria] = useState('Venda de sistema');
-  const [boletoObraRef, setBoletoObraRef] = useState('OBRA 0184');
+  const [boletoObraRef, setBoletoObraRef] = useState('');
 
   // Índice do mês (1-12) a partir de "DD/MM" ou "DD/MM/AAAA".
   const monthFromStr = (value?: string): number => {
@@ -275,11 +275,14 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
     e.preventDefault();
     if (!boletoCliente || !boletoValor) return;
 
-    const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+    // A linha digitável NÃO é inventada aqui. Antes o sistema gerava um número
+    // com cara de boleto real, que poderia ser enviado ao cliente e nunca
+    // compensar. O campo fica vazio até alguém colar a linha emitida pelo banco
+    // (ou até a integração bancária ser implementada).
     const newBoleto: Boleto = {
-      id: `bol-${Date.now()}`,
-      numeroDocumento: `00190.00009 01234.567894 12345.${randomSuffix} 1 95000002249000`,
-      linhaDigitavel: `00190.00009 01234.567894 12345.${randomSuffix} 1 95000002249000`,
+      id: '',
+      numeroDocumento: '',
+      linhaDigitavel: '',
       clienteNome: boletoCliente,
       cpfCnpj: boletoCpf,
       valor: Number(boletoValor),

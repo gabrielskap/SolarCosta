@@ -59,6 +59,11 @@ const obraSchema = z.object({
       }),
     )
     .default([]),
+
+  // Baixa o kit no estoque já na criação, dentro da MESMA transação. Se o
+  // saldo não bastar, a obra inteira é revertida — nunca fica obra criada com
+  // estoque por baixar, nem estoque consumido sem obra.
+  baixar_estoque: z.boolean().default(false),
 });
 
 async function carregarObra(id: string) {
@@ -172,6 +177,12 @@ obrasRouter.post(
         `SELECT "SolarCosta_fn_auditar"('criar','Obra',$1,$2,NULL)`,
         [`${rows[0]!.numero} — ${d.cliente_nome}`, novoId],
       );
+
+      if (d.baixar_estoque && d.kit.length > 0) {
+        // Estoque insuficiente levanta check_violation aqui e reverte a obra.
+        await cliente.query(`SELECT "SolarCosta_fn_baixar_estoque_obra"($1)`, [novoId]);
+      }
+
       return novoId;
     }, ator(req));
 
