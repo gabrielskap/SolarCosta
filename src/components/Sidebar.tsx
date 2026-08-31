@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, Sun, ChevronRight, Menu, X, Calendar, BarChart3, History, HardHat
 } from 'lucide-react';
 import { User } from '../types';
+import logoFull from '../assets/logo-full.png';
 
 export type ActiveTab =
   | 'dashboard'
@@ -85,15 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Header */}
         <div className="p-5 flex items-center justify-between border-b border-blue-900/50 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#FFD100] flex items-center justify-center shadow-md shrink-0">
-              <div className="w-5 h-5 rounded-full bg-[#004276] flex items-center justify-center">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#FFD100]" />
-              </div>
-            </div>
-            <div>
-              <h1 className="font-extrabold text-lg tracking-wider text-white leading-tight">SOLAR COSTA</h1>
-              <p className="text-[10px] font-bold text-[#FFD100] tracking-widest uppercase">ENERGIA SOLAR</p>
-            </div>
+            <img src={logoFull} alt="Solar Costa" className="h-10 w-auto" />
           </div>
           <button
             onClick={() => setIsOpenMobile(false)}

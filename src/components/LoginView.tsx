@@ -3,6 +3,7 @@ import { Sun, Eye, EyeOff, Lock, Mail, ArrowRight, Loader2 } from 'lucide-react'
 import { User } from '../types';
 import { Auth } from '../services/api';
 import { ErroApi } from '../services/http';
+import logoFull from '../assets/logo-full.png';
 
 interface LoginViewProps {
   onLoginSuccess?: (user: User) => void;
@@ -72,17 +73,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onLogin, s
 
         {/* Center Logo & Text */}
         <div className="my-12 md:my-auto max-w-md z-10 space-y-6">
-          <div className="w-24 h-24 rounded-full bg-[#FFD100] flex items-center justify-center shadow-xl">
-            <div className="w-12 h-12 rounded-full bg-[#004276] flex items-center justify-center">
-              <div className="w-6 h-6 rounded-full bg-[#FFD100]" />
-            </div>
-          </div>
-
           <div>
-            <h1 className="text-4xl md:text-5xl font-extrabold tracking-wider uppercase text-white">
-              SOLAR COSTA
-            </h1>
-            <p className="text-sm font-bold text-[#FFD100] tracking-widest uppercase mt-1">
+            <img src={logoFull} alt="Solar Costa" className="h-16 md:h-20 w-auto" />
+            <p className="text-sm font-bold text-[#FFD100] tracking-widest uppercase mt-2">
               ENERGIA SOLAR
             </p>
           </div>

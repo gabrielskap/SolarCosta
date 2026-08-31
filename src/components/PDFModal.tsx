@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { 
-  X, Printer, Download, CheckCircle2, ChevronLeft, ChevronRight, Sun, Award, DollarSign, 
+  X, Printer, Download, CheckCircle2, ChevronLeft, ChevronRight, Award, DollarSign,
   TrendingUp, Zap, Calendar, ShieldCheck, Phone, Mail, MapPin, SlidersHorizontal, Image as ImageIcon,
   Upload, FileText, Check, RotateCcw, Sparkles, Layers, Eye, EyeOff, Palette, MessageSquare, User
 } from 'lucide-react';
 import { Proposta, Contrato, Boleto } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
+import logoFull from '../assets/logo-full.png';
+import logoIcon from '../assets/logo-icon.png';
 
 interface PDFModalProps {
   type: 'proposta' | 'contrato' | 'boleto';
@@ -95,9 +97,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
     if (logoStyle === 'dark') {
       return (
         <div className="flex items-center gap-3 bg-slate-900 text-white px-3.5 py-1.5 rounded-xl border border-slate-700 shadow-sm">
-          <div className="w-9 h-9 rounded-full bg-[#FFD100] flex items-center justify-center shadow">
-            <Sun className="w-5 h-5 text-slate-950 fill-slate-950" />
-          </div>
+          <img src={logoIcon} alt="Solar Costa" className="h-9 w-9 object-contain" />
           <div>
             <h1 className="font-black text-lg tracking-wider text-[#FFD100] leading-none">SOLAR COSTA</h1>
             <p className="text-[10px] font-bold text-slate-300 tracking-widest mt-0.5 uppercase">SOLUÇÕES ENERGÉTICAS</p>
@@ -110,7 +110,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
       return (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg border-2 border-slate-900 flex items-center justify-center bg-white">
-            <Sun className="w-6 h-6 text-slate-900" />
+            <img src={logoIcon} alt="Solar Costa" className="h-7 w-7 object-contain" />
           </div>
           <div>
             <h1 className="font-black text-xl tracking-tight text-slate-900 leading-none">SOLAR COSTA</h1>
@@ -123,13 +123,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
     // Standard Solar Costa Yellow & Blue Logo
     return (
       <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-full bg-[#FFD100] flex items-center justify-center shadow">
-          <Sun className="w-7 h-7 text-[#004276] fill-[#004276]" />
-        </div>
-        <div>
-          <h1 className="font-black text-2xl tracking-wider text-[#004276] leading-none">SOLAR COSTA</h1>
-          <p className="text-[11px] font-bold text-amber-600 tracking-widest mt-0.5 uppercase">ENERGIA SOLAR</p>
-        </div>
+        <img src={logoFull} alt="Solar Costa" className="h-12 w-auto" />
       </div>
     );
   };
@@ -141,9 +135,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
         {/* TOP BAR CONTROLS (Hidden during print) */}
         <div className="no-print bg-[#004276] text-white px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 border-b border-blue-900">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#FFD100] flex items-center justify-center shadow-md shrink-0">
-              <Sun className="w-5 h-5 text-[#004276] fill-[#004276]" />
-            </div>
+            <img src={logoIcon} alt="Solar Costa" className="w-8 h-8 object-contain shrink-0" />
             <div>
               <span className="bg-[#FFD100] text-[#004276] font-black px-2 py-0.5 rounded text-[10px] uppercase tracking-wider inline-block">
                 Documento Oficial PDF

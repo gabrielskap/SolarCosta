@@ -22,7 +22,8 @@ import { AuditTrailView } from './components/AuditTrailView';
 import { NotificationCenter } from './components/NotificationCenter';
 import { PDFModal } from './components/PDFModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { Menu, Sun, Loader2, WifiOff } from 'lucide-react';
+import { Menu, Loader2, WifiOff } from 'lucide-react';
+import logoFull from './assets/logo-full.png';
 
 export default function App() {
   // Authentication State
@@ -535,10 +536,7 @@ export default function App() {
             <Menu className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-[#FFD100] flex items-center justify-center">
-              <Sun className="w-4 h-4 text-[#004276] fill-[#004276]" />
-            </div>
-            <span className="font-extrabold text-sm tracking-wider">SOLAR COSTA</span>
+            <img src={logoFull} alt="Solar Costa" className="h-6 w-auto" />
           </div>
         </div>
 

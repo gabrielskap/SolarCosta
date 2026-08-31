@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
-  BarChart3, Users, Filter as FunnelIcon, FileBarChart, Printer, Sun, TrendingUp, TrendingDown,
+  BarChart3, Users, Filter as FunnelIcon, FileBarChart, Printer, TrendingUp, TrendingDown,
 } from 'lucide-react';
+import logoFull from '../assets/logo-full.png';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts';
@@ -220,13 +221,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         {/* Cabeçalho do documento */}
         <div className="report-block flex items-start justify-between border-b-2 border-[#004276] pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-[#FFD100] flex items-center justify-center shadow shrink-0">
-              <Sun className="w-6 h-6 text-[#004276] fill-[#004276]" />
-            </div>
-            <div>
-              <h2 className="font-black text-xl text-[#004276] tracking-wide leading-none">SOLAR COSTA</h2>
-              <p className="text-[10px] font-bold text-amber-600 tracking-widest uppercase">Energia Solar</p>
-            </div>
+            <img src={logoFull} alt="Solar Costa" className="h-11 w-auto" />
           </div>
           <div className="text-right">
             <span className="text-[10px] font-bold uppercase tracking-widest bg-blue-100 text-[#004276] px-2.5 py-1 rounded">
