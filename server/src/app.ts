@@ -3,6 +3,9 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { consultarUm } from './db.js';
 import { asyncHandler, tratarErros } from './errors.js';
@@ -21,6 +24,11 @@ import {
 } from './routes/painel.routes.js';
 import { propostasRouter } from './routes/propostas.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// dist/app.js -> ../public, onde o Dockerfile copia o build do frontend.
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const INDEX_HTML = path.join(PUBLIC_DIR, 'index.html');
 
 export function criarApp(): express.Express {
   const app = express();
@@ -60,8 +68,21 @@ export function criarApp(): express.Express {
   app.use('/api/config', configRouter);
   app.use('/api/auditoria', auditoriaRouter);
 
-  app.use((_req, res) => {
-    res.status(404).json({ erro: 'Rota não encontrada.', codigo: 'rota_inexistente' });
+  // Estático do front (build do Vite) — não existe em dev, quando o front
+  // sobe separado pelo `vite` na porta 3000.
+  if (existsSync(PUBLIC_DIR)) {
+    app.use(express.static(PUBLIC_DIR, { index: false, maxAge: '1y', immutable: true }));
+  }
+
+  app.use((req, res) => {
+    // /api/* e /health inexistentes continuam JSON. Todo o resto é rota do
+    // React Router: devolve o index.html e deixa o front decidir (SPA fallback).
+    const eRotaApi = req.path.startsWith('/api/') || req.path === '/health';
+    if (eRotaApi || req.method !== 'GET' || !existsSync(INDEX_HTML)) {
+      res.status(404).json({ erro: 'Rota não encontrada.', codigo: 'rota_inexistente' });
+      return;
+    }
+    res.sendFile(INDEX_HTML);
   });
 
   app.use(tratarErros);

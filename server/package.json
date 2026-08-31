@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
+    "migrate": "node dist/migrate.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

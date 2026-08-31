@@ -1,39 +1,63 @@
-# Estágio 1: Build da Aplicação React/Vite
-FROM node:20-alpine AS builder
+# =============================================================================
+# Solar Costa — imagem única para Easypanel: Express serve a API e o build
+# estático do React (SPA fallback). Ver server/src/app.ts para o roteamento.
+# =============================================================================
 
+# -----------------------------------------------------------------------------
+# Estágio 1: build do frontend (React + Vite)
+# -----------------------------------------------------------------------------
+FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 
-# Copiar manifesto de dependências
 COPY package*.json ./
-
-# Instalar dependências de forma reproduzível
 RUN npm ci
 
-# Copiar todo o código fonte
-COPY . .
-
-# Executar o build do Vite
+COPY index.html vite.config.ts tsconfig.json ./
+COPY public ./public
+COPY src ./src
 RUN npm run build
 
-# Estágio 2: Servidor HTTP leve com Nginx
-FROM nginx:alpine
+# -----------------------------------------------------------------------------
+# Estágio 2: build do backend (Express + TypeScript)
+# -----------------------------------------------------------------------------
+FROM node:20-alpine AS backend-builder
+WORKDIR /app/server
 
-# Remover configurações e conteúdos padrões
-RUN rm -rf /usr/share/nginx/html/* /etc/nginx/conf.d/default.conf
+COPY server/package*.json ./
+RUN npm ci
 
-# Copiar a configuração customizada do Nginx para SPAs
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY server/tsconfig.json ./
+COPY server/src ./src
+RUN npm run build
 
-# Copiar os arquivos compilados do estágio de build
-COPY --from=builder /app/dist /usr/share/nginx/html
+# -----------------------------------------------------------------------------
+# Estágio 3: runtime de produção — só o necessário para rodar
+# -----------------------------------------------------------------------------
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
 
-# Gera env-config.js com a URL da API a partir da env var do container, a
-# cada start — permite trocar VITE_API_URL sem rebuildar a imagem.
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+# Dependências de produção da API (pg, express, jwt, etc.)
+COPY server/package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Expor a porta padrão HTTP
-EXPOSE 80
+# Backend compilado (tsc -> dist/)
+COPY --from=backend-builder /app/server/dist ./dist
+# Frontend compilado, servido como estático pelo Express (ver app.ts)
+COPY --from=frontend-builder /app/dist ./public
+# SQL das migrations, aplicado por dist/migrate.js antes da API subir
+COPY database/migrations ./database/migrations
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["nginx", "-g", "daemon off;"]
+# Não roda como root.
+USER node
+
+ENV PORT=4000
+EXPOSE 4000
+
+# Mesmo endpoint que o Easypanel pode usar como healthcheck HTTP.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+# Aplica as migrations pendentes (idempotente, ver migrate.ts) e só então
+# sobe a API — evita subir servindo erro por tabela faltando.
+CMD ["sh", "-c", "npm run migrate && npm start"]

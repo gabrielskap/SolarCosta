@@ -8,10 +8,3 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
-
-/** Injetado em runtime por public/env-config.js (sobrescrito pelo container em produção). */
-interface Window {
-  __ENV__?: {
-    VITE_API_URL?: string;
-  };
-}
