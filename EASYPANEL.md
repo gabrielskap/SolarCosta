@@ -17,11 +17,15 @@ build via **Dockerfile** (o da raiz). Nenhum build command extra é necessário
 
 ## 2. Porta (aba Domains / Ports)
 
-Porta interna do container: **`4000`**
+Porta interna do container: **`80`**
 
-É a porta que o Express escuta (`PORT`, default `4000`) e onde o
-`HEALTHCHECK` do Dockerfile bate em `/health`. Configure o domínio/proxy do
-Easypanel apontando para `4000`.
+É a porta que o Express escuta (`PORT`, default `80` já embutido na imagem) e
+onde o `HEALTHCHECK` do Dockerfile bate em `/health`. Configure o
+domínio/proxy do Easypanel apontando para `80`.
+
+O container roda como usuário não-root (`node`), mas o Dockerfile concede ao
+binário do Node a capability `cap_net_bind_service` via `setcap` — assim ele
+consegue abrir a porta 80 (privilegiada, <1024) sem precisar rodar como root.
 
 ## 3. Variáveis de ambiente
 
@@ -39,7 +43,7 @@ Easypanel apontando para `4000`.
 | Variável | Default | Observação |
 |---|---|---|
 | `NODE_ENV` | `production` | Já fixado no Dockerfile; não precisa redefinir. |
-| `PORT` | `4000` | Só mude se também mudar a porta configurada no passo 2. |
+| `PORT` | `80` | Já fixado no Dockerfile; só mude se também mudar a porta configurada no passo 2. |
 | `DATABASE_SSL` | `false` | `true` se o Postgres exigir SSL. |
 | `DATABASE_POOL_MAX` | `10` | Conexões simultâneas no pool. |
 | `ACCESS_TOKEN_TTL` | `15m` | Duração do access token. |
@@ -79,8 +83,8 @@ primeiro deploy bem-sucedido:
 
 - [ ] Papéis do Postgres criados (`02_papeis.sql`)
 - [ ] `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CORS_ORIGINS` configurados
-- [ ] Porta do serviço apontando para `4000`
-- [ ] Deploy concluído e log mostrando `[migrate] banco atualizado.` seguido de `[api] Solar Costa ouvindo em http://localhost:4000`
+- [ ] Porta do serviço apontando para `80`
+- [ ] Deploy concluído e log mostrando `[migrate] banco atualizado.` seguido de `[api] Solar Costa ouvindo em http://localhost:80`
 - [ ] `S001__configuracao_base.sql` rodado manualmente (uma vez)
 - [ ] Login testado com o admin criado pelo `S001` e senha trocada (ver [deploy/trocar-senha-admin.sh](deploy/trocar-senha-admin.sh) para o caminho via VPS, ou troque direto pela API depois do primeiro login)
 - [ ] `curl -I https://SEU_DOMINIO/health` retornando 200

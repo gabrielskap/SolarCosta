@@ -48,15 +48,22 @@ COPY --from=frontend-builder /app/dist ./public
 # SQL das migrations, aplicado por dist/migrate.js antes da API subir
 COPY database/migrations ./database/migrations
 
+# Porta 80 é privilegiada (<1024) — bind exigiria root. Em vez de rodar o
+# processo inteiro como root, concede só ao binário do node a capability de
+# abrir portas privilegiadas; USER continua não-root para tudo o mais.
+RUN apk add --no-cache libcap && \
+    setcap 'cap_net_bind_service=+ep' "$(readlink -f "$(which node)")" && \
+    apk del libcap
+
 # Não roda como root.
 USER node
 
-ENV PORT=4000
-EXPOSE 4000
+ENV PORT=80
+EXPOSE 80
 
 # Mesmo endpoint que o Easypanel pode usar como healthcheck HTTP.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||80)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Aplica as migrations pendentes (idempotente, ver migrate.ts) e só então
 # sobe a API — evita subir servindo erro por tabela faltando.
