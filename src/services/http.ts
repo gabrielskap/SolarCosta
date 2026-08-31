@@ -10,7 +10,13 @@
 // para não disparar cinco refreshes ao mesmo tempo e invalidar uns aos outros
 // pela rotação do servidor.
 
-const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:4000';
+// Prioridade: env-config.js (injetado pelo container no start, via
+// docker-entrypoint.sh) > VITE_API_URL do build (Vite) > localhost, só para
+// dev sem nada configurado.
+const BASE_URL =
+  window.__ENV__?.VITE_API_URL ||
+  (import.meta.env.VITE_API_URL as string | undefined) ||
+  'http://localhost:4000';
 const CHAVE_REFRESH = 'solar_costa_refresh_v1';
 
 let accessToken: string | null = null;

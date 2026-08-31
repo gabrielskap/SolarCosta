@@ -27,7 +27,13 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copiar os arquivos compilados do estágio de build
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# Gera env-config.js com a URL da API a partir da env var do container, a
+# cada start — permite trocar VITE_API_URL sem rebuildar a imagem.
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Expor a porta padrão HTTP
 EXPOSE 80
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
