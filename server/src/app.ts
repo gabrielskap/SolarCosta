@@ -86,6 +86,9 @@ export function criarApp(): express.Express {
       res.status(404).json({ erro: 'Rota não encontrada.', codigo: 'rota_inexistente' });
       return;
     }
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(INDEX_HTML);
   });
 
