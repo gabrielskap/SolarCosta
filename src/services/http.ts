@@ -15,17 +15,17 @@
 // (vite --port=3000) e a API (tsx watch, porta 4000) sobem separados.
 const rawBaseUrl =
   (import.meta.env.VITE_API_URL as string | undefined) ||
-  (import.meta.env.DEV ? 'http://localhost:4000' : '');
+  (import.meta.env.DEV ? 'https://systems-solar-costa.wfuhig.easypanel.host' : '');
 
 // Se estiver rodando em produção no navegador (não-localhost) e a URL apontar para localhost,
 // força caminho relativo ('') para evitar bloqueio de CORS / chamada ao próprio computador do cliente.
 const BASE_URL =
   typeof window !== 'undefined' &&
-  window.location.hostname !== 'localhost' &&
-  window.location.hostname !== '127.0.0.1' &&
-  rawBaseUrl.includes('localhost')
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1' &&
+    rawBaseUrl.includes('localhost')
     ? ''
-    : rawBaseUrl;
+    : rawBaseUrl
 const CHAVE_REFRESH = 'solar_costa_refresh_v1';
 
 let accessToken: string | null = null;
