@@ -25,7 +25,7 @@ const BASE_URL =
     window.location.hostname !== '127.0.0.1' &&
     rawBaseUrl.includes('localhost')
     ? ''
-    : rawBaseUrl
+    : rawBaseUrl;
 const CHAVE_REFRESH = 'solar_costa_refresh_v1';
 
 let accessToken: string | null = null;
