@@ -10,22 +10,11 @@
 // para não disparar cinco refreshes ao mesmo tempo e invalidar uns aos outros
 // pela rotação do servidor.
 
-// Front e API rodam no mesmo container/origem em produção, então o padrão é
-// caminho relativo (''). VITE_API_URL só é necessário em dev, quando o front
-// (vite --port=3000) e a API (tsx watch, porta 4000) sobem separados.
-const rawBaseUrl =
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  (import.meta.env.DEV ? 'https://systems-solar-costa.wfuhig.easypanel.host' : '');
-
-// Se estiver rodando em produção no navegador (não-localhost) e a URL apontar para localhost,
-// força caminho relativo ('') para evitar bloqueio de CORS / chamada ao próprio computador do cliente.
-const BASE_URL =
-  typeof window !== 'undefined' &&
-    window.location.hostname !== 'localhost' &&
-    window.location.hostname !== '127.0.0.1' &&
-    rawBaseUrl.includes('localhost')
-    ? ''
-    : rawBaseUrl;
+// Front e API rodam no mesmo container/origem em produção, então em produção
+// o BASE_URL é SEMPRE relativo (''). VITE_API_URL só é usado em dev local.
+const BASE_URL = import.meta.env.DEV
+  ? ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:4000')
+  : '';
 const CHAVE_REFRESH = 'solar_costa_refresh_v1';
 
 let accessToken: string | null = null;
