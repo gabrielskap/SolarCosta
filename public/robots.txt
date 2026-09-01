@@ -1,0 +1,9 @@
+# Solar Costa
+# O CRM não é conteúdo público: fora do índice de busca.
+
+User-agent: *
+Allow: /
+Disallow: /sistema
+
+# TODO (Solar Costa): trocar pelo domínio definitivo ao publicar.
+Sitemap: https://solarcosta.com.br/sitemap.xml

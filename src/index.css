@@ -1,5 +1,22 @@
 @import "tailwindcss";
 
+/* ============================ IDENTIDADE ============================ */
+/*
+ * As cores da marca, que até aqui viviam como literais espalhados pelos
+ * componentes (#004276 aparece 288 vezes em src/components). Declarar como
+ * tokens do Tailwind v4 libera `bg-marca`, `text-solar`, `border-marca` etc.
+ *
+ * É aditivo: os literais `bg-[#004276]` do CRM continuam valendo. O site novo
+ * (src/site) usa os tokens; migrar o CRM fica para quando fizer sentido.
+ */
+@theme {
+  --color-marca: #004276;         /* primária — sidebar, botões, títulos      */
+  --color-marca-escuro: #003159;  /* hover da primária                        */
+  --color-marca-profundo: #002e5c;/* item ativo da navegação                  */
+  --color-solar: #ffd100;         /* acento amarelo — ícone ativo, destaques  */
+  --color-fundo: #f4f6fa;         /* fundo da aplicação                       */
+}
+
 /* ============================ IMPRESSÃO ============================ */
 /* Elementos marcados com .no-print somem em qualquer impressão. */
 @media print {
@@ -29,4 +46,10 @@
   }
   /* Evita cortar cartões/tabelas no meio da página. */
   body.print-report .report-block { break-inside: avoid; }
+}
+
+/* ===================== ROLAGEM SUAVE POR ÂNCORA ===================== */
+/* O site usa links #ancora; respeita quem pediu menos animação no SO. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
 }

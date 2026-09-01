@@ -23,6 +23,7 @@ import {
   notificacoesRouter,
 } from './routes/painel.routes.js';
 import { propostasRouter } from './routes/propostas.routes.js';
+import { publicoRouter } from './routes/publico.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,9 @@ export function criarApp(): express.Express {
       res.json({ status: linha ? 'ok' : 'degradado', versao: '1.0.0' });
     }),
   );
+
+  // Site institucional: único router sem exigirLogin. Ver publico.routes.ts.
+  app.use('/api/publico', publicoRouter);
 
   app.use('/api/auth', authRouter);
   app.use('/api/leads', leadsRouter);

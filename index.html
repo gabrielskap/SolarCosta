@@ -1,14 +1,71 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <title>Solar Costa</title>
+    <meta name="theme-color" content="#004276" />
+
+    <!--
+      Metas da home. As demais rotas são reescritas em tempo de execução pelo
+      hook src/site/seo.ts — o site é uma SPA, então não há HTML por rota.
+    -->
+    <title>Solar Costa | Energia solar em Belo Horizonte</title>
+    <meta
+      name="description"
+      content="Projeto, instalação e homologação de energia solar em Belo Horizonte e região metropolitana. Simule sua economia e peça uma proposta com engenharia responsável."
+    />
+    <meta name="robots" content="index, follow" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Solar Costa Energia Solar" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:title" content="Solar Costa | Energia solar em Belo Horizonte" />
+    <meta
+      property="og:description"
+      content="Projeto, instalação e homologação de energia solar em Belo Horizonte e região. Simule sua economia."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!--
+      Dados estruturados para a busca local. Ficam estáticos de propósito: o
+      rastreador lê o HTML antes de qualquer fetch da API. Se o cadastro mudar
+      em SolarCosta_Empresa, atualize também este bloco.
+      TODO (Solar Costa): trocar "url" pelo domínio definitivo quando publicar.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "ElectricalContractor",
+        "name": "Solar Costa Energia Solar",
+        "legalName": "SOLAR COSTA ENERGIA SOLAR LTDA",
+        "description": "Projeto, instalação e homologação de sistemas de energia solar fotovoltaica em Belo Horizonte e região metropolitana.",
+        "url": "https://solarcosta.com.br",
+        "telephone": "+5531986588456",
+        "email": "solarcostamg@gmail.com",
+        "taxID": "42.890.112/0001-90",
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "Rua Alzira Maria Ferreira, 241",
+          "addressLocality": "Belo Horizonte",
+          "addressRegion": "MG",
+          "postalCode": "31530-150",
+          "addressCountry": "BR"
+        },
+        "areaServed": {
+          "@type": "City",
+          "name": "Belo Horizonte"
+        },
+        "knowsAbout": [
+          "Energia solar fotovoltaica",
+          "Geração distribuída",
+          "Homologação junto à concessionária"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

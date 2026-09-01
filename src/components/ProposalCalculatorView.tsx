@@ -4,6 +4,7 @@ import { Proposta, PropostaItem, Produto, Lead, User } from '../types';
 import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ } from '../utils/format';
 import { fetchAddressByCep, buildEnderecoLine, buildCidadeUf } from '../services/cep';
 import { paramNum, type ConfigApp } from '../services/api';
+import { dimensionar, projetarEconomia } from '../utils/solar';
 
 interface ProposalCalculatorViewProps {
   propostas: Proposta[];
@@ -132,28 +133,26 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const [selectedCatalogProdutoId, setSelectedCatalogProdutoId] = useState(produtos[0]?.id || '');
 
-  // Automatic sizing calculations
-  // Formula: Potência kWp = Consumo kWh / (30 * HSP * (1 - Perdas/100))
-  const geracaoPorKwp = 30 * hsp * (1 - perdasPct / 100); // ~ 117.7 kWh/kWp
-  const potenciaKwpCalculada = Number((consumoKwh / geracaoPorKwp).toFixed(2)); // ~ 8.52 kWp
-  const modulosQtdCalculada = Math.ceil((potenciaKwpCalculada * 1000) / moduloWp); // ~ 12 un
-  const geracaoMediaKwh = Math.round(potenciaKwpCalculada * geracaoPorKwp); // ~ 1003 kWh
-  const areaEstimadaM2 = Number((modulosQtdCalculada * 2.58 * 2.25).toFixed(2)); // ~ 69.96 m²
-  const coberturaPct = Number(((geracaoMediaKwh / consumoKwh) * 100).toFixed(1)); // ~ 100.3%
+  // Dimensionamento e economia moram em utils/solar.ts — o simulador público
+  // do site chama exatamente as mesmas funções, então os dois nunca divergem.
+  const {
+    potenciaKwp: potenciaKwpCalculada,  // ~ 8.52 kWp
+    modulosQtd: modulosQtdCalculada,    // ~ 12 un
+    geracaoMediaKwh,                    // ~ 1003 kWh
+    areaEstimadaM2,                     // ~ 69.96 m²
+    coberturaPct,                       // ~ 100.3%
+  } = dimensionar({ consumoKwh, hsp, perdasPct, moduloWp });
 
   // Total investment from items
   const valorTotalInvestimento = kitItens.reduce((acc, item) => acc + item.total, 0);
 
   // Financial ROI calculations
-  const economiaMensal = Number((geracaoMediaKwh * tarifaKwh).toFixed(2)); // ~ R$ 1.194,15
-  const economiaAnual = Number((economiaMensal * 12).toFixed(2)); // ~ R$ 14.329,77
-  // Compound savings with 6% annual tariff increase over 25 years
-  let economia25Anos = 0;
-  let currentYearSavings = economiaAnual;
-  for (let y = 1; y <= 25; y++) {
-    economia25Anos += currentYearSavings;
-    currentYearSavings *= 1.06;
-  }
+  const {
+    economiaMensal,                        // ~ R$ 1.194,15
+    economiaAnual,                         // ~ R$ 14.329,77
+    economiaAcumulada: economia25Anos,     // 25 anos, tarifa +6% a.a.
+  } = projetarEconomia({ geracaoMediaKwh, tarifaKwh });
+
   const paybackAnos = Number((valorTotalInvestimento / economiaAnual).toFixed(1));
 
   // PMT Price Formula for Financiamento:

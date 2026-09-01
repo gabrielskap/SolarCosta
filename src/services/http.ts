@@ -193,7 +193,8 @@ export const http = {
   patch: <T>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PATCH', corpo }),
   put: <T>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PUT', corpo }),
   delete: <T>(caminho: string) => requisitar<T>(caminho, { metodo: 'DELETE' }),
-  /** Sem Authorization — só para login e refresh. */
+  /** Sem Authorization — login, refresh e as rotas /api/publico do site. */
+  getPublico: <T>(caminho: string) => requisitar<T>(caminho, { semAuth: true }),
   postPublico: <T>(caminho: string, corpo?: unknown) =>
     requisitar<T>(caminho, { metodo: 'POST', corpo, semAuth: true }),
 };
