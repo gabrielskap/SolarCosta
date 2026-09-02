@@ -57,7 +57,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
     }
 
     const uObj: User = {
-      id: editingUser ? editingUser.id : `usr-${Date.now()}`,
+      id: editingUser ? editingUser.id : `novo-${Date.now()}`,
       nome,
       email,
       senha: senha || '123456',
