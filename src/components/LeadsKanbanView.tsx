@@ -165,11 +165,11 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
 
     onCreateLead({
       nome: novoNome,
-      cpfCnpj: novoCpfCnpj || '000.000.000-00',
-      telefone: novoTelefone || '(31) 99999-0000',
-      email: novoEmail || `${novoNome.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
+      cpfCnpj: novoCpfCnpj,
+      telefone: novoTelefone,
+      email: novoEmail,
       cidade: novaCidade,
-      endereco: novoEndereco || `${novaCidade}`,
+      endereco: novoEndereco,
       cep: novoCep || undefined,
       consumoKwh: Number(novoConsumo),
       concessionaria: novaConcessionaria,

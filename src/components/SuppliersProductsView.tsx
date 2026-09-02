@@ -93,7 +93,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     const fornObj = fornecedores.find(f => f.id === fornecedorIdProd);
 
     const prodObj: Produto = {
-      id: editingProduct ? editingProduct.id : `prd-${Date.now()}`,
+      id: editingProduct ? editingProduct.id : `novo-${Date.now()}`,
       codigo: editingProduct ? editingProduct.codigo : `PRD-00${produtos.length + 42}`,
       nome: nomeProd,
       tipo: tipoProd,
@@ -107,11 +107,6 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     onSaveProduto(prodObj);
     setIsNewProductOpen(false);
     setEditingProduct(null);
-    showToast(
-      editingProduct ? 'Produto atualizado' : 'Produto cadastrado',
-      'success',
-      `${nomeProd} gravado no catálogo.`
-    );
   };
 
   const handleSupplierSubmit = (e: React.FormEvent) => {
@@ -119,7 +114,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     if (!nomeForn) return;
 
     const fornObj: Fornecedor = {
-      id: `f-${Date.now()}`,
+      id: `novo-${Date.now()}`,
       nome: nomeForn,
       cnpj: cnpjForn || '00.000.000/0001-00',
       cidade: cidadeForn || 'Belo Horizonte/MG',
@@ -132,7 +127,6 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
     onSaveFornecedor(fornObj);
     setIsNewSupplierOpen(false);
-    showToast('Fornecedor cadastrado', 'success', `${nomeForn} adicionado aos parceiros.`);
   };
 
   return (

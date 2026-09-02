@@ -65,7 +65,7 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
   const [formHorarioFim, setFormHorarioFim] = useState<string>('10:30');
   const [formEndereco, setFormEndereco] = useState<string>('');
   const [formCidade, setFormCidade] = useState<string>('');
-  const [formResponsavel, setFormResponsavel] = useState<string>('Thiago Gonçalves Leal');
+  const [formResponsavel, setFormResponsavel] = useState<string>(users[0]?.nome || '');
   const [formObservacoes, setFormObservacoes] = useState<string>('');
 
   // Auto populate form when lead changes
@@ -211,17 +211,41 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
   // Handle Form Submit
   const handleSubmitNewAgendamento = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (leads.length === 0) {
+      showToast('Nenhum lead cadastrado', 'error', 'Cadastre um lead antes de agendar uma visita ou reunião.');
+      return;
+    }
+    const selectedLead = leads.find(l => l.id === formLeadId);
+    if (!selectedLead) {
+      showToast('Campos incompletos', 'error', 'Selecione o lead vinculado ao compromisso.');
+      return;
+    }
     if (!formTitulo.trim()) {
       showToast('Campos incompletos', 'error', 'Informe o título ou motivo do agendamento.');
       return;
     }
-
-    const selectedLead = leads.find(l => l.id === formLeadId);
+    if (!formData) {
+      showToast('Campos incompletos', 'error', 'Informe a data do compromisso.');
+      return;
+    }
+    if (!formHorarioInicio || !formHorarioFim) {
+      showToast('Campos incompletos', 'error', 'Informe o horário de início e término.');
+      return;
+    }
+    if (formHorarioFim <= formHorarioInicio) {
+      showToast('Horário inválido', 'error', 'O horário de término deve ser depois do início.');
+      return;
+    }
+    if (!formResponsavel.trim() || !users.some(u => u.nome === formResponsavel)) {
+      showToast('Campos incompletos', 'error', 'Selecione o responsável técnico/comercial.');
+      return;
+    }
 
     const newAgendamento: Agendamento = {
       id: `ag-${Date.now()}`,
       leadId: formLeadId,
-      leadNome: selectedLead ? selectedLead.nome : 'Lead',
+      leadNome: selectedLead.nome,
       tipo: formTipo,
       titulo: formTitulo,
       data: formData,
@@ -815,8 +839,13 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
                 <select
                   value={formLeadId}
                   onChange={(e) => handleLeadSelectChange(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-[#004276]"
+                  required
+                  disabled={leads.length === 0}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-[#004276] disabled:opacity-60"
                 >
+                  <option value="" disabled>
+                    {leads.length === 0 ? 'Nenhum lead cadastrado' : 'Selecione um lead...'}
+                  </option>
                   {leads.map(lead => (
                     <option key={lead.id} value={lead.id}>
                       {lead.nome} - {lead.cidade} ({lead.etapa})
@@ -888,8 +917,13 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
                 <select
                   value={formResponsavel}
                   onChange={(e) => setFormResponsavel(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-[#004276]"
+                  required
+                  disabled={users.length === 0}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-[#004276] disabled:opacity-60"
                 >
+                  <option value="" disabled>
+                    {users.length === 0 ? 'Nenhum usuário cadastrado' : 'Selecione um responsável...'}
+                  </option>
                   {users.map(u => (
                     <option key={u.id} value={u.nome}>{u.nome} ({u.cargo || u.perfil})</option>
                   ))}

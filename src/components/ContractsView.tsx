@@ -179,12 +179,33 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
     dataEmissao: new Date().toLocaleDateString('pt-BR')
   };
 
+  // Mesmas obrigatoriedades do schema do backend (contratos.routes.ts), checadas
+  // aqui antes para não deixar o usuário gerar/imprimir um PDF com contratante,
+  // CPF/CNPJ ou endereço em branco quando o salvamento vai ser recusado.
+  const validarContrato = (): boolean => {
+    if (!clienteNome.trim()) {
+      showToast('Campos incompletos', 'error', 'Informe o contratante.');
+      return false;
+    }
+    if (!cpfCnpj.trim()) {
+      showToast('Campos incompletos', 'error', 'CPF/CNPJ é obrigatório no contrato.');
+      return false;
+    }
+    if (!endereco.trim()) {
+      showToast('Campos incompletos', 'error', 'Informe o endereço.');
+      return false;
+    }
+    return true;
+  };
+
   const handleSaveDraft = () => {
+    if (!validarContrato()) return;
     onSaveContract(currentContractObj);
     showToast('Rascunho do contrato salvo', 'success', 'Contrato armazenado no sistema.');
   };
 
   const handleGeneratePDF = () => {
+    if (!validarContrato()) return;
     onSaveContract(currentContractObj);
     onOpenPDF('contrato', currentContractObj);
   };

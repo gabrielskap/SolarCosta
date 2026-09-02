@@ -173,22 +173,22 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
             <div className="space-y-3 text-xs">
               <div>
                 <span className="font-bold text-slate-400 uppercase">CPF / CNPJ</span>
-                <p className="font-bold text-slate-900">{lead.cpfCnpj}</p>
+                <p className="font-bold text-slate-900">{lead.cpfCnpj || '—'}</p>
               </div>
 
               <div>
                 <span className="font-bold text-slate-400 uppercase">TELEFONE</span>
-                <p className="font-bold text-slate-900">{lead.telefone}</p>
+                <p className="font-bold text-slate-900">{lead.telefone || '—'}</p>
               </div>
 
               <div>
                 <span className="font-bold text-slate-400 uppercase">E-MAIL</span>
-                <p className="font-medium text-slate-800 truncate">{lead.email}</p>
+                <p className="font-medium text-slate-800 truncate">{lead.email || '—'}</p>
               </div>
 
               <div>
                 <span className="font-bold text-slate-400 uppercase">ENDEREÇO DA INSTALAÇÃO</span>
-                <p className="font-medium text-slate-800 leading-relaxed">{lead.endereco}</p>
+                <p className="font-medium text-slate-800 leading-relaxed">{lead.endereco || '—'}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2 pt-1">

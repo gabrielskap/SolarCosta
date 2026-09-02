@@ -312,7 +312,9 @@ export default function App() {
 
   const handleSaveProduto = async (produto: Produto) => {
     try {
+      const novo = !produto.id || produto.id.startsWith('novo-');
       setProdutos(await Api.saveProduto(produto));
+      showToast(novo ? 'Produto cadastrado' : 'Produto atualizado', 'success', `${produto.nome} gravado no catálogo.`);
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível salvar o produto');
@@ -330,7 +332,9 @@ export default function App() {
 
   const handleSaveFornecedor = async (fornecedor: Fornecedor) => {
     try {
+      const novo = !fornecedor.id || fornecedor.id.startsWith('novo-');
       setFornecedores(await Api.saveFornecedor(fornecedor));
+      showToast(novo ? 'Fornecedor cadastrado' : 'Fornecedor atualizado', 'success', `${fornecedor.nome} adicionado aos parceiros.`);
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível salvar o fornecedor');

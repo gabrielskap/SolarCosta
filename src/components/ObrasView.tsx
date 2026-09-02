@@ -263,6 +263,18 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
       showToast('Cliente obrigatório', 'error', 'Informe o cliente da obra.');
       return;
     }
+    if (!fEndereco.trim()) {
+      showToast('Endereço obrigatório', 'error', 'Informe o endereço de instalação da obra.');
+      return;
+    }
+    if (!fPotencia || fPotencia <= 0) {
+      showToast('Potência obrigatória', 'error', 'Informe a potência (kWp) do sistema da obra.');
+      return;
+    }
+    if (!fModulos || fModulos <= 0) {
+      showToast('Módulos obrigatórios', 'error', 'Informe a quantidade de módulos da obra.');
+      return;
+    }
     const contrato = contratos.find(c => c.id === fContratoId);
     const proposta = contrato
       ? propostas.find(p => p.leadId === contrato.leadId || p.id === contrato.leadId)
@@ -679,16 +691,16 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
                   </select>
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Endereço da instalação</label>
-                  <input type="text" value={fEndereco} onChange={(e) => setFEndereco(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
+                  <label className="block font-bold text-slate-600 uppercase mb-1">Endereço da instalação *</label>
+                  <input type="text" required value={fEndereco} onChange={(e) => setFEndereco(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Potência (kWp)</label>
-                  <input type="number" step="0.01" value={fPotencia} onChange={(e) => setFPotencia(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                  <label className="block font-bold text-slate-600 uppercase mb-1">Potência (kWp) *</label>
+                  <input type="number" step="0.01" required min="0.01" value={fPotencia || ''} onChange={(e) => setFPotencia(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Nº de módulos</label>
-                  <input type="number" value={fModulos} onChange={(e) => setFModulos(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                  <label className="block font-bold text-slate-600 uppercase mb-1">Nº de módulos *</label>
+                  <input type="number" required min="1" value={fModulos || ''} onChange={(e) => setFModulos(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-600 uppercase mb-1">Módulo</label>

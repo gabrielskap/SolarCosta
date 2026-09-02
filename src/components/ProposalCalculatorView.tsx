@@ -215,7 +215,38 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     showToast('Item adicionado', 'success', `${prod.nome} incluído no kit.`);
   };
 
+  // Espelha os requisitos mínimos do backend (propostaSchema): sem isso, o
+  // POST falha depois que o PDF já foi aberto/impresso com dados fictícios.
+  const validarProposta = (): boolean => {
+    if (!clienteNome.trim()) {
+      showToast('Campos incompletos', 'error', 'Informe o nome do cliente.');
+      return false;
+    }
+    if (cpfInvalido) {
+      showToast('Documento inválido', 'error', `Verifique o ${docLabel(cpfCnpj)} informado.`);
+      return false;
+    }
+    if (consumoKwh <= 0) {
+      showToast('Campos incompletos', 'error', 'Informe um consumo médio (kWh/mês) maior que zero.');
+      return false;
+    }
+    if (tarifaKwh <= 0) {
+      showToast('Campos incompletos', 'error', 'Informe uma tarifa de energia válida.');
+      return false;
+    }
+    if (hsp <= 0) {
+      showToast('Campos incompletos', 'error', 'Informe o HSP (horas de sol pleno) da cidade.');
+      return false;
+    }
+    if (kitItens.length === 0) {
+      showToast('Kit vazio', 'error', 'Adicione pelo menos um item do catálogo antes de gerar a proposta.');
+      return false;
+    }
+    return true;
+  };
+
   const handleSaveDraft = () => {
+    if (!validarProposta()) return;
     const prop: Proposta = {
       id: `prop-${Date.now()}`,
       numero: '', // gerado pelo banco ao salvar
@@ -264,6 +295,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   };
 
   const handleGeneratePDF = () => {
+    if (!validarProposta()) return;
     const prop: Proposta = {
       id: `prop-${Date.now()}`,
       numero: '', // gerado pelo banco ao salvar
