@@ -575,8 +575,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Comparativo de propostas em andamento vs. contratos fechados por vendedor
             </p>
           </div>
-          <button 
-            onClick={() => onNavigateTab('contrato')}
+          <button
+            onClick={() => onNavigateTab('contratos')}
             className="text-xs font-bold text-[#004276] hover:text-blue-900 flex items-center gap-1 hover:underline self-start sm:self-auto"
           >
             Ver Contratos <ChevronRight className="w-3.5 h-3.5" />
@@ -637,7 +637,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <div className="pt-2">
               <button
-                onClick={() => onNavigateTab('proposta')}
+                onClick={() => onNavigateTab('propostas/nova')}
                 className="w-full py-2 bg-[#004276] hover:bg-blue-900 text-white rounded-lg text-xs font-bold transition shadow-xs flex items-center justify-center gap-2"
               >
                 <span>Criar Nova Proposta</span>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2, MapPinned } from 'lucide-react';
+import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2, MapPinned, ArrowLeft } from 'lucide-react';
 import { Proposta, PropostaItem, Produto, Lead, User } from '../types';
 import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ } from '../utils/format';
 import { fetchAddressByCep, buildEnderecoLine, buildCidadeUf } from '../services/cep';
@@ -17,6 +17,8 @@ interface ProposalCalculatorViewProps {
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
+  /** Quando presente, exibe um link de retorno para a listagem de propostas. */
+  onBack?: () => void;
 }
 
 export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
@@ -28,7 +30,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   onSaveProposal,
   onOpenPDF,
   currentUser,
-  showToast
+  showToast,
+  onBack
 }) => {
   // Lead vinculado. Sem lead selecionado o formulário nasce em branco — antes
   // ele caía num lead fixo de demonstração ("Cristiano Duarte Almeida").
@@ -348,6 +351,15 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-[#004276] mb-1.5 transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Voltar para propostas
+            </button>
+          )}
           <h1 className="text-2xl font-extrabold text-[#004276]">Proposta de orçamento</h1>
           <p className="text-xs text-slate-500 font-semibold mt-0.5">
             {/* O número é gerado pelo banco ao salvar; a validade vem dos parâmetros. */}

@@ -1,25 +1,12 @@
 import React from 'react';
+import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, Sun, ChevronRight, Menu, X, Calendar, BarChart3, History, HardHat
+  LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, ChevronRight, X, Calendar, BarChart3, History, HardHat
 } from 'lucide-react';
 import { User } from '../types';
 import logoFull from '../assets/logo-full.png';
 
-export type ActiveTab =
-  | 'dashboard'
-  | 'agenda'
-  | 'leads'
-  | 'detalhe_lead'
-  | 'proposta'
-  | 'contrato'
-  | 'financeiro'
-  | 'fornecedores'
-  | 'usuarios'
-  | string;
-
 interface SidebarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
   currentUser: User;
   onLogout: () => void;
   isOpenMobile?: boolean;
@@ -27,8 +14,6 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  activeTab,
-  setActiveTab,
   currentUser,
   onLogout,
   isOpenMobile = false,
@@ -45,25 +30,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     {
       section: 'VISÃO GERAL', items: [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'agenda', label: 'Agenda & Visitas', icon: Calendar },
+        { to: '/sistema/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { to: '/sistema/agenda', label: 'Agenda & Visitas', icon: Calendar },
       ]
     },
     {
       section: 'OPERAÇÃO', items: [
-        { id: 'leads', label: 'Leads', icon: Users },
-        { id: 'proposta', label: 'Propostas de orçamento', icon: FileText },
-        { id: 'contrato', label: 'Contratos', icon: FileCheck },
-        { id: 'obras', label: 'Obras & Instalação', icon: HardHat },
+        { to: '/sistema/leads', label: 'Leads', icon: Users },
+        { to: '/sistema/propostas', label: 'Propostas de orçamento', icon: FileText },
+        { to: '/sistema/contratos', label: 'Contratos', icon: FileCheck },
+        { to: '/sistema/obras', label: 'Obras & Instalação', icon: HardHat },
       ]
     },
     {
       section: 'GESTÃO', items: [
-        { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
-        { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
-        { id: 'fornecedores', label: 'Fornecedores e produtos', icon: Package },
-        { id: 'usuarios', label: 'Usuários', icon: UserCheck },
-        { id: 'auditoria', label: 'Auditoria', icon: History },
+        { to: '/sistema/financeiro', label: 'Financeiro', icon: DollarSign },
+        { to: '/sistema/relatorios', label: 'Relatórios', icon: BarChart3 },
+        { to: '/sistema/fornecedores', label: 'Fornecedores e produtos', icon: Package },
+        { to: '/sistema/usuarios', label: 'Usuários', icon: UserCheck },
+        { to: '/sistema/auditoria', label: 'Auditoria', icon: History },
       ]
     }
   ];
@@ -106,25 +91,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="space-y-1">
                 {group.items.map((item) => {
                   const Icon = item.icon;
-                  const isActive = activeTab === item.id || (item.id === 'leads' && (activeTab === 'detalhe_lead' || activeTab === 'lead-detail'));
                   return (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setActiveTab(item.id);
-                        setIsOpenMobile(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setIsOpenMobile(false)}
+                      className={({ isActive }) => `w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive
                           ? 'bg-[#002e5c] text-white font-semibold border border-[#FFD100] shadow-sm'
                           : 'text-blue-100 hover:bg-blue-900/40 hover:text-white border border-transparent'
                         }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <Icon className={`w-4 h-4 ${isActive ? 'text-[#FFD100]' : 'text-blue-200'}`} />
-                        <span>{item.label}</span>
-                      </div>
-                      {isActive && <ChevronRight className="w-4 h-4 text-[#FFD100]" />}
-                    </button>
+                      {({ isActive }) => (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <Icon className={`w-4 h-4 ${isActive ? 'text-[#FFD100]' : 'text-blue-200'}`} />
+                            <span>{item.label}</span>
+                          </div>
+                          {isActive && <ChevronRight className="w-4 h-4 text-[#FFD100]" />}
+                        </>
+                      )}
+                    </NavLink>
                   );
                 })}
               </div>

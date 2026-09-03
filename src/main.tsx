@@ -3,6 +3,10 @@
 //   /            site institucional  (bundle leve)
 //   /sistema/*   CRM                 (React.lazy — só baixa quem vai usar)
 //
+// O CRM declara suas próprias rotas internas (/sistema/dashboard,
+// /sistema/leads, etc.) num <Routes> aninhado dentro de App — por isso o
+// wildcard "*" aqui só entrega o pacote lazy, sem conhecer as subrotas.
+//
 // Rota profunda funciona sem configuração nova: o Express já devolve o
 // index.html para qualquer GET fora de /api (server/src/app.ts) e o Nginx faz
 // o mesmo com try_files.
@@ -61,7 +65,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="*" element={<NaoEncontrado />} />
         </Route>
 
-        {/* Wildcard: o CRM navega por estado interno, não por URL. */}
+        {/* Wildcard: as subrotas reais (/dashboard, /leads, ...) vivem dentro do próprio CRM. */}
         <Route path="/sistema/*" element={<Sistema />} />
       </Routes>
     </BrowserRouter>

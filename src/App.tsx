@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Routes, Route, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Api, Auth, carregarTudo, type ConfigApp } from './services/api';
 import { aoExpirarSessao, ErroApi } from './services/http';
 import {
@@ -12,6 +13,7 @@ import { LoginView } from './components/LoginView';
 import { LeadsKanbanView } from './components/LeadsKanbanView';
 import { LeadDetailView } from './components/LeadDetailView';
 import { ProposalCalculatorView } from './components/ProposalCalculatorView';
+import { ProposalsListView } from './components/ProposalsListView';
 import { ContractsView } from './components/ContractsView';
 import { FinancialView } from './components/FinancialView';
 import { SuppliersProductsView } from './components/SuppliersProductsView';
@@ -25,14 +27,79 @@ import { ToastContainer, ToastMessage } from './components/Toast';
 import { Menu, Loader2, WifiOff } from 'lucide-react';
 import logoFull from './assets/logo-full.png';
 
+interface LeadDetailRouteProps {
+  leads: Lead[];
+  propostas: Proposta[];
+  contratos: Contrato[];
+  boletos: Boleto[];
+  currentUser: User;
+  showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
+  onUpdateLeadStage: (leadId: string, newStage: LeadStage) => void;
+  onUpdateLead: (updatedLead: Lead) => void;
+  onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
+  onFetchDetalhe: (leadId: string) => void;
+}
+
+/** Casca de rota: resolve `:leadId` da URL, busca o detalhe completo e traduz "voltar"/"nova proposta" em navegação. */
+const LeadDetailRoute: React.FC<LeadDetailRouteProps> = ({ leads, onFetchDetalhe, ...rest }) => {
+  const { leadId = '' } = useParams<{ leadId: string }>();
+  const navigate = useNavigate();
+  const lead = leads.find((l) => l.id === leadId);
+
+  useEffect(() => {
+    if (leadId) onFetchDetalhe(leadId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId]);
+
+  // Link direto para um lead inexistente (ou já excluído): volta para a listagem.
+  useEffect(() => {
+    if (!lead && leads.length > 0) navigate('/sistema/leads', { replace: true });
+  }, [lead, leads.length, navigate]);
+
+  if (!lead) return null;
+
+  return (
+    <LeadDetailView
+      lead={lead}
+      onBack={() => navigate('/sistema/leads')}
+      onNavigateToProposal={(id) => navigate(`/sistema/propostas/nova?leadId=${encodeURIComponent(id)}`)}
+      onNavigateToContract={() => navigate('/sistema/contratos')}
+      {...rest}
+    />
+  );
+};
+
+interface NovaPropostaRouteProps {
+  propostas: Proposta[];
+  produtos: Produto[];
+  leads: Lead[];
+  config: ConfigApp | null;
+  onSaveProposal: (proposta: Proposta) => void;
+  onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
+  currentUser: User;
+  showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
+}
+
+/** Casca de rota: lê `?leadId=` (opcional, vindo do detalhe do lead) para pré-vincular a proposta. */
+const NovaPropostaRoute: React.FC<NovaPropostaRouteProps> = (props) => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  return (
+    <ProposalCalculatorView
+      {...props}
+      currentLeadId={searchParams.get('leadId') || undefined}
+      onBack={() => navigate('/sistema/propostas')}
+    />
+  );
+};
+
 export default function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [verificandoSessao, setVerificandoSessao] = useState(true);
 
   // Navigation State
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [selectedLeadId, setSelectedLeadId] = useState<string>('');
+  const navigate = useNavigate();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Data Collections State (carregadas da API)
@@ -153,9 +220,6 @@ export default function App() {
       setObras(dados.obras);
       setAuditLog(dados.auditoria);
       setConfig(dados.config);
-      if (dados.leads.length > 0 && !selectedLeadId) {
-        setSelectedLeadId(dados.leads[0].id);
-      }
       await recarregarNotificacoes();
     } catch (erro) {
       setErroCarga(
@@ -164,7 +228,7 @@ export default function App() {
     } finally {
       setCarregando(false);
     }
-  }, [recarregarNotificacoes, selectedLeadId]);
+  }, [recarregarNotificacoes]);
 
   useEffect(() => {
     if (currentUser) void carregarDados();
@@ -198,7 +262,7 @@ export default function App() {
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    setActiveTab('leads');
+    navigate('/sistema/leads');
     showToast('Acesso realizado', 'success', `Bem-vindo(a) ao CRM Solar Costa, ${user.nome}!`);
   };
 
@@ -433,33 +497,38 @@ export default function App() {
   /* ------------------------------------------------------- navegação -- */
 
   // Ao abrir o detalhe, busca documentos e timeline (a listagem não os traz).
-  const handleSelectLeadDetail = async (leadId: string) => {
-    setSelectedLeadId(leadId);
-    setActiveTab('detalhe_lead');
+  const fetchLeadDetalhe = useCallback(async (leadId: string) => {
     try {
       const completo = await Api.getLeadDetalhe(leadId);
       setLeads((prev) => prev.map((l) => (l.id === leadId ? completo : l)));
     } catch (erro) {
       tratarErro(erro, 'Não foi possível abrir o lead');
     }
+  }, [tratarErro]);
+
+  const handleSelectLeadDetail = (leadId: string) => {
+    navigate(`/sistema/leads/${leadId}`);
+    void fetchLeadDetalhe(leadId);
   };
 
   const handleNotificationNavigate = (tab: string, leadId?: string) => {
     if (tab === 'detalhe_lead' && leadId) {
-      void handleSelectLeadDetail(leadId);
+      handleSelectLeadDetail(leadId);
     } else {
-      setActiveTab(tab);
+      navigate(`/sistema/${tab}`);
     }
   };
 
   const handleNavigateToProposal = (leadId: string) => {
-    setSelectedLeadId(leadId);
-    setActiveTab('proposta');
+    navigate(`/sistema/propostas/nova?leadId=${encodeURIComponent(leadId)}`);
   };
 
-  const handleNavigateToContract = (leadId: string) => {
-    setSelectedLeadId(leadId);
-    setActiveTab('contrato');
+  const handleOpenNewProposal = () => {
+    navigate('/sistema/propostas/nova');
+  };
+
+  const handleNavigateToContract = (_leadId: string) => {
+    navigate('/sistema/contratos');
   };
 
   const handleOpenPDF = (type: 'proposta' | 'contrato' | 'boleto', data: any) => {
@@ -526,8 +595,6 @@ export default function App() {
     );
   }
 
-  const currentLead = leads.find((l) => l.id === selectedLeadId) || leads[0];
-
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#f4f6fa] text-slate-800 flex flex-col font-sans antialiased">
       {/* Mobile Top Header Navigation */}
@@ -560,11 +627,6 @@ export default function App() {
 
       <div className="flex-1 flex h-full overflow-hidden relative">
         <Sidebar
-          activeTab={activeTab}
-          setActiveTab={(tab) => {
-            setActiveTab(tab);
-            setIsMobileSidebarOpen(false);
-          }}
           currentUser={currentUser}
           onLogout={() => void handleLogout()}
           isOpenMobile={isMobileSidebarOpen}
@@ -598,163 +660,213 @@ export default function App() {
 
           <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 w-full min-h-0">
             <div className="max-w-[1920px] mx-auto w-full">
-          {activeTab === 'dashboard' && (
-            <DashboardView
-              leads={leads || []}
-              contratos={contratos || []}
-              propostas={propostas || []}
-              lancamentos={lancamentos || []}
-              usuarios={usuarios || []}
-              agendamentos={agendamentos || []}
-              onSaveAgendamento={handleSaveAgendamento}
-              onDeleteAgendamento={handleDeleteAgendamento}
-              onSelectLead={handleSelectLeadDetail}
-              showToast={showToast}
-              onNavigateTab={(tab) => setActiveTab(tab)}
-            />
-          )}
+              <Routes>
+                <Route index element={<Navigate to="/sistema/dashboard" replace />} />
 
-          {activeTab === 'agenda' && (
-            <InteractiveCalendar
-              agendamentos={agendamentos || []}
-              leads={leads || []}
-              users={usuarios || []}
-              onSaveAgendamento={handleSaveAgendamento}
-              onDeleteAgendamento={handleDeleteAgendamento}
-              onSelectLead={handleSelectLeadDetail}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="dashboard"
+                  element={
+                    <DashboardView
+                      leads={leads || []}
+                      contratos={contratos || []}
+                      propostas={propostas || []}
+                      lancamentos={lancamentos || []}
+                      usuarios={usuarios || []}
+                      agendamentos={agendamentos || []}
+                      onSaveAgendamento={handleSaveAgendamento}
+                      onDeleteAgendamento={handleDeleteAgendamento}
+                      onSelectLead={handleSelectLeadDetail}
+                      showToast={showToast}
+                      onNavigateTab={(tab) => navigate(`/sistema/${tab}`)}
+                    />
+                  }
+                />
 
-          {activeTab === 'leads' && (
-            <LeadsKanbanView
-              leads={leads || []}
-              users={usuarios || []}
-              onSelectLead={(lead) => handleSelectLeadDetail(lead.id)}
-              onUpdateLeadStage={handleUpdateLeadStage}
-              onCreateLead={handleCreateLead}
-              currentUser={currentUser}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="agenda"
+                  element={
+                    <InteractiveCalendar
+                      agendamentos={agendamentos || []}
+                      leads={leads || []}
+                      users={usuarios || []}
+                      onSaveAgendamento={handleSaveAgendamento}
+                      onDeleteAgendamento={handleDeleteAgendamento}
+                      onSelectLead={handleSelectLeadDetail}
+                      showToast={showToast}
+                    />
+                  }
+                />
 
-          {activeTab === 'detalhe_lead' && currentLead && (
-            <LeadDetailView
-              lead={currentLead}
-              onBack={() => setActiveTab('leads')}
-              onUpdateLeadStage={handleUpdateLeadStage}
-              onNavigateToProposal={handleNavigateToProposal}
-              onNavigateToContract={handleNavigateToContract}
-              onOpenPDF={handleOpenPDF}
-              propostas={propostas}
-              contratos={contratos}
-              boletos={boletos}
-              currentUser={currentUser}
-              showToast={showToast}
-              onUpdateLead={handleUpdateLead}
-            />
-          )}
+                <Route
+                  path="leads"
+                  element={
+                    <LeadsKanbanView
+                      leads={leads || []}
+                      users={usuarios || []}
+                      onSelectLead={(lead) => handleSelectLeadDetail(lead.id)}
+                      onUpdateLeadStage={handleUpdateLeadStage}
+                      onCreateLead={handleCreateLead}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
 
-          {activeTab === 'proposta' && (
-            <ProposalCalculatorView
-              propostas={propostas}
-              produtos={produtos}
-              leads={leads}
-              currentLeadId={selectedLeadId}
-              config={config}
-              onSaveProposal={handleSaveProposal}
-              onOpenPDF={handleOpenPDF}
-              currentUser={currentUser}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="leads/:leadId"
+                  element={
+                    <LeadDetailRoute
+                      leads={leads}
+                      propostas={propostas}
+                      contratos={contratos}
+                      boletos={boletos}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                      onUpdateLeadStage={handleUpdateLeadStage}
+                      onUpdateLead={handleUpdateLead}
+                      onOpenPDF={handleOpenPDF}
+                      onFetchDetalhe={fetchLeadDetalhe}
+                    />
+                  }
+                />
 
-          {activeTab === 'contrato' && (
-            <ContractsView
-              contratos={contratos}
-              leads={leads}
-              propostas={propostas}
-              onSaveContract={handleSaveContract}
-              config={config}
-              onOpenPDF={handleOpenPDF}
-              currentUser={currentUser}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="propostas"
+                  element={
+                    <ProposalsListView
+                      propostas={propostas}
+                      onNovaProposta={handleOpenNewProposal}
+                      onOpenPDF={handleOpenPDF}
+                    />
+                  }
+                />
 
-          {activeTab === 'financeiro' && (
-            <FinancialView
-              boletos={boletos}
-              lancamentos={lancamentos}
-              onSaveBoleto={handleSaveBoleto}
-              onDeleteBoleto={handleDeleteBoleto}
-              onAddLancamento={handleAddLancamento}
-              onOpenPDF={handleOpenPDF}
-              currentUser={currentUser}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="propostas/nova"
+                  element={
+                    <NovaPropostaRoute
+                      propostas={propostas}
+                      produtos={produtos}
+                      leads={leads}
+                      config={config}
+                      onSaveProposal={handleSaveProposal}
+                      onOpenPDF={handleOpenPDF}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
 
-          {activeTab === 'fornecedores' && (
-            <SuppliersProductsView
-              produtos={produtos}
-              fornecedores={fornecedores}
-              onSaveProduto={handleSaveProduto}
-              onDeleteProduto={handleDeleteProduto}
-              onSaveFornecedor={handleSaveFornecedor}
-              onDeleteFornecedor={handleDeleteFornecedor}
-              currentUser={currentUser}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="contratos"
+                  element={
+                    <ContractsView
+                      contratos={contratos}
+                      leads={leads}
+                      propostas={propostas}
+                      onSaveContract={handleSaveContract}
+                      config={config}
+                      onOpenPDF={handleOpenPDF}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
 
-          {activeTab === 'usuarios' && (
-            <UsersView
-              usuarios={usuarios}
-              onSaveUser={handleSaveUser}
-              onDeleteUser={handleDeleteUser}
-              currentUser={currentUser}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="financeiro"
+                  element={
+                    <FinancialView
+                      boletos={boletos}
+                      lancamentos={lancamentos}
+                      onSaveBoleto={handleSaveBoleto}
+                      onDeleteBoleto={handleDeleteBoleto}
+                      onAddLancamento={handleAddLancamento}
+                      onOpenPDF={handleOpenPDF}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
 
-          {activeTab === 'obras' && (
-            <ObrasView
-              obras={obras || []}
-              contratos={contratos || []}
-              propostas={propostas || []}
-              produtos={produtos || []}
-              users={usuarios || []}
-              currentUser={currentUser}
-              onSaveObra={handleSaveObra}
-              onDeleteObra={handleDeleteObra}
-              onBaixarEstoque={handleBaixarEstoque}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="fornecedores"
+                  element={
+                    <SuppliersProductsView
+                      produtos={produtos}
+                      fornecedores={fornecedores}
+                      onSaveProduto={handleSaveProduto}
+                      onDeleteProduto={handleDeleteProduto}
+                      onSaveFornecedor={handleSaveFornecedor}
+                      onDeleteFornecedor={handleDeleteFornecedor}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
 
-          {activeTab === 'relatorios' && (
-            <ReportsView
-              leads={leads || []}
-              contratos={contratos || []}
-              propostas={propostas || []}
-              boletos={boletos || []}
-              lancamentos={lancamentos || []}
-              usuarios={usuarios || []}
-              currentUser={currentUser}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="usuarios"
+                  element={
+                    <UsersView
+                      usuarios={usuarios}
+                      onSaveUser={handleSaveUser}
+                      onDeleteUser={handleDeleteUser}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
 
-          {activeTab === 'auditoria' && (
-            <AuditTrailView
-              audit={auditLog}
-              usuarios={usuarios || []}
-              currentUser={currentUser}
-              onClear={() => showToast('Trilha imutável', 'info', 'A auditoria é append-only e não pode ser apagada pelo sistema.')}
-              showToast={showToast}
-            />
-          )}
+                <Route
+                  path="obras"
+                  element={
+                    <ObrasView
+                      obras={obras || []}
+                      contratos={contratos || []}
+                      propostas={propostas || []}
+                      produtos={produtos || []}
+                      users={usuarios || []}
+                      currentUser={currentUser}
+                      onSaveObra={handleSaveObra}
+                      onDeleteObra={handleDeleteObra}
+                      onBaixarEstoque={handleBaixarEstoque}
+                      showToast={showToast}
+                    />
+                  }
+                />
+
+                <Route
+                  path="relatorios"
+                  element={
+                    <ReportsView
+                      leads={leads || []}
+                      contratos={contratos || []}
+                      propostas={propostas || []}
+                      boletos={boletos || []}
+                      lancamentos={lancamentos || []}
+                      usuarios={usuarios || []}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
+
+                <Route
+                  path="auditoria"
+                  element={
+                    <AuditTrailView
+                      audit={auditLog}
+                      usuarios={usuarios || []}
+                      currentUser={currentUser}
+                      onClear={() => showToast('Trilha imutável', 'info', 'A auditoria é append-only e não pode ser apagada pelo sistema.')}
+                      showToast={showToast}
+                    />
+                  }
+                />
+
+                <Route path="*" element={<Navigate to="/sistema/dashboard" replace />} />
+              </Routes>
             </div>
           </main>
         </div>
