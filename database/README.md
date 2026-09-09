@@ -17,8 +17,17 @@ inteiro (`Alt+X`). Todos abrem com `BEGIN` e fecham com `COMMIT`.
 | 2 | `migrations/V002__indices.sql` | Índices + função imutável de busca sem acento | Sim |
 | 3 | `migrations/V003__funcoes_e_triggers.sql` | Numeração, estoque, auditoria, histórico | Sim |
 | 4 | `migrations/V004__views.sql` | 16 views de leitura (dashboard, notificações, painéis) | Sim |
-| 5 | `seeds/S001__configuracao_base.sql` | Empresa, parâmetros, domínios, admin de bootstrap | Sim |
-| 6 | `seeds/S002__dados_demo.sql` | Migração dos dados mockados de `storage.ts` | Só em dev/homolog |
+| 5 | `migrations/V005__geolocalizacao.sql` | Coordenada e layout de telhado na proposta (Solar API) | Sim |
+| 6 | `migrations/V006__cep_proposta.sql` | CEP e número do imóvel na proposta + coordenada na view de leads | Sim |
+| 7 | `seeds/S001__configuracao_base.sql` | Empresa, parâmetros, domínios, admin de bootstrap | Sim |
+| 8 | `seeds/S002__dados_demo.sql` | Migração dos dados mockados de `storage.ts` | Só em dev/homolog |
+
+> **V005 e V006 em banco que já está rodando.** São aditivas (`ADD COLUMN IF NOT EXISTS`)
+> e podem ser aplicadas com o sistema no ar — nenhuma coluna existente muda de
+> tipo e nenhuma linha é reescrita. Rode com o papel **dono** das tabelas, não
+> com `solarcosta_app`: esse é só DML e recebe `42501 permission denied for
+> schema public` ao tentar `ALTER TABLE`. A V006 recria a `SolarCosta_vw_Leads`
+> com `CREATE OR REPLACE` — leitores concorrentes não são interrompidos.
 
 > **O `rollback/R001__drop_all.sql` não está nessa lista de propósito.**
 > Ele é a saída de emergência: apaga todos os objetos `SolarCosta_`. Se for

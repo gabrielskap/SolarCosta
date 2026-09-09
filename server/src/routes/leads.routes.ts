@@ -37,6 +37,11 @@ const leadBase = z.object({
   bairro: z.string().max(120).nullish(),
   cidade: z.string().max(120).nullish(),
   uf: z.string().length(2).nullish(),
+  // Coordenada do imóvel (V005). Chega da proposta, que a resolve pela Solar
+  // API, e volta por aqui para o cadastro do lead poder corrigi-la à mão.
+  latitude: z.coerce.number().min(-90).max(90).nullish(),
+  longitude: z.coerce.number().min(-180).max(180).nullish(),
+  place_id: z.string().max(300).nullish(),
   consumo_kwh: z.coerce.number().min(0).default(0),
   valor_estimado: z.coerce.number().min(0).default(0),
   observacoes: z.string().nullish(),
@@ -172,14 +177,16 @@ leadsRouter.post(
         `INSERT INTO "SolarCosta_Leads" (
             nome, cpf_cnpj, rg_inscricao, telefone, email, cep, endereco, bairro, cidade, uf,
             consumo_kwh, valor_estimado, observacoes, etapa,
-            concessionaria_id, tipo_telhado_id, origem_id, responsavel_id
+            concessionaria_id, tipo_telhado_id, origem_id, responsavel_id,
+            latitude, longitude, place_id
          ) VALUES (
             $1, $2, $3, $4, NULLIF($5,'')::citext, $6, $7, $8, $9, $10,
             $11, $12, $13, $14,
             COALESCE($15::int, (SELECT id FROM "SolarCosta_Concessionarias" WHERE nome = $16)),
             COALESCE($17::int, (SELECT id FROM "SolarCosta_TiposTelhado"    WHERE nome = $18)),
             COALESCE($19::int, (SELECT id FROM "SolarCosta_OrigensLead"     WHERE nome = $20)),
-            COALESCE($21::uuid, (SELECT id FROM "SolarCosta_Usuarios" WHERE nome = $22 AND excluido_em IS NULL))
+            COALESCE($21::uuid, (SELECT id FROM "SolarCosta_Usuarios" WHERE nome = $22 AND excluido_em IS NULL)),
+            $23, $24, $25
          )
          RETURNING id`,
         [
@@ -191,6 +198,7 @@ leadsRouter.post(
           dados.tipo_telhado_id ?? null, dados.telhado ?? null,
           dados.origem_id ?? null, dados.origem ?? null,
           dados.responsavel_id ?? null, dados.responsavel ?? null,
+          dados.latitude ?? null, dados.longitude ?? null, dados.place_id ?? null,
         ],
       );
 
@@ -239,7 +247,10 @@ leadsRouter.patch(
             concessionaria_id = COALESCE($15::int,  (SELECT id FROM "SolarCosta_Concessionarias" WHERE nome = $16), concessionaria_id),
             tipo_telhado_id   = COALESCE($17::int,  (SELECT id FROM "SolarCosta_TiposTelhado"    WHERE nome = $18), tipo_telhado_id),
             origem_id         = COALESCE($19::int,  (SELECT id FROM "SolarCosta_OrigensLead"     WHERE nome = $20), origem_id),
-            responsavel_id    = COALESCE($21::uuid, (SELECT id FROM "SolarCosta_Usuarios" WHERE nome = $22 AND excluido_em IS NULL), responsavel_id)
+            responsavel_id    = COALESCE($21::uuid, (SELECT id FROM "SolarCosta_Usuarios" WHERE nome = $22 AND excluido_em IS NULL), responsavel_id),
+            latitude          = COALESCE($23, latitude),
+            longitude         = COALESCE($24, longitude),
+            place_id          = COALESCE($25, place_id)
           WHERE id = $1 AND excluido_em IS NULL
           RETURNING id, nome`,
         [
@@ -251,6 +262,7 @@ leadsRouter.patch(
           dados.tipo_telhado_id ?? null, dados.telhado ?? null,
           dados.origem_id ?? null, dados.origem ?? null,
           dados.responsavel_id ?? null, dados.responsavel ?? null,
+          dados.latitude ?? null, dados.longitude ?? null, dados.place_id ?? null,
         ],
       );
 

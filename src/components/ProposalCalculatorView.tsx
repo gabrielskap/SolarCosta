@@ -1,10 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2, MapPinned, ArrowLeft } from 'lucide-react';
 import { Proposta, PropostaItem, Produto, Lead, User } from '../types';
 import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ } from '../utils/format';
-import { fetchAddressByCep, buildEnderecoLine, buildCidadeUf } from '../services/cep';
+import {
+  fetchAddressByCep,
+  buildEnderecoLine,
+  buildEnderecoBusca,
+  buildCidadeUf,
+  type EnderecoViaCEP,
+} from '../services/cep';
 import { paramNum, type ConfigApp } from '../services/api';
 import { dimensionar, projetarEconomia } from '../utils/solar';
+import {
+  PainelTelhado,
+  type CoordenadaConhecida,
+  type DadosTelhadoProposta,
+} from './mapa/PainelTelhado';
 
 interface ProposalCalculatorViewProps {
   propostas: Proposta[];
@@ -51,21 +62,92 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
   const [cepLoading, setCepLoading] = useState(false);
 
+  /**
+   * Retorno bruto do ViaCEP.
+   *
+   * Guardado porque o número do imóvel chega DEPOIS: sem ele, acrescentar
+   * "512" à linha de endereço exigiria uma segunda consulta ou um parse da
+   * string já formatada com "–".
+   */
+  const [enderecoViaCep, setEnderecoViaCep] = useState<EnderecoViaCEP | null>(null);
+  const [numeroEndereco, setNumeroEndereco] = useState('');
+
+  /**
+   * O consultor mexeu na linha do endereço: a partir daí nem o CEP nem o
+   * número a reescrevem. Ver um complemento digitado à mão sumir ao informar o
+   * número seria a pior surpresa possível nesta tela.
+   */
+  const [enderecoEditadoAMao, setEnderecoEditadoAMao] = useState(false);
+
+  /** Coordenada já gravada no lead (V005): dispensa o geocoding. */
+  const [coordenadaLead, setCoordenadaLead] = useState<CoordenadaConhecida | null>(null);
+
+  /**
+   * Alvo da busca automática de telhado.
+   *
+   * DERIVADO, não estado: assim é impossível ficar defasado em relação a
+   * `enderecoViaCep`/`numeroEndereco`, e como é string primitiva serve de
+   * dependência estável do efeito lá dentro do PainelTelhado.
+   *
+   * Nulo quando o CEP não tem logradouro (CEP geral de cidade, tipo
+   * 30000-000): esse endereço geocodifica no centro do município, a Solar API
+   * responde 404 e as chamadas do Google saem da fatura à toa. Nesses casos o
+   * consultor digita o endereço e usa o botão de busca manual.
+   */
+  const consultaAuto = enderecoViaCep?.logradouro
+    ? buildEnderecoBusca(enderecoViaCep, numeroEndereco)
+    : null;
+
+  /**
+   * Último CEP efetivamente consultado.
+   *
+   * O onChange dispara a cada tecla e a máscara pode reemitir o mesmo valor;
+   * apagar e redigitar o último dígito também refaria a consulta — e agora
+   * arrastaria a cadeia paga do Google atrás.
+   */
+  const ultimoCepConsultado = useRef('');
+
   // Integração CEP -> endereço (ViaCEP): preenche endereço e cidade/UF.
   const handleCepLookup = async (cepValue: string) => {
-    if (onlyDigits(cepValue).length !== 8) return;
+    const digitos = onlyDigits(cepValue);
+    if (digitos.length !== 8 || digitos === ultimoCepConsultado.current) return;
+    ultimoCepConsultado.current = digitos;
+
     setCepLoading(true);
     const result = await fetchAddressByCep(cepValue);
     setCepLoading(false);
     if (!result.ok || !result.endereco) {
+      // Deixa reconsultar: o erro pode ter sido de rede, não do CEP.
+      ultimoCepConsultado.current = '';
       showToast('CEP não encontrado', 'error', result.erro || 'Verifique o CEP informado.');
       return;
     }
-    const linha = buildEnderecoLine(result.endereco);
+
+    setEnderecoViaCep(result.endereco);
+    // CEP novo = endereço novo: a linha volta a ser nossa para reescrever.
+    setEnderecoEditadoAMao(false);
+    // E invalida a coordenada herdada do lead — o imóvel agora é outro.
+    setCoordenadaLead(null);
+
+    const linha = buildEnderecoLine(result.endereco, numeroEndereco);
     if (linha) setEndereco(linha);
     const cidadeUf = buildCidadeUf(result.endereco);
     if (cidadeUf) setCidade(cidadeUf);
     showToast('Endereço preenchido', 'success', `${linha || cidadeUf} (via ViaCEP).`);
+  };
+
+  /**
+   * Número do imóvel: remonta a linha do endereço só enquanto ela for nossa.
+   *
+   * Depois de uma edição manual o número continua entrando na CONSULTA (é ele
+   * que faz o geocoding cair sobre a edificação), mas não na linha da tela.
+   */
+  const aoDigitarNumero = (valor: string) => {
+    const limpo = valor.slice(0, 20);
+    setNumeroEndereco(limpo);
+    if (enderecoViaCep && !enderecoEditadoAMao) {
+      setEndereco(buildEnderecoLine(enderecoViaCep, limpo));
+    }
   };
 
   const cpfInvalido = !!cpfCnpj && !isValidCPFCNPJ(cpfCnpj);
@@ -114,10 +196,22 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     if (config.bancos.length > 0) setBancoFinanciamento(config.bancos[0].nome);
   }, [config]);
 
+  /**
+   * Só reaplica quando o LEAD muda de fato.
+   *
+   * `leads` é recriado pelo App a cada recarga — e salvar a proposta chama
+   * getLeads(). Sem esta trava o formulário voltava sozinho para os dados do
+   * lead logo depois de salvar, e agora ainda reinjetaria a coordenada,
+   * disparando chamadas pagas do Google a cada save.
+   */
+  const leadAplicado = useRef<string | null>(null);
+
   // Ao trocar de lead, o formulário reflete o cliente escolhido.
   useEffect(() => {
+    if (leadAplicado.current === leadIdSelecionado) return;
     const lead = leads.find(l => l.id === leadIdSelecionado);
     if (!lead) return;
+    leadAplicado.current = leadIdSelecionado;
     setClienteNome(lead.nome || '');
     setCpfCnpj(lead.cpfCnpj || '');
     setTelefone(lead.telefone || '');
@@ -128,9 +222,32 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setTelhado(lead.telhado || '');
     setCep(lead.cep || '');
     if (lead.consumoKwh) setConsumoKwh(lead.consumoKwh);
+
+    // O endereço do lead veio pronto do banco: não há payload do ViaCEP para
+    // remontar a linha, então a busca automática por endereço fica desligada
+    // até o consultor mexer no CEP (a coordenada abaixo cobre o caso comum).
+    setEnderecoViaCep(null);
+    setNumeroEndereco('');
+    setEnderecoEditadoAMao(false);
+    // Zera a trava para que redigitar o próprio CEP do lead volte a consultar
+    // o ViaCEP — é o caminho do consultor que quer a busca por satélite num
+    // lead antigo, sem coordenada gravada.
+    ultimoCepConsultado.current = '';
+
+    // Coordenada gravada por uma proposta anterior deste lead: o painel abre
+    // já localizado, pulando o geocoding.
+    setCoordenadaLead(
+      lead.latitude != null && lead.longitude != null
+        ? { latitude: lead.latitude, longitude: lead.longitude, placeId: lead.placeId }
+        : null,
+    );
   }, [leadIdSelecionado, leads]);
 
   const [customLogoUrl, setCustomLogoUrl] = useState<string>('');
+
+  // Telhado por satélite. Fica nulo enquanto o consultor não buscar — a
+  // proposta é válida sem isso, só não ganha a página do layout no PDF.
+  const [dadosTelhado, setDadosTelhado] = useState<DadosTelhadoProposta | null>(null);
 
   // Modal to add catalog item
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
@@ -248,100 +365,73 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     return true;
   };
 
+  /**
+   * Monta o objeto da proposta a partir do formulário.
+   *
+   * Existe porque salvar rascunho e gerar PDF montavam o MESMO objeto de 40
+   * campos, copiado duas vezes: qualquer campo novo tinha de ser lembrado nos
+   * dois lugares, e esquecer um dava um bug que só aparecia num dos caminhos.
+   */
+  const montarProposta = (status: Proposta['status']): Proposta => ({
+    id: `prop-${Date.now()}`,
+    numero: '', // gerado pelo banco ao salvar
+    leadId: linkedLead?.id || '',
+    clienteNome,
+    cpfCnpj,
+    telefone,
+    email,
+    endereco,
+    cidade,
+    concessionaria,
+    telhado,
+    consumoKwh,
+    tarifaKwh,
+    hsp,
+    perdasPct,
+    moduloWp,
+    potenciaKwp: potenciaKwpCalculada,
+    modulosQtd: modulosQtdCalculada,
+    areaEstimadaM2,
+    geracaoMediaKwh,
+    coberturaPct,
+    kitItens,
+    valorTotal: valorTotalInvestimento,
+    economiaMensal,
+    economiaAnual,
+    economia25Anos,
+    paybackAnos,
+    formaPagamento,
+    descontoAvistaPct,
+    parcelasCartao,
+    taxaCartaoPct,
+    entradaFinanciamentoValor: entradaValor,
+    entradaFinanciamentoPct,
+    parcelasFinanciamento,
+    jurosFinanciamentoMesPct,
+    bancoFinanciamento,
+    dataCriacao: new Date().toLocaleDateString('pt-BR'),
+    status,
+    observacoes,
+    customLogoUrl,
+    // Endereço em partes: é o CEP que dispara a busca por satélite e o número
+    // que a faz cair sobre a edificação. Sem persistir, reabrir a proposta
+    // recomeçaria pelo ponto aproximado.
+    cep,
+    numeroEndereco,
+    // Telhado por satélite: espalhado só quando a busca foi feita, para não
+    // gravar um punhado de nulos em proposta que não usou o recurso.
+    ...(dadosTelhado ?? {}),
+  });
+
   const handleSaveDraft = () => {
     if (!validarProposta()) return;
-    const prop: Proposta = {
-      id: `prop-${Date.now()}`,
-      numero: '', // gerado pelo banco ao salvar
-      leadId: linkedLead?.id || '',
-      clienteNome,
-      cpfCnpj,
-      telefone,
-      email,
-      endereco,
-      cidade,
-      concessionaria,
-      telhado,
-      consumoKwh,
-      tarifaKwh,
-      hsp,
-      perdasPct,
-      moduloWp,
-      potenciaKwp: potenciaKwpCalculada,
-      modulosQtd: modulosQtdCalculada,
-      areaEstimadaM2,
-      geracaoMediaKwh,
-      coberturaPct,
-      kitItens,
-      valorTotal: valorTotalInvestimento,
-      economiaMensal,
-      economiaAnual,
-      economia25Anos,
-      paybackAnos,
-      formaPagamento,
-      descontoAvistaPct,
-      parcelasCartao,
-      taxaCartaoPct,
-      entradaFinanciamentoValor: entradaValor,
-      entradaFinanciamentoPct,
-      parcelasFinanciamento,
-      jurosFinanciamentoMesPct,
-      bancoFinanciamento,
-      dataCriacao: new Date().toLocaleDateString('pt-BR'),
-      status: 'rascunho',
-      observacoes,
-      customLogoUrl
-    };
-
-    onSaveProposal(prop);
+    onSaveProposal(montarProposta('rascunho'));
     showToast('Rascunho salvo', 'success', 'Proposta de orçamento gravada com sucesso.');
   };
 
   const handleGeneratePDF = () => {
     if (!validarProposta()) return;
-    const prop: Proposta = {
-      id: `prop-${Date.now()}`,
-      numero: '', // gerado pelo banco ao salvar
-      leadId: linkedLead?.id || '',
-      clienteNome,
-      cpfCnpj,
-      telefone,
-      email,
-      endereco,
-      cidade,
-      concessionaria,
-      telhado,
-      consumoKwh,
-      tarifaKwh,
-      hsp,
-      perdasPct,
-      moduloWp,
-      potenciaKwp: potenciaKwpCalculada,
-      modulosQtd: modulosQtdCalculada,
-      areaEstimadaM2,
-      geracaoMediaKwh,
-      coberturaPct,
-      kitItens,
-      valorTotal: valorTotalInvestimento,
-      economiaMensal,
-      economiaAnual,
-      economia25Anos,
-      paybackAnos,
-      formaPagamento,
-      descontoAvistaPct,
-      parcelasCartao,
-      taxaCartaoPct,
-      entradaFinanciamentoValor: entradaValor,
-      entradaFinanciamentoPct,
-      parcelasFinanciamento,
-      jurosFinanciamentoMesPct,
-      bancoFinanciamento,
-      dataCriacao: new Date().toLocaleDateString('pt-BR'),
-      status: 'enviada',
-      observacoes,
-      customLogoUrl
-    };
-
+    const prop = montarProposta('enviada');
     onSaveProposal(prop);
     onOpenPDF('proposta', prop);
   };
@@ -476,9 +566,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       onChange={(e) => {
                         const masked = maskCEP(e.target.value);
                         setCep(masked);
+                        // Sem onBlur: o onChange já cobre digitação, colagem e
+                        // autofill, e o par disparava duas consultas e dois
+                        // toasts — agora também duas rodadas de busca.
                         if (onlyDigits(masked).length === 8) handleCepLookup(masked);
                       }}
-                      onBlur={() => handleCepLookup(cep)}
                       placeholder="00000-000"
                       className="w-full p-2.5 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
                     />
@@ -488,6 +580,20 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
+                    NÚMERO
+                  </label>
+                  {/* Sem máscara: número de imóvel no Brasil é 512, 512A, s/n, km 12. */}
+                  <input
+                    type="text"
+                    value={numeroEndereco}
+                    onChange={(e) => aoDigitarNumero(e.target.value)}
+                    placeholder="512"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  />
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
                     ENDEREÇO DA INSTALAÇÃO
@@ -495,25 +601,14 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   <input
                     type="text"
                     value={endereco}
-                    onChange={(e) => setEndereco(e.target.value)}
+                    onChange={(e) => {
+                      setEndereco(e.target.value);
+                      // A partir daqui a linha é do consultor: nem o CEP nem o
+                      // número voltam a reescrevê-la.
+                      setEnderecoEditadoAMao(true);
+                    }}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                    CONCESSIONÁRIA
-                  </label>
-                  <select
-                    value={concessionaria}
-                    onChange={(e) => setConcessionaria(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-                  >
-                    <option value="CEMIG">CEMIG</option>
-                    <option value="ENEL">ENEL</option>
-                    <option value="CPFL">CPFL</option>
-                    <option value="LIGHT">LIGHT</option>
-                  </select>
                 </div>
               </div>
 
@@ -532,6 +627,22 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     <option value="Metálico">Metálico</option>
                     <option value="Fibrocimento">Fibrocimento</option>
                     <option value="Solo/Estrutura">Solo/Estrutura</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
+                    CONCESSIONÁRIA
+                  </label>
+                  <select
+                    value={concessionaria}
+                    onChange={(e) => setConcessionaria(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  >
+                    <option value="CEMIG">CEMIG</option>
+                    <option value="ENEL">ENEL</option>
+                    <option value="CPFL">CPFL</option>
+                    <option value="LIGHT">LIGHT</option>
                   </select>
                 </div>
               </div>
@@ -640,6 +751,20 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Telhado por satélite — depois do dimensionamento porque precisa
+              da quantidade de módulos já calculada. */}
+          <PainelTelhado
+            endereco={endereco}
+            cidade={cidade}
+            numeroEndereco={numeroEndereco}
+            consultaAuto={consultaAuto}
+            coordenadaConhecida={coordenadaLead}
+            modulosQtd={modulosQtdCalculada}
+            config={config}
+            onResultado={setDadosTelhado}
+            showToast={showToast}
+          />
 
           {/* Section 3: Kit de equipamentos e serviços */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">

@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { consultar, consultarUm, emTransacao } from '../db.js';
 import { asyncHandler, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
+import { config } from '../config.js';
 
 /* ============================================================ DASHBOARD == */
 
@@ -138,6 +139,11 @@ configRouter.get(
     res.json({
       empresa, parametros, concessionarias, origens, telhados,
       categorias, pastas, bancos, presets, clausulas,
+      // A proposta busca o telhado por satélite sozinha, ao completar o CEP.
+      // Sem GOOGLE_MAPS_SERVER_KEY isso viraria um 503 por CEP digitado, então
+      // o front precisa saber de antemão que o recurso está desligado — em vez
+      // de descobrir requisição perdida a requisição perdida.
+      google_maps_ativo: config.googleMapsAtivo,
     });
   }),
 );

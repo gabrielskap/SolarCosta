@@ -26,6 +26,12 @@ const schema = z.object({
   // Origens liberadas no CORS, separadas por vírgula.
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
 
+  // Chave de servidor do Google Maps Platform (Solar API + Geocoding).
+  // Opcional de propósito: sem ela a API sobe normalmente e só o recurso de
+  // telhado por satélite fica desligado — não vale derrubar o sistema inteiro
+  // por causa de um extra da proposta.
+  GOOGLE_MAPS_SERVER_KEY: z.string().min(1).optional(),
+
   // Rotina diária (boletos vencidos, obras atrasadas). Desligue se estiver
   // rodando a mesma função pelo pg_cron.
   SCHEDULER_ATIVO: z
@@ -51,5 +57,7 @@ export const config = {
   corsOrigins: parsed.data.CORS_ORIGINS.split(',')
     .map((o) => o.trim())
     .filter(Boolean),
+  /** Falso quando GOOGLE_MAPS_SERVER_KEY não foi configurada. */
+  googleMapsAtivo: Boolean(parsed.data.GOOGLE_MAPS_SERVER_KEY),
   isProd: parsed.data.NODE_ENV === 'production',
 };

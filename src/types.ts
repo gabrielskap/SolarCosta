@@ -62,6 +62,10 @@ export interface Lead {
   cidade: string;
   endereco: string;
   cep?: string;
+  /** Coordenada do imóvel, reaproveitada ao gerar a proposta (V005). */
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
   consumoKwh: number;
   concessionaria: string;
   telhado: string;
@@ -129,6 +133,34 @@ export interface PropostaItem {
 
 export type FormaPagamentoType = 'avista' | 'cartao' | 'financiamento';
 
+/** Ponto no mapa. Mesmo formato que a Solar API usa, para não converter à toa. */
+export interface PontoGeo {
+  latitude: number;
+  longitude: number;
+}
+
+/**
+ * Um módulo desenhado sobre o telhado. Congelado na proposta pelo mesmo motivo
+ * que potenciaKwp e economiaMensal já são: a figura impressa não pode mudar
+ * porque o kit foi reajustado ou o Google reprocessou a imagem depois.
+ */
+export interface ModuloLayout {
+  /** Os 4 cantos em ordem horária. */
+  cantos: PontoGeo[];
+  centro: PontoGeo;
+  /** Índice da água do telhado onde o módulo ficou. */
+  segmento: number;
+  azimuteGraus: number;
+}
+
+/** Água do telhado identificada pela Solar API. */
+export interface SegmentoLayout {
+  indice: number;
+  azimuteGraus: number;
+  inclinacaoGraus: number;
+  areaM2: number;
+}
+
 export interface Proposta {
   id: string;
   numero: string;
@@ -170,6 +202,29 @@ export interface Proposta {
   status: 'rascunho' | 'enviada' | 'aceita';
   observacoes?: string;
   customLogoUrl?: string;
+
+  // Endereço de instalação em partes (V006). O CEP dispara a busca por
+  // satélite e o número é o que a faz cair sobre a edificação — os dois
+  // precisam sobreviver ao salvamento, ou reabrir a proposta recomeça pelo
+  // ponto aproximado.
+  cep?: string;
+  /** Número do IMÓVEL. `numero` (acima) é o número da proposta. */
+  numeroEndereco?: string;
+
+  // Localização e layout do telhado (V005). Todos opcionais: proposta sem
+  // busca por satélite continua válida, só não imprime a página do telhado.
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
+  enderecoFormatado?: string;
+  edificacaoId?: string;
+  mapaZoom?: number;
+  /** Data da foto de satélite (ISO). Vai impressa: costuma ter anos. */
+  telhadoImagemData?: string;
+  /** Área real do telhado medida pelo Google — não confundir com areaEstimadaM2. */
+  telhadoAreaM2?: number;
+  layoutModulos?: ModuloLayout[];
+  layoutSegmentos?: SegmentoLayout[];
 }
 
 export interface Contrato {

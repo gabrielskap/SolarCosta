@@ -29,6 +29,11 @@ const propostaSchema = z.object({
   email: z.string().email('E-mail inválido.').nullish().or(z.literal('')),
   endereco: z.string().max(300).nullish(),
   cidade: z.string().max(120).nullish(),
+  cep: z.string().max(12).nullish(),
+  // Número do imóvel, não o da proposta (`numero`, gerado pelo trigger).
+  // Guardado porque é ele que faz o geocoding cair em ROOFTOP: sem ele,
+  // reabrir a proposta recomeçaria pela localização aproximada.
+  numero_endereco: z.string().max(20).nullish(),
   concessionaria_id: z.coerce.number().int().nullish(),
   concessionaria: z.string().nullish(),
   tipo_telhado_id: z.coerce.number().int().nullish(),
@@ -67,8 +72,74 @@ const propostaSchema = z.object({
   logo_customizada_url: z.string().nullish(),
   validade_dias: z.coerce.number().int().positive().default(10),
 
+  // Localização e layout do telhado (V005). Opcionais: proposta sem busca por
+  // satélite continua válida, só não imprime a página do telhado.
+  latitude: z.coerce.number().min(-90).max(90).nullish(),
+  longitude: z.coerce.number().min(-180).max(180).nullish(),
+  place_id: z.string().max(300).nullish(),
+  endereco_formatado: z.string().max(300).nullish(),
+  edificacao_id: z.string().max(200).nullish(),
+  mapa_zoom: z.coerce.number().int().min(1).max(22).nullish(),
+  telhado_imagem_data: z.string().date('Data da imagem inválida.').nullish(),
+  telhado_area_m2: z.coerce.number().min(0).nullish(),
+  // O layout é gerado pelo front (src/utils/layoutModulos.ts) e guardado como
+  // veio. Validamos a forma, não o conteúdo: o desenho é fruto do cálculo dele.
+  layout_modulos: z
+    .array(
+      z.object({
+        cantos: z
+          .array(z.object({ latitude: z.number(), longitude: z.number() }))
+          .length(4, 'Cada módulo precisa de exatamente 4 cantos.'),
+        centro: z.object({ latitude: z.number(), longitude: z.number() }),
+        segmento: z.number().int().min(0),
+        azimuteGraus: z.number(),
+      }),
+    )
+    .nullish(),
+  layout_segmentos: z
+    .array(
+      z.object({
+        indice: z.number().int().min(0),
+        azimuteGraus: z.number(),
+        inclinacaoGraus: z.number(),
+        areaM2: z.number(),
+      }),
+    )
+    .nullish(),
+
   itens: z.array(itemSchema).min(1, 'A proposta precisa de pelo menos um item.'),
 });
+
+/** jsonb via node-postgres: sem stringify o driver manda array literal do PG. */
+const paraJsonb = (v: unknown): string | null => (v == null ? null : JSON.stringify(v));
+
+/**
+ * Guarda no lead a coordenada que esta proposta acabou de resolver.
+ *
+ * As colunas de geolocalização de "SolarCosta_Leads" (V005) nasceram sem
+ * ninguém para escrevê-las. Preencher aqui, dentro da transação da proposta,
+ * evita um PATCH /api/leads disparado pelo front — que exige a permissão
+ * `criar_editar_leads` e daria 403 no meio da proposta para um consultor que
+ * só tem `emitir_propostas`.
+ *
+ * O `AND (latitude IS NULL ...)` é deliberado: vale a primeira busca que
+ * acertou o telhado, e uma coordenada corrigida à mão no cadastro do lead não
+ * é desfeita pela próxima proposta emitida para ele.
+ */
+async function propagarCoordenadaAoLead(
+  cliente: import('../db.js').Cliente,
+  leadId: string | null | undefined,
+  d: { latitude?: number | null; longitude?: number | null; place_id?: string | null },
+) {
+  if (!leadId || d.latitude == null || d.longitude == null) return;
+  await cliente.query(
+    `UPDATE "SolarCosta_Leads"
+        SET latitude = $2, longitude = $3, place_id = COALESCE($4, place_id)
+      WHERE id = $1 AND excluido_em IS NULL
+        AND (latitude IS NULL OR longitude IS NULL)`,
+    [leadId, d.latitude, d.longitude, d.place_id ?? null],
+  );
+}
 
 async function carregarProposta(id: string) {
   const proposta = await consultarUm(
@@ -157,7 +228,11 @@ propostasRouter.post(
             forma_pagamento, desconto_avista_pct, parcelas_cartao, taxa_cartao_pct,
             entrada_financiamento_valor, entrada_financiamento_pct,
             parcelas_financiamento, juros_financiamento_mes_pct, banco_financiamento_id,
-            observacoes, logo_customizada_url, validade_dias, consultor_id, status
+            observacoes, logo_customizada_url, validade_dias, consultor_id, status,
+            latitude, longitude, place_id, endereco_formatado, edificacao_id,
+            mapa_zoom, telhado_imagem_data, telhado_area_m2,
+            layout_modulos, layout_segmentos,
+            cep, numero_endereco
          ) VALUES (
             $1,$2,$3,$4,NULLIF($5,'')::citext,$6,$7,
             COALESCE($8::int, (SELECT id FROM "SolarCosta_Concessionarias" WHERE nome = $9)),
@@ -167,7 +242,11 @@ propostasRouter.post(
             $22,$23,$24,$25,
             $26,$27,$28,$29,
             $30,$31,$32,$33,$34,
-            $35,$36,$37,$38,'rascunho'
+            $35,$36,$37,$38,'rascunho',
+            $39,$40,$41,$42,$43,
+            $44,$45::date,$46,
+            $47::jsonb,$48::jsonb,
+            $49,$50
          ) RETURNING id`,
         [
           d.lead_id ?? null, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null,
@@ -186,11 +265,17 @@ propostasRouter.post(
           d.banco_financiamento_id ?? null,
           d.observacoes ?? null, d.logo_customizada_url ?? null, d.validade_dias,
           req.usuario.id,
+          d.latitude ?? null, d.longitude ?? null, d.place_id ?? null,
+          d.endereco_formatado ?? null, d.edificacao_id ?? null,
+          d.mapa_zoom ?? null, d.telhado_imagem_data ?? null, d.telhado_area_m2 ?? null,
+          paraJsonb(d.layout_modulos), paraJsonb(d.layout_segmentos),
+          d.cep ?? null, d.numero_endereco ?? null,
         ],
       );
       const novoId = rows[0]!.id as string;
 
       await inserirItens(cliente, novoId, d.itens);
+      await propagarCoordenadaAoLead(cliente, d.lead_id, d);
 
       const { rows: n } = await cliente.query(
         `SELECT numero FROM "SolarCosta_Propostas" WHERE id = $1`, [novoId]);
@@ -238,7 +323,12 @@ propostasRouter.put(
             forma_pagamento = $26, desconto_avista_pct = $27, parcelas_cartao = $28, taxa_cartao_pct = $29,
             entrada_financiamento_valor = $30, entrada_financiamento_pct = $31,
             parcelas_financiamento = $32, juros_financiamento_mes_pct = $33, banco_financiamento_id = $34,
-            observacoes = $35, logo_customizada_url = $36, validade_dias = $37
+            observacoes = $35, logo_customizada_url = $36, validade_dias = $37,
+            latitude = $38, longitude = $39, place_id = $40,
+            endereco_formatado = $41, edificacao_id = $42, mapa_zoom = $43,
+            telhado_imagem_data = $44::date, telhado_area_m2 = $45,
+            layout_modulos = $46::jsonb, layout_segmentos = $47::jsonb,
+            cep = $48, numero_endereco = $49
           WHERE id = $1`,
         [
           id, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null, d.email ?? null,
@@ -256,12 +346,18 @@ propostasRouter.put(
           d.parcelas_financiamento ?? null, d.juros_financiamento_mes_pct ?? null,
           d.banco_financiamento_id ?? null,
           d.observacoes ?? null, d.logo_customizada_url ?? null, d.validade_dias,
+          d.latitude ?? null, d.longitude ?? null, d.place_id ?? null,
+          d.endereco_formatado ?? null, d.edificacao_id ?? null, d.mapa_zoom ?? null,
+          d.telhado_imagem_data ?? null, d.telhado_area_m2 ?? null,
+          paraJsonb(d.layout_modulos), paraJsonb(d.layout_segmentos),
+          d.cep ?? null, d.numero_endereco ?? null,
         ],
       );
 
       // Itens são substituídos por inteiro; o trigger recalcula valor_total.
       await cliente.query(`DELETE FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1`, [id]);
       await inserirItens(cliente, id, d.itens);
+      await propagarCoordenadaAoLead(cliente, d.lead_id, d);
 
       await cliente.query(
         `SELECT "SolarCosta_fn_auditar"('editar','Proposta',$1,$2,NULL)`,

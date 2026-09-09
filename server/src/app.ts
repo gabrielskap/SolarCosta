@@ -24,6 +24,7 @@ import {
 } from './routes/painel.routes.js';
 import { propostasRouter } from './routes/propostas.routes.js';
 import { publicoRouter } from './routes/publico.routes.js';
+import { solarRouter } from './routes/solar.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,6 +38,14 @@ export function criarApp(): express.Express {
   // Atrás do Nginx: confia no X-Forwarded-For para o rate limit e o log de IP.
   app.set('trust proxy', 1);
 
+  // CSP padrão, sem exceções para o Google.
+  //
+  // O telhado por satélite não precisa de nenhuma: a imagem chega pela nossa
+  // origem (GET /api/solar/imagem) e os módulos são SVG desenhado por nós.
+  // Se algum dia entrar o mapa interativo (Maps JavaScript API), aí sim será
+  // preciso liberar script-src/img-src/connect-src para *.googleapis.com e
+  // *.gstatic.com — e vale medir se compensa, porque o loader do Maps exige
+  // 'unsafe-inline' em script-src, que enfraquece a defesa contra XSS.
   app.use(helmet());
   app.use(
     cors({
@@ -69,6 +78,7 @@ export function criarApp(): express.Express {
   app.use('/api/usuarios', usuariosRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/notificacoes', notificacoesRouter);
+  app.use('/api/solar', solarRouter);
   app.use('/api/config', configRouter);
   app.use('/api/auditoria', auditoriaRouter);
 

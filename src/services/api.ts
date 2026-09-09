@@ -409,6 +409,14 @@ export interface ConfigApp {
   bancos: { id: number; nome: string; juros_mes_padrao?: number; parcelas_max?: number }[];
   presets: { id: number; contexto: string; label: string; texto: string }[];
   clausulas: { id: number; titulo: string; texto: string | null; padrao: boolean; ordem: number }[];
+  /**
+   * A API tem GOOGLE_MAPS_SERVER_KEY configurada. snake_case porque esta
+   * interface é o payload cru de /api/config, não um modelo mapeado.
+   *
+   * Sem isso o painel do telhado só descobriria que o recurso está desligado
+   * tomando um 503 — e, com a busca automática, um por CEP digitado.
+   */
+  google_maps_ativo?: boolean;
 }
 
 /** Lê um parâmetro do banco como texto. */

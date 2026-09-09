@@ -102,6 +102,12 @@ interface Opcoes {
   jaRenovou?: boolean;
   /** Rotas de login/refresh não mandam Authorization. */
   semAuth?: boolean;
+  /**
+   * Devolve o corpo como Blob em vez de JSON. Para a imagem de satélite, que é
+   * autenticada e paga: uma <img src> não manda o header Authorization, então
+   * o binário vem por aqui e vira object URL na tela.
+   */
+  comoBlob?: boolean;
 }
 
 async function renovarSessao(): Promise<boolean> {
@@ -129,7 +135,7 @@ async function renovarSessao(): Promise<boolean> {
 }
 
 export async function requisitar<T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> {
-  const { metodo = 'GET', corpo, jaRenovou = false, semAuth = false } = opcoes;
+  const { metodo = 'GET', corpo, jaRenovou = false, semAuth = false, comoBlob = false } = opcoes;
 
   const cabecalhos: Record<string, string> = {};
   if (corpo !== undefined) cabecalhos['Content-Type'] = 'application/json';
@@ -164,6 +170,12 @@ export async function requisitar<T = unknown>(caminho: string, opcoes: Opcoes = 
 
   if (resposta.status === 204) return undefined as T;
 
+  // Binário: sai antes do parse de JSON, mas depois da renovação de token —
+  // é o que garante que a imagem também sobrevive a um access token vencido.
+  if (comoBlob && resposta.ok) {
+    return (await resposta.blob()) as T;
+  }
+
   const texto = await resposta.text();
   let dados: any = null;
   if (texto) {
@@ -192,6 +204,7 @@ export const http = {
   patch: <T>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PATCH', corpo }),
   put: <T>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PUT', corpo }),
   delete: <T>(caminho: string) => requisitar<T>(caminho, { metodo: 'DELETE' }),
+  getBlob: (caminho: string) => requisitar<Blob>(caminho, { comoBlob: true }),
   /** Sem Authorization — login, refresh e as rotas /api/publico do site. */
   getPublico: <T>(caminho: string) => requisitar<T>(caminho, { semAuth: true }),
   postPublico: <T>(caminho: string, corpo?: unknown) =>

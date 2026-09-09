@@ -66,7 +66,7 @@ deploy:
 2. Garanta que o host/porta do Postgres aceitem conexão vindas do Easypanel
    (rede privada, ou libere o IP de saída do Easypanel no firewall).
 
-**As migrations (`database/migrations/V001` a `V004`) rodam automaticamente**
+**As migrations (`database/migrations/V001` a `V006`) rodam automaticamente**
 a cada deploy, antes da API subir (`npm run migrate && npm start` no
 Dockerfile — ver [server/src/migrate.ts](server/src/migrate.ts)). É
 idempotente: uma tabela `SolarCosta_SchemaMigrations` registra o que já foi

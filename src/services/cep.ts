@@ -64,3 +64,22 @@ export function buildCidadeUf(e: EnderecoViaCEP): string {
   if (e.localidade && e.uf) return `${e.localidade}/${e.uf}`;
   return e.localidade || '';
 }
+
+/**
+ * Monta a linha que vai para o GEOCODING — diferente da que aparece na tela.
+ *
+ * A da tela separa logradouro e bairro com "–", que é apresentação; o Google
+ * resolve melhor com vírgulas e com o CEP no fim, que desempata ruas homônimas
+ * em cidades diferentes.
+ *
+ * Ex.: "Rua dos Ipês, 512, Santa Mônica, Uberlândia, MG, 38408-100"
+ *
+ * O número é o que decide entre um ponto sobre o telhado (ROOFTOP) e um chute
+ * interpolado ao longo da via — por isso ele entra aqui mesmo quando o
+ * consultor já editou a linha de endereço à mão.
+ */
+export function buildEnderecoBusca(e: EnderecoViaCEP, numero?: string): string {
+  const numeroLimpo = numero?.trim();
+  const logradouro = numeroLimpo && e.logradouro ? `${e.logradouro}, ${numeroLimpo}` : e.logradouro;
+  return [logradouro, e.bairro, e.localidade, e.uf, e.cep].filter(Boolean).join(', ');
+}

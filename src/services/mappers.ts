@@ -69,6 +69,12 @@ function formatarTamanho(bytes?: number | null): string {
 
 const num = (v: unknown): number => (v == null ? 0 : Number(v));
 const txt = (v: unknown): string => (v == null ? '' : String(v));
+/**
+ * Como `num`, mas preserva a ausência. Para campos onde 0 é um valor legítimo
+ * e diferente de "não preenchido" — latitude/longitude, principalmente: num()
+ * mandaria toda proposta sem coordenada para o golfo da Guiné.
+ */
+const numOpc = (v: unknown): number | undefined => (v == null ? undefined : Number(v));
 
 /* ============================================================ USUÁRIO === */
 
@@ -158,6 +164,12 @@ export function paraLead(linha: any, extras?: { documentos?: any[]; historico?: 
     cidade: cidadeComUf(linha.cidade, linha.uf),
     endereco: txt(linha.endereco),
     cep: linha.cep ?? undefined,
+    // Coordenada resolvida por uma proposta anterior (V005; a vw_Leads só
+    // passou a devolvê-la na V006). numOpc pelo mesmo motivo de paraProposta:
+    // num() mandaria todo lead sem coordenada para o golfo da Guiné.
+    latitude: numOpc(linha.latitude),
+    longitude: numOpc(linha.longitude),
+    placeId: linha.place_id ?? undefined,
     consumoKwh: num(linha.consumo_kwh),
     concessionaria: txt(linha.concessionaria),
     telhado: txt(linha.telhado),
@@ -184,6 +196,9 @@ export function deLead(l: Partial<Lead>): Record<string, unknown> {
     endereco: l.endereco || null,
     cidade,
     uf,
+    latitude: l.latitude ?? null,
+    longitude: l.longitude ?? null,
+    place_id: l.placeId ?? null,
     consumo_kwh: l.consumoKwh ?? 0,
     valor_estimado: l.valor ?? 0,
     // A API aceita nome e resolve para o id da tabela de apoio.
@@ -329,6 +344,23 @@ export function paraProposta(linha: any): Proposta {
     status: linha.status === 'recusada' || linha.status === 'expirada' ? 'enviada' : linha.status,
     observacoes: linha.observacoes ?? undefined,
     customLogoUrl: linha.logo_customizada_url ?? undefined,
+    // Endereço em partes (V006). numero_endereco, não numero: este último é o
+    // número da proposta e já foi mapeado lá em cima.
+    cep: linha.cep ?? undefined,
+    numeroEndereco: linha.numero_endereco ?? undefined,
+    // Localização e layout do telhado (V005). numOpc em vez de num: o banco
+    // devolve numeric como string, mas ausente aqui precisa continuar ausente
+    // — num() viraria 0, que no mapa é a costa da África.
+    latitude: numOpc(linha.latitude),
+    longitude: numOpc(linha.longitude),
+    placeId: linha.place_id ?? undefined,
+    enderecoFormatado: linha.endereco_formatado ?? undefined,
+    edificacaoId: linha.edificacao_id ?? undefined,
+    mapaZoom: numOpc(linha.mapa_zoom),
+    telhadoImagemData: linha.telhado_imagem_data ?? undefined,
+    telhadoAreaM2: numOpc(linha.telhado_area_m2),
+    layoutModulos: linha.layout_modulos ?? undefined,
+    layoutSegmentos: linha.layout_segmentos ?? undefined,
   };
 }
 
@@ -367,6 +399,18 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     juros_financiamento_mes_pct: p.jurosFinanciamentoMesPct ?? null,
     observacoes: p.observacoes ?? null,
     logo_customizada_url: p.customLogoUrl ?? null,
+    cep: p.cep ?? null,
+    numero_endereco: p.numeroEndereco ?? null,
+    latitude: p.latitude ?? null,
+    longitude: p.longitude ?? null,
+    place_id: p.placeId ?? null,
+    endereco_formatado: p.enderecoFormatado ?? null,
+    edificacao_id: p.edificacaoId ?? null,
+    mapa_zoom: p.mapaZoom ?? null,
+    telhado_imagem_data: p.telhadoImagemData ?? null,
+    telhado_area_m2: p.telhadoAreaM2 ?? null,
+    layout_modulos: p.layoutModulos ?? null,
+    layout_segmentos: p.layoutSegmentos ?? null,
     itens: p.kitItens.map((i) => ({
       produto_id: i.produtoId ?? null,
       descricao: i.descricao,

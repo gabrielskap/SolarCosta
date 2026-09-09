@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, Printer, Download, CheckCircle2, ChevronLeft, ChevronRight, Award, DollarSign,
   TrendingUp, Zap, Calendar, ShieldCheck, Phone, Mail, MapPin, SlidersHorizontal, Image as ImageIcon,
@@ -8,6 +8,9 @@ import { Proposta, Contrato, Boleto } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import logoFull from '../assets/logo-full.png';
 import logoIcon from '../assets/logo-icon.png';
+import { TelhadoSatelite } from './mapa/TelhadoSatelite';
+import { imagemTelhado } from '../services/solar';
+import { enquadrar, rosaDosVentos } from '../utils/layoutModulos';
 
 interface PDFModalProps {
   type: 'proposta' | 'contrato' | 'boleto';
@@ -38,6 +41,48 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
   const [consultorEmail, setConsultorEmail] = useState<string>('solarcostamg@gmail.com');
 
   const [themeColor, setThemeColor] = useState<'blue' | 'emerald' | 'amber' | 'slate'>('blue');
+
+  // Imagem de satélite da página do telhado.
+  //
+  // Buscada na abertura em vez de gravada junto da proposta: o ToS do Google
+  // não permite guardar a imagem indefinidamente. O que a proposta guarda é o
+  // layout (dado nosso) e a coordenada — a foto é recomposta a cada impressão.
+  const [imagemTelhadoUrl, setImagemTelhadoUrl] = useState<string | null>(null);
+  const temLayout = !!prop?.layoutModulos?.length;
+
+  // O enquadramento sai dos MÓDULOS, não da coordenada do endereço: é o mesmo
+  // cálculo que o TelhadoSatelite usa para desenhar o SVG. Centrar a imagem no
+  // ponto geocodificado desalinharia a foto do desenho, porque o pino do
+  // endereço raramente cai no meio do arranjo.
+  const enqTelhado = temLayout ? enquadrar(prop!.layoutModulos!) : null;
+
+  useEffect(() => {
+    if (!enqTelhado) return;
+    let vivo = true;
+    let urlCriada: string | null = null;
+
+    imagemTelhado(
+      enqTelhado.centro.latitude,
+      enqTelhado.centro.longitude,
+      enqTelhado.zoom,
+      enqTelhado.larguraPx,
+      enqTelhado.alturaPx,
+    ).then((r) => {
+      // Modal fechado antes da resposta: revoga na hora, senão vaza.
+      if (!vivo) {
+        if (r.url) URL.revokeObjectURL(r.url);
+        return;
+      }
+      urlCriada = r.url ?? null;
+      setImagemTelhadoUrl(urlCriada);
+    });
+
+    return () => {
+      vivo = false;
+      if (urlCriada) URL.revokeObjectURL(urlCriada);
+    };
+    // Depende do enquadramento resolvido, não do objeto (recriado a cada render).
+  }, [enqTelhado?.centro.latitude, enqTelhado?.centro.longitude, enqTelhado?.zoom]);
 
   if (!data) return null;
 
@@ -548,6 +593,112 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
                       </div>
                     </div>
                   </PageWrapper>
+
+                  {/* PÁGINA 5: LOCALIZAÇÃO E LAYOUT DO TELHADO
+                      Só sai quando a proposta foi gerada com a busca por
+                      satélite; sem layout a página inteira é omitida em vez
+                      de imprimir um quadro vazio. */}
+                  {temLayout && enqTelhado && (
+                    <PageWrapper pageNum={5} title="Localização & Layout do Telhado">
+                      <div className="space-y-5">
+                        <div className="text-center space-y-1">
+                          <h2 className="text-2xl font-black text-[#004276] uppercase tracking-wider">
+                            LAYOUT DO SEU TELHADO
+                          </h2>
+                          <p className="text-sm font-bold text-slate-500">
+                            Disposição prevista dos {prop.layoutModulos!.length} módulos
+                          </p>
+                        </div>
+
+                        <TelhadoSatelite
+                          modulos={prop.layoutModulos!}
+                          imagemUrl={imagemTelhadoUrl}
+                          enquadramento={enqTelhado}
+                          className="mx-auto max-w-lg border-4 border-slate-200"
+                        />
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                            <p className="text-[9px] font-bold uppercase text-slate-500">Módulos</p>
+                            <p className="text-xl font-black text-[#004276]">
+                              {prop.layoutModulos!.length}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                            <p className="text-[9px] font-bold uppercase text-slate-500">Potência</p>
+                            <p className="text-xl font-black text-[#004276]">
+                              {prop.potenciaKwp} kWp
+                            </p>
+                          </div>
+                          <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                            <p className="text-[9px] font-bold uppercase text-slate-500">
+                              Área do telhado
+                            </p>
+                            <p className="text-xl font-black text-[#004276]">
+                              {prop.telhadoAreaM2 ? `${Math.round(prop.telhadoAreaM2)} m²` : '—'}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                            <p className="text-[9px] font-bold uppercase text-slate-500">Águas</p>
+                            <p className="text-xl font-black text-[#004276]">
+                              {prop.layoutSegmentos?.length ?? '—'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {!!prop.layoutSegmentos?.length && (
+                          <div>
+                            <h3 className="text-xs font-bold uppercase text-slate-500 mb-2">
+                              Águas aproveitadas
+                            </h3>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-slate-100 text-slate-600">
+                                  <th className="p-2 text-left font-bold">Água</th>
+                                  <th className="p-2 text-right font-bold">Orientação</th>
+                                  <th className="p-2 text-right font-bold">Inclinação</th>
+                                  <th className="p-2 text-right font-bold">Módulos</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {prop.layoutSegmentos.map((s) => {
+                                  const qtd = prop.layoutModulos!.filter(
+                                    (m) => m.segmento === s.indice,
+                                  ).length;
+                                  if (qtd === 0) return null;
+                                  return (
+                                    <tr key={s.indice} className="border-b border-slate-100">
+                                      <td className="p-2 font-semibold">Água {s.indice + 1}</td>
+                                      <td className="p-2 text-right">
+                                        {rosaDosVentos(s.azimuteGraus)} ({Math.round(s.azimuteGraus)}°)
+                                      </td>
+                                      <td className="p-2 text-right">
+                                        {s.inclinacaoGraus.toFixed(1)}°
+                                      </td>
+                                      <td className="p-2 text-right font-bold">{qtd}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[10px] leading-relaxed text-amber-900">
+                          <strong>Sobre esta imagem:</strong> a disposição é uma simulação
+                          técnica sobre foto de satélite do Google. O levantamento das águas
+                          do telhado, sua orientação e inclinação
+                          {prop.telhadoImagemData
+                            ? ` baseia-se em imagem aérea de ${new Date(prop.telhadoImagemData).toLocaleDateString('pt-BR')}`
+                            : ' foi feito por análise aérea'}
+                          , portanto construções ou reformas posteriores podem não estar
+                          refletidas. O posicionamento definitivo dos módulos é confirmado na
+                          visita técnica, que considera sombreamento, obstáculos e a estrutura
+                          real do telhado.
+                        </div>
+                      </div>
+                    </PageWrapper>
+                  )}
 
                   {/* PÁGINA 8: GARANTIAS E CONTATOS DO CONSULTOR */}
                   <PageWrapper pageNum={8} title="Garantias & Contatos do Consultor">
