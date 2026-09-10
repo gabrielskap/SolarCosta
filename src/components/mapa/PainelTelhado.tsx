@@ -13,10 +13,25 @@
 // Solar API e Static Maps), então quase tudo que parece paranoia aqui —
 // debounce, memo da última busca, token de sequência, quebra-circuito — está
 // protegendo a fatura, não a renderização.
+//
+// O card é só a vista de conferência. Ajustar as placas acontece no
+// EditorTelhado, em tela cheia, sobre o mapa interativo. O que volta de lá
+// entra em `layoutManual` e passa a mandar na figura — ver o efeito de
+// `modulosQtd` para o que acontece quando o kit muda depois disso.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Loader2, MapPinned, Satellite, Trash2 } from 'lucide-react';
-import { ModuloLayout, SegmentoLayout } from '../../types';
+import {
+  AlertTriangle,
+  ChevronDown,
+  Loader2,
+  MapPinned,
+  Maximize2,
+  RotateCcw,
+  Satellite,
+  SlidersHorizontal,
+  Trash2,
+} from 'lucide-react';
+import { MedidaModulo, ModuloLayout, SegmentoLayout } from '../../types';
 import { paramNum, type ConfigApp } from '../../services/api';
 import {
   buscarTelhado,
@@ -29,8 +44,15 @@ import {
   type EnderecoGeocodificado,
   type TelhadoSolar,
 } from '../../services/solar';
-import { calcularLayout, enquadrar, type Enquadramento } from '../../utils/layoutModulos';
+import {
+  calcularLayout,
+  enquadrar,
+  type DimensoesModulo,
+  type Enquadramento,
+} from '../../utils/layoutModulos';
+import { ajustarQuantidade, criarContexto } from '../../utils/edicaoLayout';
 import { TelhadoSatelite } from './TelhadoSatelite';
+import { EditorTelhado } from './EditorTelhado';
 
 /** Acima disso a foto é velha o bastante para o telhado ter mudado. */
 const IMAGEM_VELHA_ANOS = 3;
@@ -56,6 +78,10 @@ export interface DadosTelhadoProposta {
   telhadoAreaM2: number;
   layoutModulos: ModuloLayout[];
   layoutSegmentos: SegmentoLayout[];
+  /** O layout veio do editor, não do empacotamento automático. */
+  layoutAjusteManual: boolean;
+  /** Medida da placa, quando o editor a redefiniu. Nula = valem os parâmetros. */
+  layoutModulo?: MedidaModulo;
 }
 
 /** Coordenada que já provou acertar o telhado (gravada num lead). */
@@ -113,6 +139,34 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
   const [avisoAuto, setAvisoAuto] = useState<AvisoAuto>(null);
 
   /**
+   * Layout ajustado à mão no editor. Nulo = o automático manda, que é o
+   * comportamento de sempre.
+   *
+   * Preenchido, ele passa a ser a posição de verdade: o recálculo por mudança
+   * de kit para de sobrescrever e passa a só acertar a diferença.
+   */
+  const [layoutManual, setLayoutManual] = useState<ModuloLayout[] | null>(null);
+  const [editorAberto, setEditorAberto] = useState(false);
+
+  /**
+   * Medida da placa definida no editor, quando difere da cadastrada nos
+   * parâmetros (kit fechado com módulo de outra potência).
+   */
+  const [dimEditor, setDimEditor] = useState<DimensoesModulo | null>(null);
+  const [espEditor, setEspEditor] = useState<number | null>(null);
+
+  /**
+   * Quantos módulos o kit pedia quando o ajuste manual foi aplicado.
+   *
+   * É o que transforma "o kit mudou" em um número: o efeito compara este valor
+   * com o `modulosQtd` atual e move só a DIFERENÇA. Sem ele, o efeito
+   * empurraria o layout manual de volta para `modulosQtd` no primeiro render
+   * depois de aplicar — desfazendo, por exemplo, a placa que o consultor tirou
+   * de propósito por causa de uma chaminé.
+   */
+  const qtdBaseManual = useRef(0);
+
+  /**
    * Enquadramento da imagem que está na tela — NÃO o do layout corrente.
    *
    * A foto é baixada uma vez por busca; o layout é recalculado a cada tecla no
@@ -133,6 +187,10 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
   // não vem — API mais antiga — o padrão é tentar.
   const recursoDesligado = config?.google_maps_ativo === false;
   const autoBloqueada = autoIndisponivel || recursoDesligado;
+
+  // Chave da Maps JavaScript API. Sem ela o card funciona igual, só não abre
+  // em tela cheia — é uma chave separada da que a API usa no servidor.
+  const chaveMaps = config?.google_maps_browser_key ?? null;
 
   // Object URL não é coletado enquanto a aba viver: guardamos o atual para
   // revogar antes de trocar e no desmonte.
@@ -163,14 +221,35 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
    */
   const sequencia = useRef(0);
 
-  const modulo = {
+  const moduloParam = {
     larguraM: paramNum(config, 'layout.modulo_largura_m', 2.38),
     alturaM: paramNum(config, 'layout.modulo_altura_m', 1.3),
   };
-  const espacamentoM = paramNum(config, 'layout.espacamento_m', 0.02);
+  const espacamentoParam = paramNum(config, 'layout.espacamento_m', 0.02);
+
+  // O editor pode redefinir a medida da placa; sem isso vale o parâmetro.
+  const modulo = dimEditor ?? moduloParam;
+  const espacamentoM = espEditor ?? espacamentoParam;
 
   /**
-   * Recalcula o layout — na primeira busca e sempre que o kit muda de tamanho.
+   * Medida a gravar na proposta — só quando difere do parâmetro do sistema.
+   *
+   * Repetir o valor cadastrado em toda proposta congelaria na linha do tempo
+   * um número que deveria continuar seguindo o cadastro: trocado o módulo
+   * padrão da empresa, as propostas antigas continuariam certas (a geometria
+   * já está gravada) mas "Refazer automático" nelas usaria a medida velha.
+   */
+  const medidaSeDiferente = (d: DimensoesModulo, esp: number): MedidaModulo | undefined => {
+    const igual =
+      d.larguraM === moduloParam.larguraM &&
+      d.alturaM === moduloParam.alturaM &&
+      esp === espacamentoParam;
+    return igual ? undefined : { larguraM: d.larguraM, alturaM: d.alturaM, espacamentoM: esp };
+  };
+
+  /**
+   * Recalcula o layout AUTOMÁTICO — na primeira busca e sempre que o kit muda
+   * de tamanho.
    *
    * Não escreve enquadramento nenhum de propósito: quem desenha precisa do
    * quadro da FOTO (ver `enquadramentoImagem`), e um `setState` aqui dentro
@@ -193,9 +272,9 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
       setCapacidade(r.capacidadeMaxima);
       return r;
     },
-    // `modulo`/`espacamentoM` são derivados de `config` — depender dele evita
-    // recriar o callback a cada render por causa dos objetos novos.
-    [config], // eslint-disable-line react-hooks/exhaustive-deps
+    // `modulo`/`espacamentoM` são derivados de `config` e do editor — depender
+    // deles evita recriar o callback a cada render por causa dos objetos novos.
+    [config, dimEditor, espEditor], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   /**
@@ -207,7 +286,13 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
    * nascer o `montarProposta` do componente pai.
    */
   const emitirResultado = useCallback(
-    (g: EnderecoGeocodificado, t: TelhadoSolar, posicionados: ModuloLayout[], zoom: number) => {
+    (
+      g: EnderecoGeocodificado,
+      t: TelhadoSolar,
+      posicionados: ModuloLayout[],
+      zoom: number,
+      manual?: { modulo?: MedidaModulo },
+    ) => {
       const d = dataMaisRecente(t);
       onResultado({
         latitude: g.latitude,
@@ -227,6 +312,10 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
           inclinacaoGraus: s.inclinacaoGraus,
           areaM2: s.areaM2,
         })),
+        layoutAjusteManual: !!manual,
+        // Só grava a medida quando o editor a mudou: repetir o parâmetro em
+        // toda proposta congelaria um valor que deveria seguir o cadastro.
+        layoutModulo: manual?.modulo,
       });
     },
     // `onResultado` fora das deps: é o setState do pai hoje, mas se um dia
@@ -284,6 +373,11 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
       );
       return;
     }
+
+    // Busca nova recomeça do automático: o ajuste manual era daquele telhado,
+    // naquela coordenada. Mantê-lo aqui grudaria placas de um imóvel no outro.
+    setLayoutManual(null);
+    qtdBaseManual.current = 0;
 
     const r = recalcular(t, modulosQtd);
     const pontosContexto = [t.centro, ...t.segmentos.map((s) => s.centro)];
@@ -419,13 +513,119 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
    * proposta ficava com a quantidade antiga de módulos, que era justamente o
    * que ia impresso. Este efeito também é o único emissor depois de uma busca
    * — o trio (telhado, geo, enquadramentoImagem) fica pronto junto e ele
-   * dispara em seguida.
+   * dispara em seguida. NÃO criar um segundo emissor: é essa unicidade que
+   * mantém a figura da tela e a da proposta iguais.
+   *
+   * Com ajuste manual em vigor o efeito muda de papel: em vez de reempacotar
+   * tudo, aplica ao layout do consultor a MESMA variação que o kit sofreu.
+   * Cresceu dois módulos, entram dois nas vagas automáticas livres; encolheu
+   * um, sai um da água menos ensolarada. O que ele posicionou não se mexe.
    */
   useEffect(() => {
     if (!telhado || !geo || !enquadramentoImagem) return;
-    const r = recalcular(telhado, modulosQtd);
-    emitirResultado(geo, telhado, r.modulos, enquadramentoImagem.zoom);
-  }, [modulosQtd, telhado, geo, enquadramentoImagem, recalcular, emitirResultado]);
+
+    // Roda sempre: além do layout automático, é daqui que sai a capacidade
+    // máxima mostrada no card, que independe do ajuste manual.
+    const auto = recalcular(telhado, modulosQtd);
+
+    if (!layoutManual) {
+      emitirResultado(geo, telhado, auto.modulos, enquadramentoImagem.zoom);
+      return;
+    }
+
+    const delta = modulosQtd - qtdBaseManual.current;
+    const alvo = Math.max(0, layoutManual.length + delta);
+
+    if (delta === 0) {
+      setModulos(layoutManual);
+      emitirResultado(geo, telhado, layoutManual, enquadramentoImagem.zoom, {
+        modulo: medidaSeDiferente(modulo, espacamentoM),
+      });
+      return;
+    }
+
+    const ctx = criarContexto({
+      segmentos: telhado.segmentos,
+      mascara: telhado.placasGoogle.map((p) => ({
+        centro: p.centro,
+        segmentoIndice: p.segmentoIndice,
+      })),
+      placaMascara: {
+        alturaM: telhado.placaGoogle.alturaM,
+        larguraM: telhado.placaGoogle.larguraM,
+      },
+      modulo,
+      espacamentoM,
+      modulos: layoutManual,
+    });
+
+    // Candidatos = capacidade cheia do telhado, não só os `modulosQtd`
+    // primeiros: as vagas boas podem estar depois do corte quando o consultor
+    // já ocupou as melhores à mão.
+    const candidatos = calcularLayout({
+      segmentos: telhado.segmentos,
+      mascara: telhado.placasGoogle.map((p) => ({
+        centro: p.centro,
+        segmentoIndice: p.segmentoIndice,
+      })),
+      placaMascara: {
+        alturaM: telhado.placaGoogle.alturaM,
+        larguraM: telhado.placaGoogle.larguraM,
+      },
+      modulo,
+      espacamentoM,
+      quantidade: Number.MAX_SAFE_INTEGER,
+    }).modulos;
+
+    const ajustado = ajustarQuantidade(ctx, layoutManual, candidatos, alvo);
+    qtdBaseManual.current = modulosQtd;
+    setLayoutManual(ajustado);
+    setModulos(ajustado);
+    emitirResultado(geo, telhado, ajustado, enquadramentoImagem.zoom, {
+      modulo: medidaSeDiferente(modulo, espacamentoM),
+    });
+  }, [
+    modulosQtd,
+    telhado,
+    geo,
+    enquadramentoImagem,
+    layoutManual,
+    recalcular,
+    emitirResultado,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Volta ao "Aplicar" do editor: adota o layout ajustado e regrava. */
+  const aplicarEdicao = (
+    novos: ModuloLayout[],
+    dimNova: DimensoesModulo,
+    espNovo: number,
+  ) => {
+    setEditorAberto(false);
+    qtdBaseManual.current = modulosQtd;
+    setDimEditor(dimNova);
+    setEspEditor(espNovo);
+    setLayoutManual(novos);
+    setModulos(novos);
+    if (geo && telhado && enquadramentoImagem) {
+      emitirResultado(geo, telhado, novos, enquadramentoImagem.zoom, {
+        modulo: medidaSeDiferente(dimNova, espNovo),
+      });
+    }
+    showToast(
+      'Layout ajustado',
+      'success',
+      `${novos.length} ${novos.length === 1 ? 'módulo posicionado' : 'módulos posicionados'} manualmente.`,
+    );
+  };
+
+  /** Descarta o ajuste manual e devolve o telhado ao empacotamento automático. */
+  const refazerAutomatico = () => {
+    setLayoutManual(null);
+    setDimEditor(null);
+    setEspEditor(null);
+    qtdBaseManual.current = 0;
+    showToast('Layout automático', 'info', 'O ajuste manual foi descartado.');
+  };
 
   const limpar = () => {
     // Invalida qualquer rodada em voo: sem isto, uma busca ainda a caminho
@@ -438,12 +638,19 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
     setEnquadramentoImagem(null);
     setCapacidade(0);
     setAvisoAuto(null);
+    setLayoutManual(null);
+    setDimEditor(null);
+    setEspEditor(null);
+    setEditorAberto(false);
+    qtdBaseManual.current = 0;
     trocarImagem(null);
     onResultado(null);
   };
 
   const idade = telhado ? idadeImagemAnos(telhado) : null;
   const faltam = modulosQtd - modulos.length;
+  const ajustadoManualmente = layoutManual !== null;
+  const podeExpandir = !!telhado && !!chaveMaps;
   // O kit mudou o suficiente para o quadro ideal não ser mais o da foto.
   const enquadramentoDefasado =
     !!enquadramentoImagem &&
@@ -477,6 +684,16 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
               REMOVER
             </button>
           )}
+          {podeExpandir && (
+            <button
+              type="button"
+              onClick={() => setEditorAberto(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[#004276]/25 bg-[#004276]/5 text-[11px] font-bold text-[#004276] hover:bg-[#004276]/10 transition"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              AJUSTAR PLACAS
+            </button>
+          )}
           {!recursoDesligado && (
             <button
               type="button"
@@ -497,30 +714,29 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
 
       {/* Avisos da busca automática: ficam FORA do bloco do telhado, senão uma
           falha não apareceria em lugar nenhum — que era o caso antes. */}
-      <div className="space-y-3 empty:hidden">
+      <div className="space-y-2 empty:hidden">
         {avisoAuto === 'aproximado' && (
-          <Aviso tom="alerta">
-            Localização aproximada ({geo?.precisao}) — o ponto caiu sobre a via, não sobre a
-            edificação. <strong>Informe o número do imóvel</strong> em Dados do cliente: a
-            busca refaz sozinha.
+          <Aviso tom="alerta" resumo={`Localização aproximada (${geo?.precisao}) — informe o número`}>
+            O ponto caiu sobre a via, não sobre a edificação.{' '}
+            <strong>Informe o número do imóvel</strong> em Dados do cliente: a busca refaz
+            sozinha.
           </Aviso>
         )}
         {avisoAuto === 'sem_telhado' && (
-          <Aviso tom="alerta">
-            O Google não tem análise de telhado para este ponto. Confira o endereço — com
-            número e bairro — ou use <strong>Buscar por satélite</strong> depois de ajustá-lo.
+          <Aviso tom="alerta" resumo="Sem análise de telhado para este ponto">
+            O Google não tem análise de telhado aqui. Confira o endereço — com número e
+            bairro — ou use <strong>Buscar por satélite</strong> depois de ajustá-lo.
           </Aviso>
         )}
         {avisoAuto === 'nao_localizado' && (
-          <Aviso tom="alerta">
-            Endereço não localizado a partir do CEP. Complete o endereço da instalação e use{' '}
-            <strong>Buscar por satélite</strong>.
+          <Aviso tom="alerta" resumo="Endereço não localizado a partir do CEP">
+            Complete o endereço da instalação e use <strong>Buscar por satélite</strong>.
           </Aviso>
         )}
         {recursoDesligado && (
-          <Aviso tom="atencao">
-            Busca por satélite desativada nesta instalação (chave do Google Maps não
-            configurada). A proposta continua válida — só não sai com a página do telhado.
+          <Aviso tom="atencao" resumo="Busca por satélite desativada nesta instalação">
+            A chave do Google Maps não está configurada. A proposta continua válida — só não
+            sai com a página do telhado.
           </Aviso>
         )}
       </div>
@@ -542,12 +758,35 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
 
       {telhado && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-4">
-          <TelhadoSatelite
-            modulos={modulos}
-            imagemUrl={imagemUrl}
-            enquadramento={enquadramentoImagem ?? undefined}
-            legenda={legendaSatelite(telhado)}
-          />
+          {/* A figura inteira vira o alvo de clique: é o gesto que as pessoas
+              já tentam numa foto pequena. O botão do cabeçalho continua, para
+              quem navega por teclado e para deixar a ação visível sem hover. */}
+          <div className="relative group">
+            <TelhadoSatelite
+              modulos={modulos}
+              imagemUrl={imagemUrl}
+              enquadramento={enquadramentoImagem ?? undefined}
+              legenda={legendaSatelite(telhado)}
+            />
+            {podeExpandir && (
+              <button
+                type="button"
+                onClick={() => setEditorAberto(true)}
+                aria-label="Abrir o telhado em tela cheia para ajustar as placas"
+                className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-950/0 opacity-0 transition group-hover:bg-slate-950/45 group-hover:opacity-100 focus-visible:bg-slate-950/45 focus-visible:opacity-100 focus:outline-none"
+              >
+                <span className="flex items-center gap-2 rounded-xl bg-white/95 px-4 py-2 text-[11px] font-bold text-[#004276] shadow-lg">
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  AMPLIAR E AJUSTAR
+                </span>
+              </button>
+            )}
+            {ajustadoManualmente && (
+              <span className="pointer-events-none absolute left-2 top-2 rounded-lg bg-[#004276] px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-white shadow">
+                Ajustado manualmente
+              </span>
+            )}
+          </div>
 
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -555,6 +794,7 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
                 titulo="Módulos posicionados"
                 valor={`${modulos.length} de ${modulosQtd}`}
                 destaque={faltam > 0 ? 'alerta' : 'ok'}
+                progresso={modulosQtd > 0 ? modulos.length / modulosQtd : 0}
               />
               <Indicador titulo="Capacidade do telhado" valor={`${capacidade} módulos`} />
               <Indicador
@@ -564,55 +804,118 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
               <Indicador titulo="Águas identificadas" valor={`${telhado.segmentos.length}`} />
             </div>
 
+            {ajustadoManualmente && (
+              <div className="flex items-center gap-2 rounded-xl border border-[#004276]/20 bg-[#004276]/5 px-3 py-2 text-[11px] text-[#004276]">
+                <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+                <span className="font-semibold">Layout ajustado à mão.</span>
+                <button
+                  type="button"
+                  onClick={refazerAutomatico}
+                  className="ml-auto flex items-center gap-1 font-bold underline underline-offset-2 hover:text-[#003158]"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Refazer automático
+                </button>
+              </div>
+            )}
+
             {faltam > 0 && (
-              <Aviso tom="alerta">
-                Só couberam <strong>{modulos.length}</strong> dos {modulosQtd} módulos
-                dimensionados. O telhado comporta no máximo {capacidade}. Reveja o
-                consumo, considere módulo de outra potência ou uma área adicional.
+              <Aviso
+                tom="alerta"
+                resumo={`Couberam ${modulos.length} dos ${modulosQtd} módulos dimensionados`}
+              >
+                O telhado comporta no máximo {capacidade}. Reveja o consumo, considere módulo
+                de outra potência ou uma área adicional.
               </Aviso>
             )}
 
             {geo && !geo.confiavel && (
-              <Aviso tom="alerta">
-                O endereço foi localizado de forma aproximada ({geo.precisao}), não sobre
-                a edificação. Confira se a figura corresponde ao imóvel do cliente.
+              <Aviso
+                tom="alerta"
+                resumo={`Endereço localizado de forma aproximada (${geo.precisao})`}
+              >
+                O ponto não caiu sobre a edificação. Confira se a figura corresponde ao
+                imóvel do cliente — vale abrir em tela cheia para comparar.
+              </Aviso>
+            )}
+
+            {/* Sem a chave de browser o botão de tela cheia simplesmente não
+                aparece — e o consultor não tem como saber por quê. Este aviso
+                é o que separa "recurso desligado nesta instalação" de "a tela
+                está quebrada", que foi como pareceu na primeira vez. */}
+            {!chaveMaps && !recursoDesligado && (
+              <Aviso tom="atencao" resumo="Ajuste manual das placas indisponível aqui">
+                O editor em tela cheia precisa da chave{' '}
+                <strong>GOOGLE_MAPS_BROWSER_KEY</strong> (Maps JavaScript API) configurada na
+                API. Sem ela vale o layout automático, e a proposta sai normalmente — só não
+                dá para arrastar as placas.
               </Aviso>
             )}
 
             {enquadramentoDefasado && (
-              <Aviso tom="atencao">
-                O kit mudou de tamanho depois da busca. A figura mantém o enquadramento da
-                foto original — use <strong>Buscar novamente</strong> se os módulos não
-                couberem mais no quadro.
+              <Aviso tom="atencao" resumo="O kit mudou de tamanho depois da busca">
+                A figura mantém o enquadramento da foto original — use{' '}
+                <strong>Buscar novamente</strong> se os módulos não couberem mais no quadro.
               </Aviso>
             )}
 
             {idade !== null && idade > IMAGEM_VELHA_ANOS && (
-              <Aviso tom="atencao">
-                {descreverImagem(telhado)} — {Math.floor(idade)} anos atrás. A foto ao
-                lado é atualizada e em alta resolução, mas o levantamento de inclinação/águas foi feito
-                na data de referência. Confira se a disposição dos módulos bate com o telhado visível na foto.
+              <Aviso
+                tom="atencao"
+                resumo={`Levantamento de ${Math.floor(idade)} anos atrás`}
+              >
+                {descreverImagem(telhado)}. A foto ao lado é atualizada e em alta resolução,
+                mas o levantamento de inclinação/águas foi feito na data de referência.
+                Confira se a disposição dos módulos bate com o telhado visível na foto.
               </Aviso>
             )}
 
-            <p className="text-[10px] leading-relaxed text-slate-400">
-              Endereço localizado: {geo?.enderecoFormatado}. {descreverImagem(telhado)}.
-              Foto de satélite atualizada via Google Maps em alta resolução. O posicionamento usa o módulo de{' '}
-              {modulo.larguraM.toFixed(2)} × {modulo.alturaM.toFixed(2)} m cadastrado nos
-              parâmetros.
-            </p>
+            <details className="group rounded-xl border border-slate-200 bg-slate-50/60">
+              <summary className="flex cursor-pointer items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase text-slate-500 marker:content-['']">
+                <ChevronDown className="w-3.5 h-3.5 transition group-open:rotate-180" />
+                Detalhes da análise
+              </summary>
+              <p className="px-3 pb-3 text-[10px] leading-relaxed text-slate-500">
+                Endereço localizado: {geo?.enderecoFormatado}. {descreverImagem(telhado)}. Foto
+                de satélite atualizada via Google Maps em alta resolução. O posicionamento usa
+                o módulo de {modulo.larguraM.toFixed(2)} × {modulo.alturaM.toFixed(2)} m
+                {dimEditor ? ' definido no editor' : ' cadastrado nos parâmetros'}, com{' '}
+                {espacamentoM.toFixed(2)} m de espaçamento.
+              </p>
+            </details>
           </div>
         </div>
+      )}
+
+      {/* Monta só quando abre: fechado, o editor ficaria recalculando o
+          contexto de edição (máscara do Google, que passa de mil pontos em
+          telhado grande) a cada tecla digitada no campo de consumo. Montar na
+          hora também garante que ele sempre parta do layout atual. */}
+      {telhado && editorAberto && (
+        <EditorTelhado
+          aberto={editorAberto}
+          onFechar={() => setEditorAberto(false)}
+          telhado={telhado}
+          modulos={modulos}
+          modulosQtd={modulosQtd}
+          modulo={modulo}
+          espacamentoM={espacamentoM}
+          chaveMaps={chaveMaps}
+          enderecoFormatado={geo?.enderecoFormatado}
+          onAplicar={aplicarEdicao}
+        />
       )}
     </div>
   );
 };
 
-const Indicador: React.FC<{ titulo: string; valor: string; destaque?: 'ok' | 'alerta' }> = ({
-  titulo,
-  valor,
-  destaque,
-}) => (
+const Indicador: React.FC<{
+  titulo: string;
+  valor: string;
+  destaque?: 'ok' | 'alerta';
+  /** 0..1. Quando presente, desenha a barra sob o número. */
+  progresso?: number;
+}> = ({ titulo, valor, destaque, progresso }) => (
   <div
     className={`rounded-xl border p-3 ${
       destaque === 'alerta' ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'
@@ -626,21 +929,44 @@ const Indicador: React.FC<{ titulo: string; valor: string; destaque?: 'ok' | 'al
     >
       {valor}
     </p>
+    {progresso !== undefined && (
+      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-200">
+        <div
+          className={`h-full rounded-full transition-all ${
+            destaque === 'alerta' ? 'bg-amber-500' : 'bg-emerald-500'
+          }`}
+          style={{ width: `${Math.min(100, Math.max(0, progresso * 100))}%` }}
+        />
+      </div>
+    )}
   </div>
 );
 
-const Aviso: React.FC<{ tom: 'alerta' | 'atencao'; children: React.ReactNode }> = ({
-  tom,
-  children,
-}) => (
-  <div
-    className={`flex gap-2 rounded-xl border p-3 text-[11px] leading-relaxed ${
+/**
+ * Aviso recolhido: o resumo aparece sempre, a explicação abre no clique.
+ *
+ * Antes cada aviso era um bloco âmbar de três linhas, e com dois ou três deles
+ * ao mesmo tempo o card virava uma parede de alerta — o consultor passava por
+ * cima sem ler nenhum. Recolhido, a mensagem curta continua visível e o
+ * detalhe fica a um clique de quem quer agir sobre ele.
+ */
+const Aviso: React.FC<{
+  tom: 'alerta' | 'atencao';
+  resumo: string;
+  children: React.ReactNode;
+}> = ({ tom, resumo, children }) => (
+  <details
+    className={`group rounded-xl border text-[11px] leading-relaxed ${
       tom === 'alerta'
         ? 'border-amber-300 bg-amber-50 text-amber-900'
         : 'border-slate-200 bg-slate-50 text-slate-600'
     }`}
   >
-    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-    <p>{children}</p>
-  </div>
+    <summary className="flex cursor-pointer items-center gap-2 p-2.5 font-semibold marker:content-['']">
+      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+      <span className="min-w-0 flex-1">{resumo}</span>
+      <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-60 transition group-open:rotate-180" />
+    </summary>
+    <p className="px-2.5 pb-2.5 pl-8 font-normal">{children}</p>
+  </details>
 );

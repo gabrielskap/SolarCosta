@@ -417,6 +417,15 @@ export interface ConfigApp {
    * tomando um 503 — e, com a busca automática, um por CEP digitado.
    */
   google_maps_ativo?: boolean;
+  /**
+   * Chave da Maps JavaScript API para o editor de telhado em tela cheia, ou
+   * null quando não configurada. Sem ela o card do telhado segue igual — só
+   * não abre em tela cheia (ver useGoogleMaps.ts).
+   *
+   * Chave SEPARADA da de servidor: aquela é restrita por IP da VPS e não
+   * funcionaria no navegador.
+   */
+  google_maps_browser_key?: string | null;
 }
 
 /** Lê um parâmetro do banco como texto. */

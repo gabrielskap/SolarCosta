@@ -38,30 +38,58 @@ export function criarApp(): express.Express {
   // Atrás do Nginx: confia no X-Forwarded-For para o rate limit e o log de IP.
   app.set('trust proxy', 1);
 
-  // CSP padrão, sem exceções para o Google.
+  // CSP: 'self' por padrão, mais as exceções abaixo.
   //
-  // O telhado por satélite não precisa de nenhuma: a imagem chega pela nossa
-  // origem (GET /api/solar/imagem) e os módulos são SVG desenhado por nós.
-  // Se algum dia entrar o mapa interativo (Maps JavaScript API), aí sim será
-  // preciso liberar script-src/img-src/connect-src para *.googleapis.com e
-  // *.gstatic.com — e vale medir se compensa, porque o loader do Maps exige
-  // 'unsafe-inline' em script-src, que enfraquece a defesa contra XSS.
+  // Qualquer mudança aqui precisa ser espelhada em deploy/nginx/solarcosta.conf,
+  // que manda o MESMO header. Dois CSP na mesma resposta se INTERSECTAM — o
+  // navegador exige que a origem passe nos dois —, então liberar só de um lado
+  // não libera nada, e o sintoma é um recurso que some sem erro de servidor.
   //
   // Exceções além do 'self' padrão do helmet:
-  // - connect-src para o ViaCEP: a busca de endereço por CEP (src/services/cep.ts)
+  // - ViaCEP (connect-src): a busca de endereço por CEP (src/services/cep.ts)
   //   chama https://viacep.com.br direto do navegador.
-  // - script-src/connect-src para o beacon da Cloudflare: injetado pelo proxy
-  //   da Cloudflare (Web Analytics), não faz parte do nosso build.
-  // - img-src blob: a imagem de satélite (GET /api/solar/imagem) chega pela
-  //   nossa origem, mas o front busca como blob e exibe via URL.createObjectURL.
+  // - Beacon da Cloudflare (script-src/connect-src): injetado pelo proxy da
+  //   Cloudflare (Web Analytics), não faz parte do nosso build.
+  // - blob: (img-src): a imagem de satélite (GET /api/solar/imagem) chega pela
+  //   nossa origem, mas o front busca como blob e exibe via createObjectURL.
+  // - Google Maps: o editor de telhado em tela cheia (EditorTelhado.tsx) usa a
+  //   Maps JavaScript API. É a única parte do sistema que fala com o Google
+  //   direto do navegador — o resto passa pelo nosso proxy.
+  //
+  // Sobre o Maps e o XSS: o loader é um <script src> criado por nós
+  // (useGoogleMaps.ts), então NÃO precisa de 'unsafe-inline' em script-src, e
+  // ele segue sem. O Maps escreve style= nos elementos, o que exigiria
+  // 'unsafe-inline' em style-src — mas o default do helmet já traz
+  // ("'self'", 'https:', "'unsafe-inline'"), então nada foi afrouxado ali.
+  // Os hosts são fixos onde dá; os tiles de satélite vêm de subdomínios
+  // rotativos (khms0/khms1…, *.ggpht.com) e aí o curinga é inevitável.
+  const hostsGoogleMaps = ['https://maps.googleapis.com', 'https://maps.gstatic.com'];
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-          'script-src': ["'self'", 'https://static.cloudflareinsights.com'],
-          'connect-src': ["'self'", 'https://viacep.com.br', 'https://cloudflareinsights.com'],
-          'img-src': ["'self'", 'data:', 'blob:'],
+          'script-src': ["'self'", 'https://static.cloudflareinsights.com', ...hostsGoogleMaps],
+          'connect-src': [
+            "'self'",
+            'https://viacep.com.br',
+            'https://cloudflareinsights.com',
+            ...hostsGoogleMaps,
+          ],
+          'img-src': [
+            "'self'",
+            'data:',
+            'blob:',
+            ...hostsGoogleMaps,
+            // Tiles de satélite: khms0/khms1/… .googleapis.com e *.ggpht.com.
+            'https://*.googleapis.com',
+            'https://*.gstatic.com',
+            'https://*.ggpht.com',
+          ],
+          'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
+          // O Maps no modo vetorial roda worker a partir de blob:. Sem esta
+          // linha o worker-src cai no default-src ('self') e o mapa trava.
+          'worker-src': ["'self'", 'blob:'],
         },
       },
     }),

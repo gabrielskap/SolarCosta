@@ -106,6 +106,20 @@ const propostaSchema = z.object({
       }),
     )
     .nullish(),
+  // Layout ajustado à mão no editor de telhado (V007), em vez de gerado pelo
+  // empacotamento automático. Muda como o front trata um recálculo por
+  // mudança de kit: preserva as posições em vez de refazê-las.
+  layout_ajuste_manual: z.coerce.boolean().nullish(),
+  // Medida da placa usada no layout, quando difere dos parâmetros do sistema.
+  // Limites frouxos de propósito: o que é um módulo "razoável" muda a cada
+  // geração de painel, e barrar aqui só criaria um teto para envelhecer mal.
+  layout_modulo: z
+    .object({
+      larguraM: z.number().positive().max(10),
+      alturaM: z.number().positive().max(10),
+      espacamentoM: z.number().min(0).max(5),
+    })
+    .nullish(),
 
   itens: z.array(itemSchema).min(1, 'A proposta precisa de pelo menos um item.'),
 });
@@ -232,7 +246,8 @@ propostasRouter.post(
             latitude, longitude, place_id, endereco_formatado, edificacao_id,
             mapa_zoom, telhado_imagem_data, telhado_area_m2,
             layout_modulos, layout_segmentos,
-            cep, numero_endereco
+            cep, numero_endereco,
+            layout_ajuste_manual, layout_modulo
          ) VALUES (
             $1,$2,$3,$4,NULLIF($5,'')::citext,$6,$7,
             COALESCE($8::int, (SELECT id FROM "SolarCosta_Concessionarias" WHERE nome = $9)),
@@ -246,7 +261,8 @@ propostasRouter.post(
             $39,$40,$41,$42,$43,
             $44,$45::date,$46,
             $47::jsonb,$48::jsonb,
-            $49,$50
+            $49,$50,
+            COALESCE($51, false),$52::jsonb
          ) RETURNING id`,
         [
           d.lead_id ?? null, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null,
@@ -270,6 +286,7 @@ propostasRouter.post(
           d.mapa_zoom ?? null, d.telhado_imagem_data ?? null, d.telhado_area_m2 ?? null,
           paraJsonb(d.layout_modulos), paraJsonb(d.layout_segmentos),
           d.cep ?? null, d.numero_endereco ?? null,
+          d.layout_ajuste_manual ?? false, paraJsonb(d.layout_modulo),
         ],
       );
       const novoId = rows[0]!.id as string;
@@ -328,7 +345,8 @@ propostasRouter.put(
             endereco_formatado = $41, edificacao_id = $42, mapa_zoom = $43,
             telhado_imagem_data = $44::date, telhado_area_m2 = $45,
             layout_modulos = $46::jsonb, layout_segmentos = $47::jsonb,
-            cep = $48, numero_endereco = $49
+            cep = $48, numero_endereco = $49,
+            layout_ajuste_manual = COALESCE($50, false), layout_modulo = $51::jsonb
           WHERE id = $1`,
         [
           id, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null, d.email ?? null,
@@ -351,6 +369,7 @@ propostasRouter.put(
           d.telhado_imagem_data ?? null, d.telhado_area_m2 ?? null,
           paraJsonb(d.layout_modulos), paraJsonb(d.layout_segmentos),
           d.cep ?? null, d.numero_endereco ?? null,
+          d.layout_ajuste_manual ?? false, paraJsonb(d.layout_modulo),
         ],
       );
 

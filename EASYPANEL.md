@@ -50,6 +50,16 @@ consegue abrir a porta 80 (privilegiada, <1024) sem precisar rodar como root.
 | `REFRESH_TOKEN_TTL_DIAS` | `30` | Duração do refresh token, em dias. |
 | `SCHEDULER_ATIVO` | `true` | Rotina diária (boletos vencidos, obras atrasadas) direto na API. Desligue (`false`) se preferir rodar via `pg_cron` — ver [deploy/postgres/rotina-diaria-pg_cron.sql](deploy/postgres/rotina-diaria-pg_cron.sql). |
 | `SCHEDULER_HORA` / `SCHEDULER_MINUTO` | `3` / `10` | Horário da rotina diária (também roda uma vez na subida do container). |
+| `GOOGLE_MAPS_SERVER_KEY` | — (vazio) | Liga a busca de telhado por satélite na proposta. Chave de **servidor**, restrita por **IP da VPS**, com **Solar API + Geocoding API + Maps Static API** liberadas. Vazia, a busca some da tela e o resto do sistema funciona igual. |
+| `GOOGLE_MAPS_BROWSER_KEY` | — (vazio) | Liga o editor de telhado em tela cheia. Chave **separada** da de cima — esta roda no navegador, então precisa ser restrita por **referrer HTTP** (`https://SEU-DOMINIO/*`) e ter só a **Maps JavaScript API** liberada. Vazia, o card do telhado continua igual, só não abre em tela cheia. |
+
+> **Sobre as duas chaves do Google.** São duas porque as restrições são
+> incompatíveis: a de servidor é travada por IP (e morreria no navegador), a de
+> browser é travada por referrer (e é pública por natureza — quem abre o mapa
+> consegue lê-la). O que protege a de browser é o referrer **mais um teto de
+> cota no Cloud Console**: os tiles do mapa são cobrados direto do navegador, sem
+> passar pela nossa API, então o cache e o debounce que seguram a fatura da
+> busca por satélite não alcançam esse caminho. Defina o teto ao criar a chave.
 
 **Não** existe mais `VITE_API_URL` em produção — o front usa caminho relativo
 porque agora está na mesma origem da API. (Só é usado em desenvolvimento

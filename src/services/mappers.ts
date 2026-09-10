@@ -361,6 +361,10 @@ export function paraProposta(linha: any): Proposta {
     telhadoAreaM2: numOpc(linha.telhado_area_m2),
     layoutModulos: linha.layout_modulos ?? undefined,
     layoutSegmentos: linha.layout_segmentos ?? undefined,
+    // V007: contexto do ajuste manual. O booleano vem do banco com DEFAULT
+    // false, então proposta antiga chega como automática, que é o correto.
+    layoutAjusteManual: linha.layout_ajuste_manual ?? undefined,
+    layoutModulo: linha.layout_modulo ?? undefined,
   };
 }
 
@@ -411,6 +415,8 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     telhado_area_m2: p.telhadoAreaM2 ?? null,
     layout_modulos: p.layoutModulos ?? null,
     layout_segmentos: p.layoutSegmentos ?? null,
+    layout_ajuste_manual: p.layoutAjusteManual ?? false,
+    layout_modulo: p.layoutModulo ?? null,
     itens: p.kitItens.map((i) => ({
       produto_id: i.produtoId ?? null,
       descricao: i.descricao,

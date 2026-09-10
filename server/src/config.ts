@@ -32,6 +32,22 @@ const schema = z.object({
   // por causa de um extra da proposta.
   GOOGLE_MAPS_SERVER_KEY: z.string().min(1).optional(),
 
+  // Chave de BROWSER do Google Maps Platform (Maps JavaScript API), usada só
+  // pelo editor de telhado em tela cheia. É outra chave, não a de cima: o Maps
+  // JS roda no navegador, e a de servidor é restrita por IP da VPS — morreria
+  // aqui. Esta precisa ser restrita por REFERRER HTTP, com apenas a Maps
+  // JavaScript API liberada.
+  //
+  // Chave de browser é pública por natureza: quem abre o mapa consegue lê-la.
+  // O que a protege é a restrição de referrer e o teto de cota no Cloud
+  // Console, não o sigilo. Ainda assim ela sai pelo /api/config, que exige
+  // login, em vez de ir no HTML — não impede um usuário logado de copiá-la,
+  // mas mantém a chave fora do alcance de quem nunca autenticou.
+  //
+  // Opcional pelo mesmo motivo da de servidor: sem ela o card do telhado
+  // continua igual, só não abre em tela cheia.
+  GOOGLE_MAPS_BROWSER_KEY: z.string().min(1).optional(),
+
   // Rotina diária (boletos vencidos, obras atrasadas). Desligue se estiver
   // rodando a mesma função pelo pg_cron.
   SCHEDULER_ATIVO: z
@@ -59,5 +75,7 @@ export const config = {
     .filter(Boolean),
   /** Falso quando GOOGLE_MAPS_SERVER_KEY não foi configurada. */
   googleMapsAtivo: Boolean(parsed.data.GOOGLE_MAPS_SERVER_KEY),
+  /** Falso quando GOOGLE_MAPS_BROWSER_KEY não foi configurada. */
+  googleMapsBrowserAtivo: Boolean(parsed.data.GOOGLE_MAPS_BROWSER_KEY),
   isProd: parsed.data.NODE_ENV === 'production',
 };

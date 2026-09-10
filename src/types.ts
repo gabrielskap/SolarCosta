@@ -153,6 +153,13 @@ export interface ModuloLayout {
   azimuteGraus: number;
 }
 
+/** Medida física da placa usada para montar o layout. */
+export interface MedidaModulo {
+  larguraM: number;
+  alturaM: number;
+  espacamentoM: number;
+}
+
 /** Água do telhado identificada pela Solar API. */
 export interface SegmentoLayout {
   indice: number;
@@ -225,6 +232,14 @@ export interface Proposta {
   telhadoAreaM2?: number;
   layoutModulos?: ModuloLayout[];
   layoutSegmentos?: SegmentoLayout[];
+  /**
+   * As posições em layoutModulos saíram do editor de telhado, não do
+   * empacotamento automático. Muda o que acontece quando o kit muda de
+   * tamanho: em vez de refazer o layout, só a diferença é acertada.
+   */
+  layoutAjusteManual?: boolean;
+  /** Medida da placa usada no layout, quando difere dos parâmetros do sistema. */
+  layoutModulo?: MedidaModulo;
 }
 
 export interface Contrato {

@@ -77,14 +77,14 @@ export interface ResultadoLayout {
 // y para o norte, ambos em metros. O erro nessa escala fica muito abaixo da
 // precisão da própria imagem de satélite.
 
-interface Plano {
+export interface Plano {
   latRef: number;
   lngRef: number;
   metrosPorGrauLng: number;
   metrosPorGrauLat: number;
 }
 
-function criarPlano(ref: Coordenada): Plano {
+export function criarPlano(ref: Coordenada): Plano {
   const rad = (ref.latitude * Math.PI) / 180;
   return {
     latRef: ref.latitude,
@@ -94,14 +94,14 @@ function criarPlano(ref: Coordenada): Plano {
   };
 }
 
-function paraMetros(p: Plano, c: Coordenada): { x: number; y: number } {
+export function paraMetros(p: Plano, c: Coordenada): { x: number; y: number } {
   return {
     x: (c.longitude - p.lngRef) * p.metrosPorGrauLng,
     y: (c.latitude - p.latRef) * p.metrosPorGrauLat,
   };
 }
 
-function paraCoordenada(p: Plano, x: number, y: number): Coordenada {
+export function paraCoordenada(p: Plano, x: number, y: number): Coordenada {
   return {
     longitude: p.lngRef + x / p.metrosPorGrauLng,
     latitude: p.latRef + y / p.metrosPorGrauLat,
@@ -115,8 +115,114 @@ function paraCoordenada(p: Plano, x: number, y: number): Coordenada {
  * para considerar aquele ponto "em cima de área aproveitável". Meia diagonal
  * da placa do Google é o valor natural: cobre a placa inteira e nada além.
  */
-function raioMascara(placa: { alturaM: number; larguraM: number }): number {
+export function raioMascara(placa: { alturaM: number; larguraM: number }): number {
   return Math.hypot(placa.alturaM, placa.larguraM) / 2;
+}
+
+/** Dimensões físicas do nosso módulo, como vêm dos parâmetros. */
+export interface DimensoesModulo {
+  larguraM: number;
+  alturaM: number;
+}
+
+/**
+ * Rotação do plano para o azimute do segmento.
+ *
+ * `u` corre ao longo da cumeeira e `v` desce a água. As fileiras ficam
+ * paralelas à cumeeira, que é como o módulo é instalado de verdade.
+ *
+ * Vive aqui fora, e não dentro de `empacotarSegmento`, porque a edição manual
+ * precisa exatamente da mesma rotação: um módulo arrastado na tela vira (u,v)
+ * para encaixar na malha e volta para lat/lng na mesma conta. Duas
+ * implementações da mesma rotação divergiriam meio grau e as placas ajustadas
+ * à mão sairiam desalinhadas das automáticas.
+ */
+export interface RotacaoSegmento {
+  paraUV: (p: { x: number; y: number }) => { u: number; v: number };
+  paraXY: (u: number, v: number) => { x: number; y: number };
+}
+
+export function rotacaoSegmento(azimuteGraus: number): RotacaoSegmento {
+  const az = (azimuteGraus * Math.PI) / 180;
+  // Descida da água (azimute 0 = norte, sentido horário) e paralelo à cumeeira.
+  const dv = { x: Math.sin(az), y: Math.cos(az) };
+  const du = { x: Math.cos(az), y: -Math.sin(az) };
+  return {
+    paraUV: (p) => ({ u: p.x * du.x + p.y * du.y, v: p.x * dv.x + p.y * dv.y }),
+    paraXY: (u, v) => ({ x: u * du.x + v * dv.x, y: u * du.y + v * dv.y }),
+  };
+}
+
+/**
+ * Monta UM módulo a partir do centro em (u,v) do segmento.
+ *
+ * Extraído do laço de `empacotarSegmento` para o empacotamento automático e a
+ * edição manual construírem a geometria pela mesma função — placa adicionada
+ * na mão precisa ter exatamente o mesmo formato das que o algoritmo pôs.
+ */
+export function criarModulo(
+  plano: Plano,
+  seg: { indice: number; azimuteGraus: number },
+  cu: number,
+  cv: number,
+  modulo: DimensoesModulo,
+  rot = rotacaoSegmento(seg.azimuteGraus),
+): ModuloPosicionado {
+  const meiaU = modulo.larguraM / 2;
+  const meiaV = modulo.alturaM / 2;
+  const centroXY = rot.paraXY(cu, cv);
+  const cantosUV = [
+    [cu - meiaU, cv - meiaV],
+    [cu + meiaU, cv - meiaV],
+    [cu + meiaU, cv + meiaV],
+    [cu - meiaU, cv + meiaV],
+  ];
+  return {
+    cantos: cantosUV.map(([u, v]) => {
+      const q = rot.paraXY(u!, v!);
+      return paraCoordenada(plano, q.x, q.y);
+    }),
+    centro: paraCoordenada(plano, centroXY.x, centroXY.y),
+    segmento: seg.indice,
+    azimuteGraus: seg.azimuteGraus,
+  };
+}
+
+/**
+ * Malha de encaixe de um segmento.
+ *
+ * O passo é o mesmo do empacotamento (módulo + espaçamento). `encaixar`
+ * arredonda um ponto solto para o centro da célula mais próxima, que é o que
+ * mantém as fileiras alinhadas quando o consultor arrasta uma placa.
+ *
+ * A origem é a fase da grade automática, não o zero do plano: sem isso uma
+ * placa movida ficaria meio passo fora das que o algoritmo posicionou.
+ */
+export interface MalhaSegmento {
+  passoU: number;
+  passoV: number;
+  origemU: number;
+  origemV: number;
+  encaixar: (u: number, v: number) => { u: number; v: number };
+}
+
+export function malhaSegmento(
+  modulo: DimensoesModulo,
+  espacamentoM: number,
+  origem: { u: number; v: number } = { u: 0, v: 0 },
+): MalhaSegmento {
+  const passoU = modulo.larguraM + espacamentoM;
+  const passoV = modulo.alturaM + espacamentoM;
+  return {
+    passoU,
+    passoV,
+    origemU: origem.u,
+    origemV: origem.v,
+    encaixar: (u, v) => ({
+      u: origem.u + Math.round((u - origem.u) / passoU) * passoU,
+      v: origem.v + Math.round((v - origem.v) / passoV) * passoV,
+    }),
+  };
 }
 
 /**
@@ -136,21 +242,8 @@ function empacotarSegmento(
 ): ModuloPosicionado[] {
   if (mascaraDoSegmento.length === 0) return [];
 
-  const az = (seg.azimuteGraus * Math.PI) / 180;
-  // Descida da água (azimute 0 = norte, sentido horário) e paralelo à cumeeira.
-  const dv = { x: Math.sin(az), y: Math.cos(az) };
-  const du = { x: Math.cos(az), y: -Math.sin(az) };
-
-  const paraUV = (p: { x: number; y: number }) => ({
-    u: p.x * du.x + p.y * du.y,
-    v: p.x * dv.x + p.y * dv.y,
-  });
-  const paraXY = (u: number, v: number) => ({
-    x: u * du.x + v * dv.x,
-    y: u * du.y + v * dv.y,
-  });
-
-  const mascaraUV = mascaraDoSegmento.map(paraUV);
+  const rot = rotacaoSegmento(seg.azimuteGraus);
+  const mascaraUV = mascaraDoSegmento.map(rot.paraUV);
   const us = mascaraUV.map((p) => p.u);
   const vs = mascaraUV.map((p) => p.v);
   // A máscara são centros de placa; a área real se estende meia placa além.
@@ -192,23 +285,7 @@ function empacotarSegmento(
     for (let co = 0; co < colunas; co++) {
       const cu = uMin + sobraU / 2 + meiaU + co * passoU;
       if (!dentro(cu, cv)) continue;
-
-      const centroXY = paraXY(cu, cv);
-      const cantosUV = [
-        [cu - meiaU, cv - meiaV],
-        [cu + meiaU, cv - meiaV],
-        [cu + meiaU, cv + meiaV],
-        [cu - meiaU, cv + meiaV],
-      ];
-      modulos.push({
-        cantos: cantosUV.map(([u, v]) => {
-          const p = paraXY(u!, v!);
-          return paraCoordenada(plano, p.x, p.y);
-        }),
-        centro: paraCoordenada(plano, centroXY.x, centroXY.y),
-        segmento: seg.indice,
-        azimuteGraus: seg.azimuteGraus,
-      });
+      modulos.push(criarModulo(plano, seg, cu, cv, modulo, rot));
     }
   }
 

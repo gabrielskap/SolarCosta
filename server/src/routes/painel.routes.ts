@@ -144,6 +144,12 @@ configRouter.get(
       // o front precisa saber de antemão que o recurso está desligado — em vez
       // de descobrir requisição perdida a requisição perdida.
       google_maps_ativo: config.googleMapsAtivo,
+      // Chave da Maps JavaScript API, para o editor de telhado em tela cheia.
+      // Vai no corpo em vez de no HTML porque esta rota exige login: chave de
+      // browser é pública por natureza (quem abre o mapa lê), o que a protege
+      // é a restrição de referrer e o teto de cota — mas não custa nada manter
+      // fora do alcance de quem nunca autenticou.
+      google_maps_browser_key: config.GOOGLE_MAPS_BROWSER_KEY ?? null,
     });
   }),
 );
