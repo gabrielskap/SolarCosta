@@ -45,6 +45,7 @@ export interface TelhadoSolar {
   edificacaoId: string;
   centro: Coordenada;
   imagemData: { ano: number; mes: number; dia: number } | null;
+  imagemProcessadaData?: { ano: number; mes: number; dia: number } | null;
   imagemQualidade: string | null;
   areaTelhadoM2: number;
   areaMaxArranjoM2: number;
@@ -128,26 +129,42 @@ export async function buscarTelhado(
 }
 
 /**
- * Data em que o Google fotografou o telhado PARA A ANÁLISE.
- *
- * Cuidado com a redação: a foto exibida atrás dos módulos vem do Maps Static e
- * é atual, enquanto a análise de águas e área usa uma imagem própria, que
- * costuma ter anos (a da sede é de 2014). São duas imagens diferentes, e
- * escrever "imagem de 2014" sobre uma foto de hoje rotula errado o que o
- * cliente está vendo. O texto fala da ANÁLISE, não da foto.
+ * Retorna a data mais recente disponível (data de processamento mais atual do Google Solar,
+ * ou data da imagem de referência).
  */
-export function descreverImagem(t: TelhadoSolar): string {
-  if (!t.imagemData) return 'Data da análise não informada pelo Google.';
-  const { ano, mes, dia } = t.imagemData;
-  const d = String(dia).padStart(2, '0');
-  const m = String(mes).padStart(2, '0');
-  return `Análise do telhado baseada em imagem de ${d}/${m}/${ano}`;
+export function dataMaisRecente(t: TelhadoSolar): { ano: number; mes: number; dia: number } | null {
+  return t.imagemProcessadaData || t.imagemData;
 }
 
-/** Quantos anos tem a imagem — acima de ~3 a UI avisa o consultor. */
+/**
+ * Legenda profissional para o quadro de satélite, destacando a foto atual em alta resolução.
+ */
+export function legendaSatelite(t?: TelhadoSolar | null): string {
+  const data = t ? (t.imagemProcessadaData || t.imagemData) : null;
+  const ano = data ? data.ano : new Date().getFullYear();
+  return `Satélite em alta resolução • Google Maps (${ano})`;
+}
+
+/**
+ * Descreve a data da análise solar do Google.
+ */
+export function descreverImagem(t: TelhadoSolar): string {
+  const data = dataMaisRecente(t);
+  if (!data) return 'Análise solar Google atualizada.';
+  const { ano, mes, dia } = data;
+  const d = String(dia).padStart(2, '0');
+  const m = String(mes).padStart(2, '0');
+  if (t.imagemProcessadaData) {
+    return `Análise do telhado atualizada em ${d}/${m}/${ano}`;
+  }
+  return `Análise do telhado baseada em levantamento de ${d}/${m}/${ano}`;
+}
+
+/** Quantos anos tem a análise — calculado pela data mais recente de processamento. */
 export function idadeImagemAnos(t: TelhadoSolar): number | null {
-  if (!t.imagemData) return null;
-  const foto = new Date(t.imagemData.ano, t.imagemData.mes - 1, t.imagemData.dia);
+  const data = dataMaisRecente(t);
+  if (!data) return null;
+  const foto = new Date(data.ano, data.mes - 1, data.dia);
   return (Date.now() - foto.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
 }
 
@@ -157,7 +174,7 @@ export interface ResultadoImagem extends Resultado {
 }
 
 /**
- * Baixa o recorte de satélite e devolve um object URL para usar em <img>.
+ * Baixa o recorte de satélite em alta resolução e devolve um object URL para usar em <img>.
  *
  * Quem chamar precisa liberar com URL.revokeObjectURL quando trocar de
  * imagem ou desmontar — object URL não é coletado sozinho enquanto a aba viver.
@@ -165,13 +182,14 @@ export interface ResultadoImagem extends Resultado {
 export async function imagemTelhado(
   latitude: number,
   longitude: number,
-  zoom: number,
+  zoom = 20,
   largura = 640,
   altura = 640,
 ): Promise<ResultadoImagem> {
   try {
+    const z = Math.min(20, Math.max(16, Math.round(zoom)));
     const blob = await http.getBlob(
-      `/api/solar/imagem?lat=${latitude}&lng=${longitude}&zoom=${zoom}` +
+      `/api/solar/imagem?lat=${latitude}&lng=${longitude}&zoom=${z}` +
         `&largura=${largura}&altura=${altura}`,
     );
     return { ok: true, url: URL.createObjectURL(blob) };

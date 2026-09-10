@@ -330,53 +330,68 @@ export function projetar(e: Enquadramento, c: Coordenada): { x: number; y: numbe
   };
 }
 
-/** Zoom máximo com cobertura de satélite consistente no Static Maps. */
-const ZOOM_MAX = 21;
-/** Abaixo disto a figura fica pequena demais para o papel. */
-const LADO_MINIMO_PX = 260;
+/** Zoom máximo com cobertura de satélite nativa e nítida no Google Maps (nível 21 sofre interpolação digital). */
+const ZOOM_MAX = 20;
+
+/** Dimensão mínima física em metros para manter a casa e o telhado completos no enquadramento. */
+const LADO_MINIMO_METROS = 34;
+
+/** Tamanho padrão em pixels do quadro (640x640 com scale=2 devolve 1280x1280 Retina de alta nitidez). */
+export const TAMANHO_PADRAO_PX = 640;
 
 /**
- * Escolhe centro, zoom e TAMANHO do quadro para os módulos preencherem a figura.
- *
- * O tamanho sai calculado em vez de fixo em `maxPx` porque o zoom do Static
- * Maps é inteiro: num arranjo de 12 módulos já estamos no zoom máximo, e pedir
- * sempre 640x640 deixaria o telhado como uma manchinha no meio de um quarteirão.
- * Recortando o quadro no tamanho necessário, o arranjo ocupa a figura.
- *
- * O quadro sai quadrado — o componente e o proxy assumem proporção 1:1.
+ * Escolhe centro e zoom ideais em alta resolução (640x640 Retina) para os módulos
+ * e o telhado preencherem a figura com nitidez máxima e contexto do imóvel.
  */
 export function enquadrar(
   modulos: ModuloPosicionado[],
-  maxPx = 640,
-  margem = 1.5,
+  contextoOuMaxPx?: Coordenada[] | number,
+  maxPxArg = TAMANHO_PADRAO_PX,
+  margem = 1.35,
 ): Enquadramento {
-  const pontos = modulos.flatMap((m) => m.cantos);
-  if (pontos.length === 0) {
+  const pontosContexto = Array.isArray(contextoOuMaxPx) ? contextoOuMaxPx : undefined;
+  const maxPx = typeof contextoOuMaxPx === 'number' ? contextoOuMaxPx : maxPxArg;
+
+  const pontosModulos = modulos.flatMap((m) => m.cantos);
+  const todosPontos = [...pontosModulos, ...(pontosContexto ?? [])];
+
+  if (todosPontos.length === 0) {
     return { centro: { latitude: 0, longitude: 0 }, zoom: 20, larguraPx: maxPx, alturaPx: maxPx };
   }
 
-  const lats = pontos.map((p) => p.latitude);
-  const lngs = pontos.map((p) => p.longitude);
+  const lats = todosPontos.map((p) => p.latitude);
+  const lngs = todosPontos.map((p) => p.longitude);
+
   const centro: Coordenada = {
     latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
     longitude: (Math.min(...lngs) + Math.max(...lngs)) / 2,
   };
 
+  // Garante uma extensão mínima no solo (ex: ~34m) para que mesmo 1 ou 2 módulos
+  // não gerem zoom excessivo, mantendo a edificação e o telhado completos com contexto.
+  const latDeltaMin = LADO_MINIMO_METROS / 111320;
+  const lngDeltaMin = LADO_MINIMO_METROS / (111320 * Math.cos((centro.latitude * Math.PI) / 180));
+
+  const minLat = Math.min(...lats, centro.latitude - latDeltaMin / 2);
+  const maxLat = Math.max(...lats, centro.latitude + latDeltaMin / 2);
+  const minLng = Math.min(...lngs, centro.longitude - lngDeltaMin / 2);
+  const maxLng = Math.max(...lngs, centro.longitude + lngDeltaMin / 2);
+
   const ladoNecessario = (zoom: number): number => {
     const escala = TILE_PX * Math.pow(2, zoom);
-    const largura = Math.abs(mundoX(Math.max(...lngs), escala) - mundoX(Math.min(...lngs), escala));
-    const altura = Math.abs(mundoY(Math.max(...lats), escala) - mundoY(Math.min(...lats), escala));
+    const largura = Math.abs(mundoX(maxLng, escala) - mundoX(minLng, escala));
+    const altura = Math.abs(mundoY(maxLat, escala) - mundoY(minLat, escala));
     return Math.max(largura, altura) * margem;
   };
 
-  // Zoom mais fechado que ainda caiba no limite do Static Maps.
+  // Zoom mais fechado que caiba no limite do Static Maps (máximo 20 para resolução nativa sem borrão).
   for (let zoom = ZOOM_MAX; zoom >= 16; zoom--) {
     const lado = ladoNecessario(zoom);
     if (lado <= maxPx) {
-      const px = Math.round(Math.min(maxPx, Math.max(LADO_MINIMO_PX, lado)));
-      return { centro, zoom, larguraPx: px, alturaPx: px };
+      return { centro, zoom, larguraPx: maxPx, alturaPx: maxPx };
     }
   }
+
   // Arranjo grande demais até no zoom 16: usa o quadro inteiro e aceita a folga.
   return { centro, zoom: 16, larguraPx: maxPx, alturaPx: maxPx };
 }

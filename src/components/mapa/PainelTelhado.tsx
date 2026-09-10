@@ -20,10 +20,12 @@ import { ModuloLayout, SegmentoLayout } from '../../types';
 import { paramNum, type ConfigApp } from '../../services/api';
 import {
   buscarTelhado,
+  dataMaisRecente,
   descreverImagem,
   geocodificar,
   idadeImagemAnos,
   imagemTelhado,
+  legendaSatelite,
   type EnderecoGeocodificado,
   type TelhadoSolar,
 } from '../../services/solar';
@@ -206,7 +208,7 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
    */
   const emitirResultado = useCallback(
     (g: EnderecoGeocodificado, t: TelhadoSolar, posicionados: ModuloLayout[], zoom: number) => {
-      const d = t.imagemData;
+      const d = dataMaisRecente(t);
       onResultado({
         latitude: g.latitude,
         longitude: g.longitude,
@@ -284,7 +286,8 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
     }
 
     const r = recalcular(t, modulosQtd);
-    const enq = enquadrar(r.modulos);
+    const pontosContexto = [t.centro, ...t.segmentos.map((s) => s.centro)];
+    const enq = enquadrar(r.modulos, pontosContexto);
 
     const img = await imagemTelhado(
       enq.centro.latitude,
@@ -445,7 +448,10 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
   const enquadramentoDefasado =
     !!enquadramentoImagem &&
     modulos.length > 0 &&
-    enquadrar(modulos).zoom !== enquadramentoImagem.zoom;
+    enquadrar(
+      modulos,
+      telhado ? [telhado.centro, ...telhado.segmentos.map((s) => s.centro)] : undefined,
+    ).zoom !== enquadramentoImagem.zoom;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
@@ -540,7 +546,7 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
             modulos={modulos}
             imagemUrl={imagemUrl}
             enquadramento={enquadramentoImagem ?? undefined}
-            legenda={descreverImagem(telhado)}
+            legenda={legendaSatelite(telhado)}
           />
 
           <div className="space-y-3">
@@ -584,15 +590,14 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
             {idade !== null && idade > IMAGEM_VELHA_ANOS && (
               <Aviso tom="atencao">
                 {descreverImagem(telhado)} — {Math.floor(idade)} anos atrás. A foto ao
-                lado é atual, mas o levantamento das águas não: construções ou reformas
-                posteriores a essa data não entraram na análise. Confira se a disposição
-                bate com o telhado que aparece na foto.
+                lado é atualizada e em alta resolução, mas o levantamento de inclinação/águas foi feito
+                na data de referência. Confira se a disposição dos módulos bate com o telhado visível na foto.
               </Aviso>
             )}
 
             <p className="text-[10px] leading-relaxed text-slate-400">
-              Endereço localizado: {geo?.enderecoFormatado}. Análise de telhado fornecida
-              pela Solar API do Google; o posicionamento usa o módulo de{' '}
+              Endereço localizado: {geo?.enderecoFormatado}. {descreverImagem(telhado)}.
+              Foto de satélite atualizada via Google Maps em alta resolução. O posicionamento usa o módulo de{' '}
               {modulo.larguraM.toFixed(2)} × {modulo.alturaM.toFixed(2)} m cadastrado nos
               parâmetros.
             </p>

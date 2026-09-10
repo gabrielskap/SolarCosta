@@ -169,8 +169,10 @@ export interface TelhadoSolar {
   /** Id estável da edificação — pode ser persistido sem prazo (ToS). */
   edificacaoId: string;
   centro: { latitude: number; longitude: number };
-  /** Data da foto de satélite que embasa a análise. Costuma ter anos. */
+  /** Data da foto aérea de levantamento 3D original. */
   imagemData: { ano: number; mes: number; dia: number } | null;
+  /** Data mais recente de processamento e atualização solar pelo Google. */
+  imagemProcessadaData: { ano: number; mes: number; dia: number } | null;
   imagemQualidade: string | null;
   areaTelhadoM2: number;
   areaMaxArranjoM2: number;
@@ -190,6 +192,7 @@ interface RespostaSolar {
   name: string;
   center: { latitude: number; longitude: number };
   imageryDate?: { year: number; month: number; day: number };
+  imageryProcessedDate?: { year: number; month: number; day: number };
   imageryQuality?: string;
   solarPotential: {
     maxArrayAreaMeters2: number;
@@ -248,6 +251,9 @@ export async function telhadoPorCoordenada(
     imagemData: j.imageryDate
       ? { ano: j.imageryDate.year, mes: j.imageryDate.month, dia: j.imageryDate.day }
       : null,
+    imagemProcessadaData: j.imageryProcessedDate
+      ? { ano: j.imageryProcessedDate.year, mes: j.imageryProcessedDate.month, dia: j.imageryProcessedDate.day }
+      : null,
     imagemQualidade: j.imageryQuality ?? null,
     areaTelhadoM2: s.wholeRoofStats.areaMeters2,
     areaMaxArranjoM2: s.maxArrayAreaMeters2,
@@ -299,14 +305,20 @@ export interface ImagemSatelite {
 export async function imagemSatelite(
   latitude: number,
   longitude: number,
-  zoom: number,
-  largura: number,
-  altura: number,
+  zoom = 20,
+  largura = 640,
+  altura = 640,
 ): Promise<ImagemSatelite> {
   const chave = exigirChave();
+  // Limita o zoom ao nível 20: no Brasil o Google Maps não tem cobertura nativa ótica
+  // em zoom 21, gerando interpolação digital 4x borrada. O nível 20 é o mais nítido.
+  const z = Math.min(20, Math.max(16, Math.round(zoom)));
+  const w = Math.min(640, Math.max(100, Math.round(largura)));
+  const h = Math.min(640, Math.max(100, Math.round(altura)));
+
   const url =
-    `${STATIC_URL}?center=${latitude},${longitude}&zoom=${zoom}` +
-    `&size=${largura}x${altura}&scale=2&maptype=satellite&format=png&key=${chave}`;
+    `${STATIC_URL}?center=${latitude},${longitude}&zoom=${z}` +
+    `&size=${w}x${h}&scale=2&maptype=satellite&format=png&key=${chave}`;
 
   const resp = await fetch(url);
   if (!resp.ok) {
