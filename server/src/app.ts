@@ -57,8 +57,8 @@ export function criarApp(): express.Express {
       contentSecurityPolicy: {
         directives: {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-          scriptSrc: ["'self'", 'https://static.cloudflareinsights.com'],
-          connectSrc: ["'self'", 'https://viacep.com.br', 'https://cloudflareinsights.com'],
+          'script-src': ["'self'", 'https://static.cloudflareinsights.com'],
+          'connect-src': ["'self'", 'https://viacep.com.br', 'https://cloudflareinsights.com'],
         },
       },
     }),
