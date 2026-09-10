@@ -20,13 +20,32 @@ let chaveCarregada: string | null = null;
 
 const ID_SCRIPT = 'google-maps-js';
 
+/** Nome da função global que o Google chama quando a API termina de subir. */
+const CALLBACK = '__solarCostaMapsPronto';
+
+/** Desiste depois disso, em vez de deixar o editor num spinner eterno. */
+const LIMITE_MS = 20000;
+
+/** A API está carregada de verdade — a CLASSE existe, não só o namespace. */
+function pronta(): boolean {
+  return typeof (window as any).google?.maps?.Map === 'function';
+}
+
 /**
- * Injeta o <script> e resolve quando `google.maps` existir.
+ * Injeta o <script> e resolve quando as classes do Maps existirem.
  *
- * Usa createElement em vez do snippet inline que a documentação do Google
- * sugere, e isso é de propósito: um <script src> passa na CSP com o host
- * liberado, enquanto o bootstrap inline exigiria 'unsafe-inline' em
- * script-src, afrouxando a política do painel inteiro (ver server/src/app.ts).
+ * Duas decisões que já custaram bug aqui:
+ *
+ * 1. `callback=` é OBRIGATÓRIO junto de `loading=async`. Sem ele o bootstrap
+ *    assíncrono não popula `google.maps`, e o evento `load` do <script> dispara
+ *    antes de existir qualquer coisa — dava "google.maps.Map is not a
+ *    constructor" e, na tentativa seguinte, "carregou sem expor a API". O
+ *    `load` diz que o ARQUIVO chegou; só o callback diz que a API subiu.
+ *
+ * 2. O <script> é criado por createElement, e não pelo snippet inline que a
+ *    documentação sugere: um `<script src>` passa na CSP com o host liberado,
+ *    enquanto o bootstrap inline exigiria 'unsafe-inline' em script-src,
+ *    afrouxando a política do painel inteiro (ver server/src/app.ts).
  */
 function carregar(chave: string): Promise<void> {
   if (carregamento && chaveCarregada === chave) return carregamento;
@@ -38,38 +57,65 @@ function carregar(chave: string): Promise<void> {
       return;
     }
 
-    // Já carregado (outra montagem, ou HMR trocou o módulo mas não a página).
-    if ((window as any).google?.maps) {
+    // Já pronto (outra montagem, ou HMR trocou o módulo mas não a página).
+    if (pronta()) {
       resolver();
       return;
     }
 
-    const existente = document.getElementById(ID_SCRIPT) as HTMLScriptElement | null;
-    const script = existente ?? document.createElement('script');
+    let encerrado = false;
+    const encerrar = (fn: () => void) => {
+      if (encerrado) return;
+      encerrado = true;
+      clearTimeout(temporizador);
+      fn();
+    };
 
-    script.addEventListener('load', () => {
-      if ((window as any).google?.maps) resolver();
-      // Carregou mas não expôs a API: chave inválida, faturamento desligado ou
-      // API não habilitada no projeto. O Google devolve 200 nesses casos e
-      // reclama no console, então sem esta checagem a promise nunca resolveria.
-      else rejeitar(new Error('O Google Maps carregou sem expor a API.'));
-    });
-    script.addEventListener('error', () =>
-      rejeitar(new Error('Não foi possível carregar o Google Maps.')),
+    const temporizador = setTimeout(
+      () => encerrar(() => rejeitar(new Error('O Google Maps demorou demais para responder.'))),
+      LIMITE_MS,
     );
 
-    if (!existente) {
-      script.id = ID_SCRIPT;
-      script.async = true;
-      script.defer = true;
-      script.src =
-        'https://maps.googleapis.com/maps/api/js' +
-        `?key=${encodeURIComponent(chave)}` +
-        '&libraries=geometry' +
-        '&language=pt-BR&region=BR' +
-        '&loading=async';
-      document.head.appendChild(script);
+    // O Google chama isto quando a API terminou de subir. É o único sinal
+    // confiável de que as classes existem.
+    (window as any)[CALLBACK] = () => {
+      encerrar(() => {
+        if (pronta()) resolver();
+        else rejeitar(new Error('O Google Maps respondeu sem expor o mapa.'));
+      });
+    };
+
+    const existente = document.getElementById(ID_SCRIPT) as HTMLScriptElement | null;
+    if (existente) {
+      // Já está no DOM (HMR, ou uma carga anterior que falhou depois do
+      // append). Não dá para re-disparar o callback: resta esperar o callback
+      // em voo ou o temporizador.
+      return;
     }
+
+    const script = document.createElement('script');
+    script.id = ID_SCRIPT;
+    script.async = true;
+    script.src =
+      'https://maps.googleapis.com/maps/api/js' +
+      `?key=${encodeURIComponent(chave)}` +
+      `&callback=${CALLBACK}` +
+      '&loading=async' +
+      // Sem `libraries=`: o editor faz a própria geometria
+      // (utils/layoutModulos) e não usa google.maps.geometry.
+      '&language=pt-BR&region=BR';
+
+    // Falha de REDE. Chave inválida, faturamento desligado ou API não
+    // habilitada NÃO caem aqui: o Google devolve 200, reclama no console e
+    // nunca chama o callback — quem pega esses casos é o temporizador.
+    script.addEventListener('error', () =>
+      encerrar(() => {
+        script.remove();
+        rejeitar(new Error('Não foi possível baixar o Google Maps.'));
+      }),
+    );
+
+    document.head.appendChild(script);
   });
 
   // Falha não fica grudada: uma queda de rede não pode condenar a aba a nunca
@@ -104,7 +150,7 @@ export function useGoogleMaps(chave: string | null | undefined, ativo: boolean):
 
   useEffect(() => {
     if (!ativo || !chave) return;
-    if (typeof window !== 'undefined' && (window as any).google?.maps) {
+    if (pronta()) {
       setEstado({ pronto: true, carregando: false, erro: null });
       return;
     }
@@ -114,8 +160,7 @@ export function useGoogleMaps(chave: string | null | undefined, ativo: boolean):
 
     carregar(chave).then(
       () => vivo && setEstado({ pronto: true, carregando: false, erro: null }),
-      (e: Error) =>
-        vivo && setEstado({ pronto: false, carregando: false, erro: e.message }),
+      (e: Error) => vivo && setEstado({ pronto: false, carregando: false, erro: e.message }),
     );
 
     return () => {
