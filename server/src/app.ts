@@ -46,7 +46,23 @@ export function criarApp(): express.Express {
   // preciso liberar script-src/img-src/connect-src para *.googleapis.com e
   // *.gstatic.com — e vale medir se compensa, porque o loader do Maps exige
   // 'unsafe-inline' em script-src, que enfraquece a defesa contra XSS.
-  app.use(helmet());
+  //
+  // Duas exceções ficam além do 'self' padrão do helmet:
+  // - connect-src para o ViaCEP: a busca de endereço por CEP (src/services/cep.ts)
+  //   chama https://viacep.com.br direto do navegador.
+  // - script-src/connect-src para o beacon da Cloudflare: injetado pelo proxy
+  //   da Cloudflare (Web Analytics), não faz parte do nosso build.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          scriptSrc: ["'self'", 'https://static.cloudflareinsights.com'],
+          connectSrc: ["'self'", 'https://viacep.com.br', 'https://cloudflareinsights.com'],
+        },
+      },
+    }),
+  );
   app.use(
     cors({
       origin: config.corsOrigins,
