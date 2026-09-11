@@ -50,7 +50,7 @@ import {
   type DimensoesModulo,
   type Enquadramento,
 } from '../../utils/layoutModulos';
-import { ajustarQuantidade, criarContexto } from '../../utils/edicaoLayout';
+import { ajustarQuantidade, criarContexto, segmentosOrientados } from '../../utils/edicaoLayout';
 import { TelhadoSatelite } from './TelhadoSatelite';
 import { EditorTelhado } from './EditorTelhado';
 
@@ -562,8 +562,12 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
     // Candidatos = capacidade cheia do telhado, não só os `modulosQtd`
     // primeiros: as vagas boas podem estar depois do corte quando o consultor
     // já ocupou as melhores à mão.
+    //
+    // As vagas saem no ângulo em que o consultor deixou cada água, não no do
+    // Google: numa água girada 90° no editor, candidatas no ângulo original
+    // entrariam deitadas no meio das placas em pé.
     const candidatos = calcularLayout({
-      segmentos: telhado.segmentos,
+      segmentos: segmentosOrientados(telhado.segmentos, layoutManual),
       mascara: telhado.placasGoogle.map((p) => ({
         centro: p.centro,
         segmentoIndice: p.segmentoIndice,

@@ -30,7 +30,8 @@ import {
   Move,
   Plus,
   Redo2,
-  Rows3,
+  RotateCcw,
+  RotateCw,
   Ruler,
   Trash2,
   Undo2,
@@ -54,8 +55,10 @@ import {
   criarContexto,
   dentroDaMascara,
   girarSegmento,
+  giroAplicado,
   moverArranjo,
   moverModulo,
+  normalizarDesvio,
   removerModulo,
 } from '../../utils/edicaoLayout';
 import { useGoogleMaps } from './useGoogleMaps';
@@ -82,6 +85,15 @@ const MAX_MASCARA_DESENHADA = 600;
 
 /** Limite de passos guardados no desfazer. */
 const MAX_HISTORICO = 50;
+
+/**
+ * Meia-volta para cada lado — a volta completa.
+ *
+ * Ir a -270° em vez de +90° levaria ao mesmo desenho por um caminho mais
+ * longo, então o controle mede o DESVIO em relação ao que o Google detectou e
+ * o caminho curto é sempre o que aparece.
+ */
+const GIRO_MAX = 180;
 
 interface EditorTelhadoProps {
   aberto: boolean;
@@ -118,7 +130,26 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
   const [mostrarMascara, setMostrarMascara] = useState(false);
   const [dim, setDim] = useState<DimensoesModulo>(moduloInicial);
   const [espacamento, setEspacamento] = useState(espacamentoInicial);
+
+  /**
+   * Giro da água selecionada, em graus, medido a partir do azimute do Google.
+   *
+   * É ABSOLUTO, não o quanto mexi agora: clicar numa placa de uma água já
+   * girada mostra +90°, e o consultor sabe de onde está partindo.
+   */
   const [giro, setGiro] = useState(0);
+
+  /**
+   * Layout que define a MALHA: fase da grade e orientação de cada água.
+   *
+   * Separado do layout corrente de propósito. Se a malha seguisse cada arrasto,
+   * ela escorregaria junto com a última placa movida e cada encaixe herdaria o
+   * desvio do anterior. Mas ela PRECISA acompanhar o giro — senão, girada a
+   * água, o primeiro arrasto devolvia a placa ao ângulo antigo. Então esta
+   * referência anda em eventos discretos: abertura, giro confirmado, desfazer e
+   * refazer.
+   */
+  const [referencia, setReferencia] = useState<ModuloLayout[]>(modulosIniciais);
 
   const [historico, setHistorico] = useState<ModuloLayout[][]>([]);
   const [futuro, setFuturo] = useState<ModuloLayout[][]>([]);
@@ -138,16 +169,26 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
   const ouvintes = useRef<any[][]>([]);
   /** Estado de um arrasto em curso, para o modo "mover água". */
   const arrasto = useRef<{ origem: Coordenada; irmaos: Array<{ p: GPolygon; caminho: Coordenada[] }> } | null>(null);
-  /** Snapshot de onde o giro começou: o slider é absoluto, não incremental. */
-  const baseGiro = useRef<ModuloLayout[] | null>(null);
+  /**
+   * Gesto de giro em curso: de onde partiu e onde chegou.
+   *
+   * Todo passo do controle é calculado a partir do `base`, nunca do estado
+   * anterior. Somar meio grau de cada vez acumularia erro de ponto flutuante e
+   * o bloco iria escorregando enquanto o consultor arrasta o cursor.
+   */
+  const giroEmCurso = useRef<{
+    base: ModuloLayout[];
+    /** Giro que a água já tinha quando o gesto começou. */
+    giroBase: number;
+    resultado: ModuloLayout[];
+  } | null>(null);
 
   /**
-   * Contexto de edição — malha, fases, ordem das águas.
+   * Contexto de edição — malha, fases, orientação e ordem das águas.
    *
-   * Depende do layout de ABERTURA, não do atual, e essa é a razão de ser do
-   * `modulosIniciais` congelado: a fase da grade precisa ficar parada. Se
-   * recalculasse a cada arrasto, a malha seguiria a última placa movida e cada
-   * encaixe herdaria o desvio do anterior.
+   * Depende da `referencia`, não do layout corrente: ver o comentário dela para
+   * o porquê de a malha não poder seguir cada arrasto nem ficar presa à
+   * abertura.
    */
   const ctx = useMemo(
     () =>
@@ -160,15 +201,16 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
         placaMascara: { alturaM: telhado.placaGoogle.alturaM, larguraM: telhado.placaGoogle.larguraM },
         modulo: dim,
         espacamentoM: espacamento,
-        modulos: modulosIniciais,
+        modulos: referencia,
       }),
-    // `modulosIniciais` de propósito fora: ver o comentário acima.
-    [telhado, dim, espacamento], // eslint-disable-line react-hooks/exhaustive-deps
+    [telhado, dim, espacamento, referencia],
   );
 
-  /** Vagas do empacotamento automático, para o "adicionar" ter onde encaixar. */
-  const segmentoSelecionado =
-    selecionado != null && modulos[selecionado] ? modulos[selecionado]!.segmento : null;
+  const moduloSelecionado = selecionado != null ? modulos[selecionado] ?? null : null;
+  /** Água da placa selecionada — é o alvo do giro. */
+  const segmentoSelecionado = moduloSelecionado?.segmento ?? null;
+  /** Para onde as placas dessa água estão apontando AGORA, já com o giro. */
+  const azimuteSelecionado = moduloSelecionado?.azimuteGraus ?? null;
 
   /* ------------------------------------------------------- histórico -- */
 
@@ -192,6 +234,9 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
         setFuturo((f) => [atuais, ...f]);
         return anterior;
       });
+      // A malha volta junto: desfazer um giro sem isto deixaria o contexto
+      // girado sobre placas que já voltaram ao ângulo anterior.
+      setReferencia(anterior);
       setSelecionado(null);
       return h.slice(0, -1);
     });
@@ -205,6 +250,7 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
         setHistorico((h) => [...h, atuais]);
         return proximo;
       });
+      setReferencia(proximo);
       setSelecionado(null);
       return f.slice(1);
     });
@@ -217,6 +263,7 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
   useEffect(() => {
     if (!aberto) return;
     setModulos(modulosIniciais);
+    setReferencia(modulosIniciais);
     setDim(moduloInicial);
     setEspacamento(espacamentoInicial);
     setHistorico([]);
@@ -224,19 +271,35 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
     setSelecionado(null);
     setFerramenta('selecionar');
     setGiro(0);
+    giroEmCurso.current = null;
   }, [aberto]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Escape fecha; Delete remove a placa selecionada.
   useEffect(() => {
     if (!aberto) return;
     const aoTeclar = (e: KeyboardEvent) => {
+      // Digitar num campo não é atalho. Sem esta guarda, apagar um dígito do
+      // giro ou da medida da placa apagava a PLACA selecionada — e girar exige
+      // uma placa selecionada, então o campo novo caía direto na armadilha.
+      const alvo = e.target as HTMLElement | null;
+      const emCampo =
+        !!alvo &&
+        (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable);
+      // O slider é campo para o Backspace, mas não para o Ctrl+Z: só em campo
+      // de TEXTO o desfazer pertence ao navegador. Sem esta distinção, mexer no
+      // giro e tentar desfazer em seguida não fazia nada — o foco ainda estava
+      // no controle.
+      const emTexto =
+        emCampo && (alvo.tagName !== 'INPUT' || (alvo as HTMLInputElement).type !== 'range');
+
       if (e.key === 'Escape') onFechar();
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selecionado != null) {
+
+      if (!emCampo && (e.key === 'Delete' || e.key === 'Backspace') && selecionado != null) {
         e.preventDefault();
         aplicarMudanca(removerModulo(modulos, selecionado));
         setSelecionado(null);
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      if (!emTexto && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) refazer();
         else desfazer();
@@ -376,7 +439,9 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
             return;
           }
           setSelecionado(i);
-          setGiro(0);
+          // O controle de giro é absoluto: ao selecionar, ele passa a mostrar
+          // o quanto AQUELA água já está desviada do azimute do Google.
+          setGiro(giroAplicado(telhado.segmentos, modulos, m.segmento));
         }),
       );
 
@@ -441,7 +506,7 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
         }),
       );
     });
-  }, [pronto, modulos, selecionado, ferramenta, ctx, aplicarMudanca]);
+  }, [pronto, modulos, selecionado, ferramenta, ctx, telhado, aplicarMudanca]);
 
   /** Máscara do Google: o "porquê" do empacotamento automático ter parado ali. */
   useEffect(() => {
@@ -479,21 +544,43 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
 
   /* ------------------------------------------------------- ações -- */
 
+  /**
+   * Leva a água selecionada ao desvio `valor` em relação ao azimute do Google.
+   *
+   * Absoluto, e sempre recalculado a partir do snapshot do gesto — ver
+   * `giroEmCurso`.
+   */
   const aoGirar = (valor: number) => {
     if (segmentoSelecionado == null) return;
-    if (baseGiro.current === null) baseGiro.current = modulos;
-    setGiro(valor);
-    // Gira SEMPRE a partir do snapshot: aplicar deltas sucessivos acumularia
-    // erro e as placas iriam escorregando a cada meio grau.
-    setModulos(girarSegmento(ctx, baseGiro.current, segmentoSelecionado, valor));
+    const alvo = Math.max(-GIRO_MAX, Math.min(GIRO_MAX, valor));
+    const gesto = giroEmCurso.current ?? { base: modulos, giroBase: giro, resultado: modulos };
+    giroEmCurso.current = gesto;
+    const novos = girarSegmento(ctx, gesto.base, segmentoSelecionado, alvo - gesto.giroBase);
+    gesto.resultado = novos;
+    setGiro(alvo);
+    setModulos(novos);
   };
 
+  /**
+   * Fecha o gesto: um passo no desfazer e a malha adota o arranjo girado.
+   *
+   * Sem a adoção, a próxima placa arrastada encaixaria na grade do ângulo
+   * anterior e voltaria sozinha à orientação antiga.
+   */
   const confirmarGiro = () => {
-    if (baseGiro.current && baseGiro.current !== modulos) {
-      setHistorico((h) => [...h.slice(-(MAX_HISTORICO - 1)), baseGiro.current!]);
-      setFuturo([]);
-    }
-    baseGiro.current = null;
+    const gesto = giroEmCurso.current;
+    giroEmCurso.current = null;
+    if (!gesto || gesto.resultado === gesto.base) return;
+    setHistorico((h) => [...h.slice(-(MAX_HISTORICO - 1)), gesto.base]);
+    setFuturo([]);
+    setModulos(gesto.resultado);
+    setReferencia(gesto.resultado);
+  };
+
+  /** Botões de passo (±1°, ±90°, meia-volta): giram e já fecham o gesto. */
+  const girarPasso = (delta: number) => {
+    aoGirar(normalizarDesvio(giro + delta));
+    confirmarGiro();
   };
 
   const aplicarDimensoes = (novaDim: DimensoesModulo, novoEsp: number) => {
@@ -512,16 +599,15 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
     espAnterior.current = espacamento;
     setModulos((atuais) =>
       atuais.map((m) => {
-        const seg = telhado.segmentos.find((s) => s.indice === m.segmento) ?? {
-          indice: m.segmento,
-          azimuteGraus: m.azimuteGraus,
-        };
+        // A orientação sai da PRÓPRIA placa: uma água girada à mão não pode
+        // voltar ao ângulo do Google só porque a medida do módulo mudou.
+        const seg = { indice: m.segmento, azimuteGraus: m.azimuteGraus };
         const rot = rotacaoSegmento(seg.azimuteGraus);
         const uv = rot.paraUV(paraMetros(ctx.plano, m.centro));
         return criarModulo(ctx.plano, seg, uv.u, uv.v, dim, rot);
       }),
     );
-  }, [dim, espacamento, ctx, telhado]);
+  }, [dim, espacamento, ctx]);
 
   if (!aberto) return null;
 
@@ -683,35 +769,92 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
             {/* Giro da água selecionada */}
             <div className="rounded-xl border border-slate-200 p-3">
               <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-500">
-                <Rows3 className="w-3.5 h-3.5" />
+                <RotateCw className="w-3.5 h-3.5" />
                 Girar a água selecionada
               </p>
               {segmentoSelecionado == null ? (
                 <p className="mt-1.5 text-[11px] text-slate-500">
-                  Selecione uma placa para girar o arranjo daquela água.
+                  Selecione uma placa para girar o arranjo daquela água — a volta é completa,
+                  de −180° a +180°.
                 </p>
               ) : (
                 <>
+                  <div className="mt-2 flex items-center gap-1">
+                    <BotaoGiro titulo="Girar 90° à esquerda" onClick={() => girarPasso(-90)}>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </BotaoGiro>
+                    <BotaoGiro titulo="Girar 1° à esquerda" onClick={() => girarPasso(-1)}>
+                      −1°
+                    </BotaoGiro>
+                    <input
+                      type="number"
+                      step={0.5}
+                      min={-GIRO_MAX}
+                      max={GIRO_MAX}
+                      value={Math.round(giro * 10) / 10}
+                      aria-label="Giro da água em graus"
+                      onChange={(e) => {
+                        const bruto = e.target.value.trim();
+                        // "-" e campo vazio são passos da digitação, não um giro.
+                        if (bruto === '' || bruto === '-') return;
+                        const n = Number(bruto);
+                        if (Number.isFinite(n)) aoGirar(n);
+                      }}
+                      onBlur={confirmarGiro}
+                      onKeyUp={(e) => {
+                        if (e.key === 'Enter') confirmarGiro();
+                      }}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-300 px-1 py-1.5 text-center text-xs font-bold text-slate-800 focus:border-[#004276] focus:outline-none"
+                    />
+                    <BotaoGiro titulo="Girar 1° à direita" onClick={() => girarPasso(1)}>
+                      +1°
+                    </BotaoGiro>
+                    <BotaoGiro titulo="Girar 90° à direita" onClick={() => girarPasso(90)}>
+                      <RotateCw className="w-3.5 h-3.5" />
+                    </BotaoGiro>
+                  </div>
+
                   <input
                     type="range"
-                    min={-45}
-                    max={45}
+                    min={-GIRO_MAX}
+                    max={GIRO_MAX}
                     step={0.5}
                     value={giro}
+                    aria-label="Giro da água selecionada"
                     onChange={(e) => aoGirar(Number(e.target.value))}
                     onPointerUp={confirmarGiro}
                     onKeyUp={confirmarGiro}
                     className="mt-2 w-full accent-[#004276]"
                   />
-                  <div className="flex items-center justify-between text-[10px] text-slate-500">
-                    <span>Água {segmentoSelecionado}</span>
-                    <span className="font-bold text-slate-700">
-                      {giro > 0 ? '+' : ''}
-                      {giro.toFixed(1)}°
+                  <div className="flex justify-between text-[9px] text-slate-400">
+                    <span>−180°</span>
+                    <span>0°</span>
+                    <span>+180°</span>
+                  </div>
+
+                  <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                    <span className="truncate">
+                      Água {segmentoSelecionado}
+                      {azimuteSelecionado != null && (
+                        <> · aponta para {rosaDosVentos(azimuteSelecionado)}</>
+                      )}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        aoGirar(0);
+                        confirmarGiro();
+                      }}
+                      disabled={giro === 0}
+                      className="shrink-0 font-bold text-[#004276] underline underline-offset-2 disabled:no-underline disabled:text-slate-300 disabled:cursor-not-allowed"
+                    >
+                      Zerar
+                    </button>
                   </div>
                   <p className="mt-1 text-[10px] text-slate-400 leading-relaxed">
-                    Use quando as fileiras não acompanharem a cumeeira da foto.
+                    Graus pequenos acertam as fileiras com a cumeeira da foto; 90° deita ou
+                    levanta as placas. O giro vale só para o desenho — a inclinação e o
+                    azimute da água, que entram no cálculo, continuam os da análise.
                   </p>
                 </>
               )}
@@ -835,6 +978,23 @@ const Ferramentinha: React.FC<{
     }`}
   >
     {icone}
+  </button>
+);
+
+/** Passo fixo de giro. Quadrado e estreito para caber cinco na coluna. */
+const BotaoGiro: React.FC<{
+  titulo: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ titulo, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    title={titulo}
+    aria-label={titulo}
+    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-300 text-[10px] font-bold text-slate-600 transition hover:border-[#004276] hover:bg-[#004276]/5 hover:text-[#004276]"
+  >
+    {children}
   </button>
 );
 

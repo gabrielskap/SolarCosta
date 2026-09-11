@@ -67,6 +67,63 @@ function segmentoPor(ctx: ContextoEdicao, indice: number): SegmentoEntrada | und
   return ctx.segmentos.find((s) => s.indice === indice) ?? ctx.segmentos[0];
 }
 
+/** Azimute em [0, 360). Guardar 450° faria a rosa dos ventos e a tela lerem torto. */
+export function normalizarAzimute(graus: number): number {
+  return ((graus % 360) + 360) % 360;
+}
+
+/**
+ * Desvio angular em (-180, 180].
+ *
+ * É a forma de medir giro que faz sentido para quem ajusta: girar 350° é, na
+ * prática, girar 10° para o outro lado, e mostrar "350°" no controle faria o
+ * consultor procurar o caminho longo.
+ */
+export function normalizarDesvio(graus: number): number {
+  const r = ((((graus + 180) % 360) + 360) % 360) - 180;
+  return r === -180 ? 180 : r;
+}
+
+/**
+ * Segmentos com o azimute que as placas REALMENTE têm.
+ *
+ * O ângulo do Google é só o palpite de partida. Assim que uma água é girada no
+ * editor, quem manda na orientação passa a ser a placa que está na tela — e
+ * todo o resto (malha de encaixe, arrasto, placa acrescentada depois, giro
+ * seguinte) precisa enxergar esse ângulo, não o antigo. Sem esta troca, girar
+ * uma água 90° e arrastar uma placa em seguida devolvia a placa à orientação
+ * original: ela "desvirava" sozinha no meio das outras.
+ */
+export function segmentosOrientados<T extends { indice: number; azimuteGraus: number }>(
+  segmentos: T[],
+  modulos: ModuloLayout[],
+): T[] {
+  if (modulos.length === 0) return segmentos;
+  return segmentos.map((s) => {
+    const m = modulos.find((x) => x.segmento === s.indice);
+    return !m || m.azimuteGraus === s.azimuteGraus ? s : { ...s, azimuteGraus: m.azimuteGraus };
+  });
+}
+
+/**
+ * Quanto uma água já foi girada em relação ao que o Google mediu, em
+ * (-180, 180].
+ *
+ * O controle de giro precisa disto para ser absoluto: reabrir o editor, ou
+ * clicar de novo numa placa de uma água já girada, tem que mostrar +90° e não
+ * zero — senão o consultor não sabe de onde está partindo.
+ */
+export function giroAplicado(
+  segmentos: Array<{ indice: number; azimuteGraus: number }>,
+  modulos: ModuloLayout[],
+  segIndice: number,
+): number {
+  const m = modulos.find((x) => x.segmento === segIndice);
+  const s = segmentos.find((x) => x.indice === segIndice);
+  if (!m || !s) return 0;
+  return normalizarDesvio(m.azimuteGraus - s.azimuteGraus);
+}
+
 /** Malha de uma água, já com a fase congelada do contexto. */
 export function malhaDe(ctx: ContextoEdicao, segIndice: number): MalhaSegmento {
   return malhaSegmento(ctx.modulo, ctx.espacamentoM, ctx.fases.get(segIndice) ?? { u: 0, v: 0 });
@@ -87,6 +144,10 @@ export function centroUV(ctx: ContextoEdicao, m: ModuloLayout): { u: number; v: 
  * nele é o que não move nada de lugar. Sem módulos naquela água, cai para o
  * mesmo cálculo do empacotamento (grade centrada na máscara), para que a
  * primeira placa adicionada já nasça onde o automático a colocaria.
+ *
+ * O azimute também vem das placas quando elas existem (ver
+ * `segmentosOrientados`): numa água girada à mão, a malha tem que acompanhar o
+ * giro, senão o encaixe empurra as placas de volta para a grade antiga.
  */
 export function criarContexto(entrada: {
   segmentos: SegmentoEntrada[];
@@ -96,7 +157,8 @@ export function criarContexto(entrada: {
   espacamentoM: number;
   modulos: ModuloLayout[];
 }): ContextoEdicao {
-  const { segmentos, mascara, placaMascara, modulo, espacamentoM, modulos } = entrada;
+  const { mascara, placaMascara, modulo, espacamentoM, modulos } = entrada;
+  const segmentos = segmentosOrientados(entrada.segmentos, modulos);
   const referencia = segmentos[0]?.centro ?? mascara[0]?.centro ?? { latitude: 0, longitude: 0 };
   const plano = criarPlano(referencia);
   const raio = raioMascara(placaMascara);
@@ -293,12 +355,17 @@ export function removerModulo(modulos: ModuloLayout[], indice: number): ModuloLa
 }
 
 /**
- * Gira o arranjo de uma água.
+ * Gira o arranjo de uma água, em qualquer ângulo da volta completa.
  *
- * Existe porque o azimute do Google vem do modelo de elevação, e num telhado
- * pequeno ou de beiral largo ele sai alguns graus fora da cumeeira que aparece
- * na foto. As placas ficam visivelmente tortas em relação às telhas, e é a
- * primeira coisa que o cliente nota na proposta impressa.
+ * Nasceu do desvio fino: o azimute do Google vem do modelo de elevação, e num
+ * telhado pequeno ou de beiral largo ele sai alguns graus fora da cumeeira que
+ * aparece na foto. As placas ficam visivelmente tortas em relação às telhas, e
+ * é a primeira coisa que o cliente nota na proposta impressa.
+ *
+ * Mas o giro grande também é de uso legítimo, e por isso não há trava de
+ * ângulo aqui: 90° deita ou levanta a placa (paisagem ↔ retrato, mudando a
+ * direção das fileiras), e volta maior serve quando o Google apontou a água
+ * para o lado errado.
  *
  * Gira em torno do CENTRO DO ARRANJO, não do centro da água: um pivô fora do
  * bloco o arremessaria para longe, e o consultor teria que reposicionar tudo
@@ -310,8 +377,7 @@ export function girarSegmento(
   segIndice: number,
   deltaGraus: number,
 ): ModuloLayout[] {
-  const seg = segmentoPor(ctx, segIndice);
-  if (!seg || deltaGraus === 0) return modulos;
+  if (deltaGraus === 0) return modulos;
 
   const doSegmento = modulos.filter((m) => m.segmento === segIndice);
   if (doSegmento.length === 0) return modulos;
@@ -322,7 +388,11 @@ export function girarSegmento(
     y: centros.reduce((t, c) => t + c.y, 0) / centros.length,
   };
 
-  const novoAzimute = seg.azimuteGraus + deltaGraus;
+  // O giro parte do ângulo que as placas TÊM, não do que o Google mediu: é o
+  // que faz dois ajustes seguidos somarem (30° e depois 60° dão 90°). Partindo
+  // do azimute do Google, o segundo ajuste girava os centros e devolvia a
+  // placa à orientação do primeiro — bloco torto em relação a si mesmo.
+  const novoAzimute = normalizarAzimute(doSegmento[0]!.azimuteGraus + deltaGraus);
   const rotNova = rotacaoSegmento(novoAzimute);
   const ang = (-deltaGraus * Math.PI) / 180;
   const cos = Math.cos(ang);
@@ -402,11 +472,17 @@ export function contarPorSegmento(
   modulos: ModuloLayout[],
 ): Array<{ segmento: number; modulos: number; azimuteGraus: number }> {
   return ctx.ordem
-    .map((indice) => ({
-      segmento: indice,
-      modulos: modulos.filter((m) => m.segmento === indice).length,
-      azimuteGraus: segmentoPor(ctx, indice)?.azimuteGraus ?? 0,
-    }))
+    .map((indice) => {
+      const doSegmento = modulos.filter((m) => m.segmento === indice);
+      return {
+        segmento: indice,
+        modulos: doSegmento.length,
+        // Ângulo da placa, não o do contexto: durante o giro o contexto ainda
+        // é o do último ajuste confirmado, e a rosa dos ventos do painel tem
+        // que bater com o que está desenhado no mapa.
+        azimuteGraus: doSegmento[0]?.azimuteGraus ?? segmentoPor(ctx, indice)?.azimuteGraus ?? 0,
+      };
+    })
     .filter((s) => s.modulos > 0);
 }
 
