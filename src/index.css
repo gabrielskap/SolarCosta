@@ -48,6 +48,91 @@
   body.print-report .report-block { break-inside: avoid; }
 }
 
+/* ================= IMPRESSÃO DO DOCUMENTO (PDFModal) ================= */
+/*
+ * O PDFModal é uma janela: overlay `fixed`, moldura presa em 96vh e a área das
+ * folhas com rolagem própria. Na tela está certo; no papel o navegador imprimia
+ * exatamente o que estava visível — uma folha cortada, com barra de rolagem, e
+ * as outras sete de fora.
+ *
+ * Na impressão a janela é desfeita: o modal já está no <body> (portal, ver
+ * PDFModal.tsx), o resto do app sai do papel, as caixas que recortam voltam ao
+ * fluxo normal e cada `.folha-pdf` ocupa uma página A4.
+ *
+ * Tudo depende da marca `documento-aberto` no <body>: sem ela a primeira regra
+ * esconderia o #root em QUALQUER impressão, inclusive a dos relatórios.
+ */
+@media print {
+  body.documento-aberto > *:not(.documento-overlay) { display: none !important; }
+
+  body.documento-aberto .documento-overlay,
+  body.documento-aberto .documento-moldura,
+  body.documento-aberto .documento-area,
+  body.documento-aberto .documento-folhas {
+    position: static !important;
+    display: block !important;
+    inset: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /*
+   * Uma folha por página, no mesmo desenho da pré-visualização.
+   *
+   * A folha mantém a largura de projeto (max-w-4xl = 56rem = 896px) e é
+   * reduzida em bloco até a área útil do A4: 210mm menos as margens de 12mm do
+   * @page dão 186mm ≈ 703px, logo 703/896 ≈ 0,784. É `zoom`, e não
+   * `transform: scale`, porque só o zoom entra no cálculo de layout — com
+   * transform a paginação continuaria contando a folha em tamanho natural.
+   *
+   * Reduzir em bloco, em vez de deixar o texto refluir na largura do papel, é o
+   * que garante que a folha impressa tenha as mesmas quebras de linha da
+   * pré-visualização. E o conteúdo cabe com folga: a altura útil (273mm ≈
+   * 1.305px na escala da folha) é bem maior que os 1.050px do desenho.
+   */
+  body.documento-aberto .folha-pdf {
+    zoom: 0.784;
+    box-sizing: border-box;
+    width: 896px !important;
+    max-width: none !important;
+    min-height: 1305px !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  /* Sem isto o documento termina com uma página em branco. */
+  body.documento-aberto .folha-pdf:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /*
+   * O Chrome descarta fundos coloridos por padrão: sem isto o cabeçalho azul,
+   * os cartões de destaque e os selos amarelos saem brancos — impresso
+   * diferente do que a tela mostra.
+   */
+  body.documento-aberto .documento-folhas,
+  body.documento-aberto .documento-folhas * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
 /* ===================== ROLAGEM SUAVE POR ÂNCORA ===================== */
 /* O site usa links #ancora; respeita quem pediu menos animação no SO. */
 @media (prefers-reduced-motion: no-preference) {

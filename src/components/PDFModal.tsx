@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, Printer, Download, CheckCircle2, ChevronLeft, ChevronRight, Award, DollarSign,
   TrendingUp, Zap, Calendar, ShieldCheck, Phone, Mail, MapPin, SlidersHorizontal, Image as ImageIcon,
@@ -83,6 +84,14 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
     };
     // Depende do enquadramento resolvido, não do objeto (recriado a cada render).
   }, [enqTelhado?.centro.latitude, enqTelhado?.centro.longitude, enqTelhado?.zoom]);
+
+  // Enquanto o documento está aberto o <body> carrega esta marca: é por ela
+  // que a folha de estilos tira o restante do app do papel e imprime só as
+  // páginas. Ver o bloco "IMPRESSÃO DO DOCUMENTO" em src/index.css.
+  useEffect(() => {
+    document.body.classList.add('documento-aberto');
+    return () => document.body.classList.remove('documento-aberto');
+  }, []);
 
   if (!data) return null;
 
@@ -173,9 +182,13 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
     );
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[96vh] flex flex-col overflow-hidden">
+  // O modal é montado direto no <body>, e não no meio da árvore do app: a
+  // impressão precisa esconder tudo o que não é o documento, e isso só é
+  // simples de escrever quando o documento é irmão do #root, não um
+  // descendente dele.
+  return createPortal(
+    <div className="documento-overlay fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="documento-moldura bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[96vh] flex flex-col overflow-hidden">
         
         {/* TOP BAR CONTROLS (Hidden during print) */}
         <div className="no-print bg-[#004276] text-white px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 border-b border-blue-900">
@@ -246,10 +259,10 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
         </div>
 
         {/* WORKSPACE AREA (PDF View + Customization Panel) */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="documento-area flex-1 flex overflow-hidden">
           
           {/* MAIN DOCUMENT VIEWPORT */}
-          <div className="flex-1 p-3 sm:p-6 overflow-y-auto bg-slate-200/80 print:bg-white print:p-0">
+          <div className="documento-folhas flex-1 p-3 sm:p-6 overflow-y-auto bg-slate-200/80 print:bg-white print:p-0">
             
             {/* PROPOSTA DE ORÇAMENTO COMPLETA (8 PÁGINAS) */}
             {type === 'proposta' && (() => {
@@ -321,7 +334,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
               const PageWrapper = ({ pageNum, title, children }: { pageNum: number; title?: string; children: React.ReactNode }) => {
                 if (activePage !== 0 && activePage !== pageNum) return null;
                 return (
-                  <div className="bg-white text-slate-900 rounded-none shadow-xl print:shadow-none p-6 sm:p-10 mb-8 last:mb-0 border border-slate-200 print:border-none max-w-4xl mx-auto flex flex-col justify-between min-h-[1050px] relative overflow-hidden print:min-h-screen print:p-8 print:break-after-page">
+                  <div className="folha-pdf bg-white text-slate-900 rounded-none shadow-xl print:shadow-none p-6 sm:p-10 mb-8 last:mb-0 border border-slate-200 print:border-none max-w-4xl mx-auto flex flex-col justify-between min-h-[1050px] relative overflow-hidden">
                     
                     {/* Top Solar Costa Header Banner */}
                     <div className="border-b-2 border-[#004276] pb-4 mb-6 flex items-center justify-between">
@@ -354,8 +367,8 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
                   {/* PÁGINA 1: CAPA E RESUMO TÉCNICO */}
                   <PageWrapper pageNum={1} title="Apresentação & Dimensionamento">
                     <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-                        <div className="md:col-span-2 space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-6 items-center">
+                        <div className="md:col-span-2 print:col-span-2 space-y-3">
                           <h2 className="text-xl sm:text-2xl font-black text-[#004276] leading-tight">
                             Proposta Técnica e Comercial para Fornecimento de Sistema Solar Fotovoltaico Conectado à Rede Elétrica
                           </h2>
@@ -397,8 +410,8 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
                       </div>
 
                       {/* BIG HIGHLIGHTS BANNER */}
-                      <div className="bg-slate-100 border-2 border-[#004276] rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-center shadow-sm">
-                        <div className="space-y-3 md:col-span-2">
+                      <div className="bg-slate-100 border-2 border-[#004276] rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-6 items-center shadow-sm">
+                        <div className="space-y-3 md:col-span-2 print:col-span-2">
                           <div className="flex items-center gap-3">
                             <span className="font-bold text-amber-600 text-sm">Potência:</span>
                             <span className="text-2xl font-black text-[#004276]">{potencia} kWp</span>
@@ -856,7 +869,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
             {type === 'boleto' && (() => {
               const bol = data as Boleto;
               return (
-                <div className="bg-white rounded-2xl shadow-xl p-6 max-w-2xl mx-auto border-2 border-slate-800 space-y-4 font-mono text-xs text-slate-900">
+                <div className="bg-white rounded-2xl shadow-xl print:shadow-none p-6 max-w-2xl mx-auto border-2 border-slate-800 space-y-4 font-mono text-xs text-slate-900">
                   <div className="flex items-center justify-between border-b-2 border-slate-800 pb-2">
                     <div className="flex items-center gap-2">
                       <div className="bg-[#FFD100] text-[#004276] font-black px-2 py-1 text-sm border border-slate-800">
@@ -1089,6 +1102,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
 
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
