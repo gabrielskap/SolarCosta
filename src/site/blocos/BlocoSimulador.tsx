@@ -4,29 +4,29 @@
 // (utils/solar.ts). O que muda é o que NÃO aparece aqui: investimento, payback
 // e parcela dependem do kit montado no catálogo e são conversa de consultor.
 // O simulador entrega dimensionamento e economia — o resto vem na proposta.
+//
+// Bloco com LÓGICA: o administrador edita títulos, avisos e a chamada do
+// próximo passo. A CONTA — tarifa, horas de sol, perdas, potência do módulo —
+// vem de SolarCosta_Parametros e da concessionária escolhida, e não é editável
+// por aqui. Número que sai no site tem de ser o mesmo que sai na proposta.
 
 import React, { useMemo, useState } from 'react';
 import { Calculator, Sun, Zap, Ruler, Layers, TrendingUp, Info } from 'lucide-react';
-import { useSeo } from '../seo';
 import { Secao, TituloSecao, Cartao } from '../components/Secao';
 import { FormularioLead } from '../components/FormularioLead';
-import { CabecalhoPagina } from '../components/CabecalhoPagina';
-import { PerguntasFrequentes } from '../components/PerguntasFrequentes';
 import { useConfigPublica } from '../contexto';
 import { param } from '../../services/publico';
 import { dimensionar, projetarEconomia, consumoAPartirDaConta } from '../../utils/solar';
 import { formatCurrencyBRL, maskCurrency, parseCurrencyBRL } from '../../utils/format';
-import { FAQ } from '../conteudo';
+import type { ConteudoSimulador } from './tipos';
 
 type Modo = 'conta' | 'consumo';
 
-export const Simulador: React.FC = () => {
-  useSeo({
-    titulo: 'Simulador de economia com energia solar',
-    descricao:
-      'Informe o valor da sua conta de luz e veja a potência do sistema, a geração estimada e quanto você economiza em 25 anos com energia solar.',
-  });
+const ROTULO_CAMPO = 'block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5';
+const CAMPO =
+  'w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-marca focus:ring-2 focus:ring-blue-100 transition';
 
+export const BlocoSimulador: React.FC<{ conteudo: ConteudoSimulador }> = ({ conteudo: c }) => {
   const { config, carregando } = useConfigPublica();
 
   const [modo, setModo] = useState<Modo>('conta');
@@ -36,7 +36,7 @@ export const Simulador: React.FC = () => {
 
   const concessionarias = config?.concessionarias ?? [];
   const concessionaria =
-    concessionarias.find((c) => c.nome === concessionariaNome) ?? concessionarias[0] ?? null;
+    concessionarias.find((x) => x.nome === concessionariaNome) ?? concessionarias[0] ?? null;
 
   // Parâmetros: a concessionária escolhida tem prioridade sobre o padrão geral,
   // porque tarifa e horas de sol variam por região.
@@ -62,10 +62,6 @@ export const Simulador: React.FC = () => {
   );
 
   const temResultado = consumoKwh > 0 && sistema.potenciaKwp > 0;
-
-  const rotuloCampo = 'block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5';
-  const campo =
-    'w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-marca focus:ring-2 focus:ring-blue-100 transition';
 
   const resultados = [
     {
@@ -96,21 +92,12 @@ export const Simulador: React.FC = () => {
 
   return (
     <>
-      <CabecalhoPagina
-        rotulo="Simulador"
-        Icone={Calculator}
-        titulo="Quanto o sol pode tirar da sua conta de luz?"
-        descricao="A mesma conta que os nossos consultores fazem na proposta, com as horas de sol da sua região e as perdas reais do sistema."
-      />
-
       <Secao>
         <div className="grid lg:grid-cols-5 gap-6 items-start">
           {/* ------------------------------------------------ entrada --- */}
           <Cartao className="lg:col-span-2 lg:sticky lg:top-24" regua="from-amber-500 to-orange-400">
-            <h2 className="text-lg font-black text-slate-900">Seus dados de consumo</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Use a média dos últimos meses — a conta varia bastante entre verão e inverno.
-            </p>
+            <h2 className="text-lg font-black text-slate-900">{c.entrada_titulo}</h2>
+            <p className="text-sm text-slate-500 mt-1">{c.entrada_descricao}</p>
 
             <div className="mt-6 space-y-5">
               <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
@@ -137,7 +124,7 @@ export const Simulador: React.FC = () => {
 
               {modo === 'conta' ? (
                 <div>
-                  <label className={rotuloCampo} htmlFor="sim-conta">
+                  <label className={ROTULO_CAMPO} htmlFor="sim-conta">
                     Quanto vem a sua conta por mês?
                   </label>
                   <div className="relative">
@@ -146,7 +133,7 @@ export const Simulador: React.FC = () => {
                     </span>
                     <input
                       id="sim-conta"
-                      className={`${campo} pl-11`}
+                      className={`${CAMPO} pl-11`}
                       inputMode="numeric"
                       value={valorConta}
                       onChange={(e) => setValorConta(maskCurrency(e.target.value))}
@@ -162,12 +149,12 @@ export const Simulador: React.FC = () => {
                 </div>
               ) : (
                 <div>
-                  <label className={rotuloCampo} htmlFor="sim-consumo">
+                  <label className={ROTULO_CAMPO} htmlFor="sim-consumo">
                     Consumo médio mensal (kWh)
                   </label>
                   <input
                     id="sim-consumo"
-                    className={campo}
+                    className={CAMPO}
                     type="number"
                     min={0}
                     step={10}
@@ -182,19 +169,19 @@ export const Simulador: React.FC = () => {
 
               {concessionarias.length > 0 && (
                 <div>
-                  <label className={rotuloCampo} htmlFor="sim-concessionaria">
+                  <label className={ROTULO_CAMPO} htmlFor="sim-concessionaria">
                     Concessionária
                   </label>
                   <select
                     id="sim-concessionaria"
-                    className={campo}
+                    className={CAMPO}
                     value={concessionaria?.nome ?? ''}
                     onChange={(e) => setConcessionariaNome(e.target.value)}
                   >
-                    {concessionarias.map((c) => (
-                      <option key={c.nome} value={c.nome}>
-                        {c.nome}
-                        {c.uf ? ` — ${c.uf}` : ''}
+                    {concessionarias.map((x) => (
+                      <option key={x.nome} value={x.nome}>
+                        {x.nome}
+                        {x.uf ? ` — ${x.uf}` : ''}
                       </option>
                     ))}
                   </select>
@@ -206,9 +193,8 @@ export const Simulador: React.FC = () => {
                   <Info className="w-4 h-4 mt-0.5 shrink-0" />
                   <span>
                     Cálculo com {hsp.toLocaleString('pt-BR')} horas de sol pleno por dia,{' '}
-                    {perdasPct.toLocaleString('pt-BR')}% de perdas e módulos de {moduloWp} Wp. É
-                    uma estimativa: a visita técnica confirma telhado, sombreamento e padrão de
-                    entrada.
+                    {perdasPct.toLocaleString('pt-BR')}% de perdas e módulos de {moduloWp} Wp. É uma
+                    estimativa: a visita técnica confirma telhado, sombreamento e padrão de entrada.
                   </span>
                 </p>
               </div>
@@ -224,10 +210,8 @@ export const Simulador: React.FC = () => {
             {!temResultado ? (
               <Cartao className="p-10 text-center">
                 <Calculator className="w-10 h-10 text-slate-300 mx-auto" />
-                <p className="mt-4 font-bold text-slate-700">Informe seu consumo ao lado</p>
-                <p className="text-sm text-slate-500 mt-1">
-                  Com o valor da conta ou o consumo em kWh já conseguimos dimensionar o sistema.
-                </p>
+                <p className="mt-4 font-bold text-slate-700">{c.vazio_titulo}</p>
+                <p className="text-sm text-slate-500 mt-1">{c.vazio_texto}</p>
               </Cartao>
             ) : (
               <>
@@ -260,7 +244,7 @@ export const Simulador: React.FC = () => {
                   <div className="relative">
                     <span className="inline-flex items-center gap-2 text-xs font-bold text-solar tracking-widest uppercase">
                       <TrendingUp className="w-4 h-4" />
-                      Sua economia estimada
+                      {c.economia_rotulo}
                     </span>
 
                     <div className="mt-6 grid sm:grid-cols-3 gap-6">
@@ -285,22 +269,20 @@ export const Simulador: React.FC = () => {
                     </div>
 
                     <p className="mt-6 pt-5 border-t border-blue-800/60 text-xs text-blue-200/80 leading-relaxed">
-                      A projeção de 25 anos considera reajuste de 6% ao ano na tarifa de energia —
-                      é justamente por isso que a economia cresce com o tempo. O sistema cobriria
-                      cerca de {sistema.coberturaPct.toLocaleString('pt-BR')}% do seu consumo
-                      atual.
+                      {c.nota_projecao} O sistema cobriria cerca de{' '}
+                      {sistema.coberturaPct.toLocaleString('pt-BR')}% do seu consumo atual.
                     </p>
                   </div>
                 </div>
 
-                <Cartao className="p-5 bg-slate-50">
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    <strong className="text-slate-800">Sobre o investimento:</strong> o valor do
-                    sistema depende dos equipamentos escolhidos, da estrutura do seu telhado e da
-                    forma de pagamento. Por isso ele não sai numa simulação automática — vem na
-                    proposta, depois da visita técnica, com tudo detalhado.
-                  </p>
-                </Cartao>
+                {c.nota_investimento && (
+                  <Cartao className="p-5 bg-slate-50">
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <strong className="text-slate-800">Sobre o investimento:</strong>{' '}
+                      {c.nota_investimento}
+                    </p>
+                  </Cartao>
+                )}
               </>
             )}
           </div>
@@ -311,17 +293,13 @@ export const Simulador: React.FC = () => {
         <div className="grid lg:grid-cols-2 gap-10 items-start">
           <div>
             <TituloSecao
-              rotulo="Próximo passo"
-              titulo="Leve esse número para uma proposta de verdade"
-              descricao="Enviamos o seu contato junto com o consumo simulado, para o consultor já começar a conversa sabendo do que se trata."
+              rotulo={c.proximo_rotulo}
+              titulo={c.proximo_titulo}
+              descricao={c.proximo_descricao}
             />
             <ul className="mt-8 space-y-3 text-sm text-slate-600">
-              {[
-                'Visita técnica sem custo, no dia que der para você',
-                'Proposta com equipamentos, geração projetada e garantias',
-                'Formas de pagamento à vista, cartão ou financiamento',
-              ].map((t) => (
-                <li key={t} className="flex items-start gap-2.5">
+              {(c.proximo_itens ?? []).map((t, i) => (
+                <li key={i} className="flex items-start gap-2.5">
                   <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-solar shrink-0" />
                   {t}
                 </li>
@@ -329,15 +307,15 @@ export const Simulador: React.FC = () => {
             </ul>
           </div>
 
+          {/* O consumo simulado viaja junto: o consultor já abre o lead
+              sabendo do que se trata. */}
           <FormularioLead
             consumoInicial={temResultado ? consumoKwh : 0}
-            titulo="Quero minha proposta"
-            descricao="Preencha e um consultor entra em contato para agendar a visita."
+            titulo={c.formulario_titulo}
+            descricao={c.formulario_descricao}
           />
         </div>
       </Secao>
-
-      <PerguntasFrequentes perguntas={FAQ.slice(0, 3)} />
     </>
   );
 };

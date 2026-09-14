@@ -19,11 +19,7 @@ import './index.css';
 
 import { SiteLayout } from './site/SiteLayout';
 import { useSeo } from './site/seo';
-import { Home } from './site/pages/Home';
-import { Servicos } from './site/pages/Servicos';
-import { Simulador } from './site/pages/Simulador';
-import { Sobre } from './site/pages/Sobre';
-import { Contato } from './site/pages/Contato';
+import { PaginaCms } from './site/PaginaCms';
 import { NaoEncontrado } from './site/pages/NaoEncontrado';
 
 // O CRM carrega recharts, motion e ~15 telas. Nada disso deve pesar na home.
@@ -57,11 +53,11 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route element={<SiteLayout />}>
-          <Route index element={<Home />} />
-          <Route path="servicos" element={<Servicos />} />
-          <Route path="simulador" element={<Simulador />} />
-          <Route path="sobre" element={<Sobre />} />
-          <Route path="contato" element={<Contato />} />
+          <Route index element={<PaginaCms slug="home" />} />
+          <Route path="servicos" element={<PaginaCms slug="servicos" />} />
+          <Route path="simulador" element={<PaginaCms slug="simulador" />} />
+          <Route path="sobre" element={<PaginaCms slug="sobre" />} />
+          <Route path="contato" element={<PaginaCms slug="contato" />} />
           <Route path="*" element={<NaoEncontrado />} />
         </Route>
 

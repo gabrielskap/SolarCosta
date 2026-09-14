@@ -108,6 +108,15 @@ interface Opcoes {
    * o binário vem por aqui e vira object URL na tela.
    */
   comoBlob?: boolean;
+  /**
+   * Envia o arquivo CRU como corpo, com o Content-Type dele. Usado pelo upload
+   * de imagem do CMS: sem multipart para o servidor parsear e sem base64 para
+   * inflar o tráfego em 33%.
+   *
+   * Um Blob é relido a cada `fetch`, então a repetição depois do 401 abaixo
+   * continua funcionando — o que não valeria para um ReadableStream.
+   */
+  corpoBruto?: Blob;
 }
 
 async function renovarSessao(): Promise<boolean> {
@@ -135,10 +144,18 @@ async function renovarSessao(): Promise<boolean> {
 }
 
 export async function requisitar<T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> {
-  const { metodo = 'GET', corpo, jaRenovou = false, semAuth = false, comoBlob = false } = opcoes;
+  const {
+    metodo = 'GET',
+    corpo,
+    jaRenovou = false,
+    semAuth = false,
+    comoBlob = false,
+    corpoBruto,
+  } = opcoes;
 
   const cabecalhos: Record<string, string> = {};
-  if (corpo !== undefined) cabecalhos['Content-Type'] = 'application/json';
+  if (corpoBruto) cabecalhos['Content-Type'] = corpoBruto.type || 'application/octet-stream';
+  else if (corpo !== undefined) cabecalhos['Content-Type'] = 'application/json';
   if (!semAuth && accessToken) cabecalhos.Authorization = `Bearer ${accessToken}`;
 
   let resposta: Response;
@@ -146,7 +163,11 @@ export async function requisitar<T = unknown>(caminho: string, opcoes: Opcoes = 
     resposta = await fetch(`${BASE_URL}${caminho}`, {
       method: metodo,
       headers: cabecalhos,
-      ...(corpo !== undefined ? { body: JSON.stringify(corpo) } : {}),
+      ...(corpoBruto
+        ? { body: corpoBruto }
+        : corpo !== undefined
+          ? { body: JSON.stringify(corpo) }
+          : {}),
     });
   } catch {
     throw new ErroApi(0, 'Não foi possível falar com o servidor. Verifique sua conexão.', 'offline');
@@ -205,6 +226,9 @@ export const http = {
   put: <T>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PUT', corpo }),
   delete: <T>(caminho: string) => requisitar<T>(caminho, { metodo: 'DELETE' }),
   getBlob: (caminho: string) => requisitar<Blob>(caminho, { comoBlob: true }),
+  /** Sobe um arquivo como corpo cru — ver `corpoBruto`. */
+  postBinario: <T>(caminho: string, arquivo: Blob) =>
+    requisitar<T>(caminho, { metodo: 'POST', corpoBruto: arquivo }),
   /** Sem Authorization — login, refresh e as rotas /api/publico do site. */
   getPublico: <T>(caminho: string) => requisitar<T>(caminho, { semAuth: true }),
   postPublico: <T>(caminho: string, corpo?: unknown) =>

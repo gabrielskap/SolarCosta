@@ -24,6 +24,7 @@ import {
 } from './routes/painel.routes.js';
 import { propostasRouter } from './routes/propostas.routes.js';
 import { publicoRouter } from './routes/publico.routes.js';
+import { siteRouter } from './routes/site.routes.js';
 import { solarRouter } from './routes/solar.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
 
@@ -127,6 +128,22 @@ export function criarApp(): express.Express {
   app.use('/api/notificacoes', notificacoesRouter);
   app.use('/api/solar', solarRouter);
   app.use('/api/config', configRouter);
+
+  // Upload de imagem da biblioteca do site: o browser manda o File CRU como
+  // corpo, com o Content-Type do arquivo. Fica antes do router para que o
+  // handler receba um Buffer pronto.
+  //
+  // Por que não base64 em JSON: inflaria 33% e estouraria o limite de 2mb do
+  // express.json acima, que precisa continuar baixo — ele vale para TODA a
+  // API. Por que não multipart: uma dependência nova para parsear um campo só.
+  app.use(
+    '/api/site/midia',
+    express.raw({
+      type: ['image/png', 'image/jpeg', 'image/webp', 'image/avif'],
+      limit: '5mb',
+    }),
+  );
+  app.use('/api/site', siteRouter);
   app.use('/api/auditoria', auditoriaRouter);
 
   // Estático do front (build do Vite) — não existe em dev, quando o front

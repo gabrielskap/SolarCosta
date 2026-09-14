@@ -17,7 +17,8 @@ export type Permissao =
   | 'ver_lancamentos_financeiro'
   | 'gerenciar_usuarios'
   | 'gerenciar_obras'
-  | 'ver_auditoria';
+  | 'ver_auditoria'
+  | 'gerenciar_site';
 
 export interface UsuarioAutenticado {
   id: string;
@@ -45,6 +46,7 @@ interface LinhaUsuario {
   gerenciar_usuarios: boolean | null;
   gerenciar_obras: boolean | null;
   ver_auditoria: boolean | null;
+  gerenciar_site: boolean | null;
 }
 
 function extrairToken(req: Request): string | null {
@@ -57,7 +59,7 @@ export async function carregarUsuario(id: string): Promise<UsuarioAutenticado | 
   const linha = await consultarUm<LinhaUsuario>(
     `SELECT u.id, u.nome, u.email::text AS email, u.cargo::text AS cargo, u.status::text AS status,
             p.criar_editar_leads, p.emitir_propostas, p.anexar_documentos, p.emitir_contratos,
-            p.ver_lancamentos_financeiro, p.gerenciar_usuarios, p.gerenciar_obras, p.ver_auditoria
+            p.ver_lancamentos_financeiro, p.gerenciar_usuarios, p.gerenciar_obras, p.ver_auditoria, p.gerenciar_site
        FROM "SolarCosta_Usuarios" u
        LEFT JOIN "SolarCosta_UsuarioPermissoes" p ON p.usuario_id = u.id
       WHERE u.id = $1 AND u.excluido_em IS NULL`,
@@ -84,6 +86,7 @@ export async function carregarUsuario(id: string): Promise<UsuarioAutenticado | 
       gerenciar_usuarios: ou(linha.gerenciar_usuarios),
       gerenciar_obras: ou(linha.gerenciar_obras),
       ver_auditoria: ou(linha.ver_auditoria),
+      gerenciar_site: ou(linha.gerenciar_site),
     },
   };
 }

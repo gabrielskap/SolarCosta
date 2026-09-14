@@ -4,26 +4,19 @@
 
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
-import { FAQ, type Pergunta } from '../conteudo';
 import { Secao, TituloSecao } from './Secao';
+import type { ConteudoFaq } from '../blocos/tipos';
 
-export const PerguntasFrequentes: React.FC<{
-  /** Na home entram só as primeiras; em /simulador o conjunto muda. */
-  perguntas?: Pergunta[];
-  claro?: boolean;
-}> = ({ perguntas = FAQ, claro = false }) => (
-  <Secao claro={claro} id="duvidas">
-    <TituloSecao
-      rotulo="Dúvidas frequentes"
-      titulo="O que todo mundo pergunta antes de fechar"
-      descricao="As respostas honestas, inclusive as que não são a resposta que o vendedor gostaria de dar."
-      centralizado
-    />
+export const PerguntasFrequentes: React.FC<{ conteudo: ConteudoFaq }> = ({ conteudo: c }) => (
+  <Secao claro={!!c.claro} id="duvidas">
+    {(c.rotulo || c.titulo) && (
+      <TituloSecao rotulo={c.rotulo} titulo={c.titulo} descricao={c.descricao} centralizado />
+    )}
 
     <div className="mt-10 max-w-3xl mx-auto space-y-3">
-      {perguntas.map((p) => (
+      {(c.perguntas ?? []).map((p, i) => (
         <details
-          key={p.pergunta}
+          key={`${p.pergunta}-${i}`}
           className="group bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden"
         >
           <summary className="flex items-center justify-between gap-4 cursor-pointer list-none px-6 py-4 font-bold text-slate-900 hover:text-marca transition">

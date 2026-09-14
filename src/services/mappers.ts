@@ -97,6 +97,9 @@ export function paraUser(linha: any): User {
       emitirContratos: !!linha.emitir_contratos,
       verLancamentosFinanceiro: !!linha.ver_lancamentos_financeiro,
       gerenciarUsuarios: !!linha.gerenciar_usuarios,
+      gerenciarObras: !!linha.gerenciar_obras,
+      verAuditoria: !!linha.ver_auditoria,
+      gerenciarSite: !!linha.gerenciar_site,
       usuarioAtivo: linha.status === 'ativo',
     },
   };
@@ -124,6 +127,9 @@ export function deUser(u: Partial<User> & { senha?: string }): Record<string, un
       emitir_contratos: u.permissoes.emitirContratos,
       ver_lancamentos_financeiro: u.permissoes.verLancamentosFinanceiro,
       gerenciar_usuarios: u.permissoes.gerenciarUsuarios,
+      gerenciar_obras: u.permissoes.gerenciarObras,
+      ver_auditoria: u.permissoes.verAuditoria,
+      gerenciar_site: u.permissoes.gerenciarSite,
     };
   }
   return corpo;

@@ -8,6 +8,9 @@ export interface UserPermissions {
   emitirContratos: boolean;
   verLancamentosFinanceiro: boolean;
   gerenciarUsuarios: boolean;
+  gerenciarObras: boolean;
+  verAuditoria: boolean;
+  gerenciarSite: boolean;
   usuarioAtivo: boolean;
 }
 

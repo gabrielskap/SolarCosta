@@ -47,8 +47,38 @@ export interface LeadDoSite {
   website?: string;
 }
 
+/* ------------------------------------------------ conteúdo do site --- */
+
+export interface BlocoPublico {
+  id: string;
+  tipo: string;
+  conteudo: Record<string, unknown>;
+}
+
+export interface PaginaPublica {
+  slug: string;
+  caminho: string;
+  titulo_seo: string;
+  descricao_seo: string;
+  blocos: BlocoPublico[];
+}
+
+export interface ItemMenuPublico {
+  id: string;
+  rotulo: string;
+  destino: string;
+  nova_aba: boolean;
+  destaque: boolean;
+}
+
+export interface SitePublico {
+  paginas: PaginaPublica[];
+  menus: Record<string, ItemMenuPublico[]>;
+}
+
 export const Publico = {
   getConfig: () => http.getPublico<ConfigPublica>('/api/publico/config'),
+  getSite: () => http.getPublico<SitePublico>('/api/publico/site'),
   enviarLead: (dados: LeadDoSite) => http.postPublico<{ ok: true }>('/api/publico/leads', dados),
 };
 

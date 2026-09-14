@@ -174,3 +174,109 @@ publicoRouter.post(
     res.status(201).json({ ok: true });
   }),
 );
+
+// ----------------------------------------------------------------- SITE ---
+// Conteúdo editorial do site (SolarCosta_SitePaginas / _SiteBlocos / _SiteMenus).
+//
+// Mesma regra do /config acima: whitelist explícita de colunas. Aqui ela
+// também filtra o que está NO AR — `publicada` e `visivel` — para que um bloco
+// desligado na tela não continue visível para quem ler a API direto.
+publicoRouter.get(
+  '/site',
+  asyncHandler(async (_req, res) => {
+    const [paginas, blocos, menus] = await Promise.all([
+      consultar(
+        `SELECT id, slug, caminho, titulo_seo, descricao_seo
+           FROM "SolarCosta_SitePaginas"
+          WHERE publicada ORDER BY ordem, nome`,
+      ),
+      consultar(
+        `SELECT b.id, b.pagina_id, b.tipo, b.conteudo
+           FROM "SolarCosta_SiteBlocos" b
+           JOIN "SolarCosta_SitePaginas" p ON p.id = b.pagina_id
+          WHERE b.visivel AND p.publicada
+          ORDER BY b.pagina_id, b.ordem, b.criado_em`,
+      ),
+      consultar(
+        `SELECT m.chave, i.id, i.rotulo, i.destino, i.nova_aba, i.destaque
+           FROM "SolarCosta_SiteMenuItens" i
+           JOIN "SolarCosta_SiteMenus" m ON m.id = i.menu_id
+          WHERE i.visivel
+          ORDER BY m.chave, i.ordem, i.criado_em`,
+      ),
+    ]);
+
+    const porMenu: Record<string, unknown[]> = {};
+    for (const it of menus as Record<string, unknown>[]) {
+      const chave = String(it.chave);
+      (porMenu[chave] ??= []).push({
+        id: it.id,
+        rotulo: it.rotulo,
+        destino: it.destino,
+        nova_aba: it.nova_aba,
+        destaque: it.destaque,
+      });
+    }
+
+    // Toda visita ao site baixa este payload. Um minuto de cache tira o banco
+    // do caminho da maioria das visitas sem atrasar de forma perceptível uma
+    // edição feita no CMS.
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.json({
+      paginas: (paginas as Record<string, unknown>[]).map((p) => ({
+        slug: p.slug,
+        caminho: p.caminho,
+        titulo_seo: p.titulo_seo,
+        descricao_seo: p.descricao_seo,
+        blocos: (blocos as Record<string, unknown>[])
+          .filter((b) => b.pagina_id === p.id)
+          .map((b) => ({ id: b.id, tipo: b.tipo, conteudo: b.conteudo })),
+      })),
+      menus: porMenu,
+    });
+  }),
+);
+
+// ---------------------------------------------------------------- MÍDIA ---
+// Bytes das imagens da biblioteca. Única rota do projeto que responde binário
+// sem exigir sessão — é o <img src> de um visitante anônimo.
+publicoRouter.get(
+  '/midia/:id',
+  asyncHandler(async (req, res) => {
+    const id = z.string().uuid().safeParse(req.params.id);
+    if (!id.success) {
+      res.status(404).json({ erro: 'Imagem não encontrada.', codigo: 'nao_encontrado' });
+      return;
+    }
+
+    const linha = await consultarUm<{
+      mime_type: string;
+      hash_sha256: string;
+      conteudo: Buffer;
+    }>(
+      `SELECT mime_type, hash_sha256, conteudo FROM "SolarCosta_SiteMidia"
+        WHERE id = $1 AND excluido_em IS NULL`,
+      [id.data],
+    );
+
+    if (!linha) {
+      res.status(404).json({ erro: 'Imagem não encontrada.', codigo: 'nao_encontrado' });
+      return;
+    }
+
+    // `immutable` é seguro porque os bytes de um id nunca mudam: trocar a
+    // imagem de um bloco grava outra linha, com outro id. O ETag é o próprio
+    // hash do arquivo, então o 304 sai de graça.
+    const etag = `"${linha.hash_sha256}"`;
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Content-Type', linha.mime_type);
+
+    if (req.headers['if-none-match'] === etag) {
+      res.status(304).end();
+      return;
+    }
+
+    res.send(linha.conteudo);
+  }),
+);

@@ -21,6 +21,7 @@ import { UsersView } from './components/UsersView';
 import { ObrasView } from './components/ObrasView';
 import { ReportsView } from './components/ReportsView';
 import { AuditTrailView } from './components/AuditTrailView';
+import { SiteConfigView } from './components/site/SiteConfigView';
 import { NotificationCenter } from './components/NotificationCenter';
 import { PDFModal } from './components/PDFModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
@@ -862,6 +863,20 @@ export default function App() {
                       onClear={() => showToast('Trilha imutável', 'info', 'A auditoria é append-only e não pode ser apagada pelo sistema.')}
                       showToast={showToast}
                     />
+                  }
+                />
+
+                {/* O servidor barra de qualquer jeito (exigirPermissao no
+                    /api/site); isto é só para o link direto não abrir uma tela
+                    que vai falhar em toda ação. */}
+                <Route
+                  path="site"
+                  element={
+                    currentUser.cargo === 'Administrador' || currentUser.permissoes?.gerenciarSite ? (
+                      <SiteConfigView currentUser={currentUser} showToast={showToast} />
+                    ) : (
+                      <Navigate to="/sistema/dashboard" replace />
+                    )
                   }
                 />
 

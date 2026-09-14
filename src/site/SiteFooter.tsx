@@ -8,12 +8,14 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Phone, Mail, ShieldCheck, ExternalLink } from 'lucide-react';
 import logoFull from '../assets/logo-full.png';
-import { useConfigPublica } from './contexto';
+import { useConfigPublica, useMenu } from './contexto';
 import { CONTATO_PADRAO, enderecoCompleto, linkWhatsApp } from '../services/publico';
 
 export const SiteFooter: React.FC = () => {
   const { config } = useConfigPublica();
   const empresa = config?.empresa ?? null;
+  const navegacao = useMenu('rodape_navegacao');
+  const servicos = useMenu('rodape_servicos');
 
   const telefone = empresa?.telefone || CONTATO_PADRAO.telefone;
   const email = empresa?.email || CONTATO_PADRAO.email;
@@ -38,15 +40,9 @@ export const SiteFooter: React.FC = () => {
             Navegação
           </h3>
           <ul className="space-y-2 text-sm">
-            {[
-              { para: '/', rotulo: 'Início' },
-              { para: '/servicos', rotulo: 'Serviços' },
-              { para: '/simulador', rotulo: 'Simulador de economia' },
-              { para: '/sobre', rotulo: 'A empresa' },
-              { para: '/contato', rotulo: 'Fale com um consultor' },
-            ].map((l) => (
-              <li key={l.para}>
-                <Link to={l.para} className="hover:text-solar transition">
+            {navegacao.map((l) => (
+              <li key={l.id}>
+                <Link to={l.destino} className="hover:text-solar transition">
                   {l.rotulo}
                 </Link>
               </li>
@@ -59,10 +55,13 @@ export const SiteFooter: React.FC = () => {
             Serviços
           </h3>
           <ul className="space-y-2 text-sm text-blue-200/90">
-            <li>Energia solar residencial</li>
-            <li>Energia solar comercial e rural</li>
-            <li>Projeto e homologação na concessionária</li>
-            <li>Manutenção e monitoramento</li>
+            {servicos.map((l) => (
+              <li key={l.id}>
+                <Link to={l.destino} className="hover:text-solar transition">
+                  {l.rotulo}
+                </Link>
+              </li>
+            ))}
           </ul>
         </div>
 

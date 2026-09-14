@@ -1,9 +1,9 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, ChevronRight, X, Calendar, BarChart3, History, HardHat
+  LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, ChevronRight, X, Calendar, BarChart3, History, HardHat, Globe
 } from 'lucide-react';
-import { User } from '../types';
+import { User, UserPermissions } from '../types';
 import logoFull from '../assets/logo-full.png';
 
 interface SidebarProps {
@@ -49,9 +49,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { to: '/sistema/fornecedores', label: 'Fornecedores e produtos', icon: Package },
         { to: '/sistema/usuarios', label: 'Usuários', icon: UserCheck },
         { to: '/sistema/auditoria', label: 'Auditoria', icon: History },
+        // Único item filtrado por permissão hoje. O restante do menu continua
+        // visível para todos — estender o gating aos demais é decisão à parte,
+        // e fazê-la de carona aqui esconderia telas sem ninguém ter pedido.
+        { to: '/sistema/site', label: 'Configuração do Site', icon: Globe, permissao: 'gerenciarSite' as keyof UserPermissions },
       ]
     }
   ];
+
+  /** Item sem `permissao` vale para todo mundo. */
+  const podeVer = (item: { permissao?: keyof UserPermissions }) =>
+    !item.permissao || currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.[item.permissao];
 
   return (
     <>
@@ -89,7 +97,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {group.section}
               </h3>
               <div className="space-y-1">
-                {group.items.map((item) => {
+                {group.items.filter(podeVer).map((item) => {
                   const Icon = item.icon;
                   return (
                     <NavLink

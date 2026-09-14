@@ -1,7 +1,56 @@
 import React, { useState } from 'react';
 import { Users, UserPlus, Shield, CheckCircle2, XCircle, Edit2, Trash2, X } from 'lucide-react';
-import { User } from '../types';
+import { User, UserPermissions, UserRole } from '../types';
 import { isValidEmail } from '../utils/format';
+
+/**
+ * As permissões granulares, na ordem em que fazem sentido para quem cadastra.
+ * `usuarioAtivo` fica de fora: é derivada do status, não uma caixa de marcar.
+ */
+const PERMISSOES: { chave: keyof UserPermissions; rotulo: string; descricao: string }[] = [
+  { chave: 'criarEditarLeads', rotulo: 'Leads', descricao: 'Cadastrar e editar leads.' },
+  { chave: 'emitirPropostas', rotulo: 'Propostas', descricao: 'Montar e emitir orçamentos.' },
+  { chave: 'anexarDocumentos', rotulo: 'Documentos', descricao: 'Anexar arquivos ao lead.' },
+  { chave: 'emitirContratos', rotulo: 'Contratos', descricao: 'Gerar e assinar contratos.' },
+  {
+    chave: 'verLancamentosFinanceiro',
+    rotulo: 'Financeiro',
+    descricao: 'Ver caixa, boletos e faturamento.',
+  },
+  { chave: 'gerenciarObras', rotulo: 'Obras', descricao: 'Acompanhar instalação e estoque.' },
+  { chave: 'gerenciarUsuarios', rotulo: 'Usuários', descricao: 'Cadastrar e editar usuários.' },
+  { chave: 'verAuditoria', rotulo: 'Auditoria', descricao: 'Consultar a trilha de alterações.' },
+  {
+    chave: 'gerenciarSite',
+    rotulo: 'Configuração do Site',
+    descricao: 'Editar textos, imagens e menus do site.',
+  },
+];
+
+/**
+ * Espelha `padraoPorCargo` de server/src/routes/usuarios.routes.ts: quem escolhe
+ * o cargo vê logo as permissões que aquele cargo costuma ter, em vez de um
+ * formulário todo desmarcado. O servidor continua sendo a autoridade.
+ */
+function padraoPorCargo(cargo: UserRole): UserPermissions {
+  const vendas = cargo === 'Administrador' || cargo === 'Vendedor';
+  const financeiro = cargo === 'Administrador' || cargo === 'Financeiro';
+  const campo = cargo === 'Administrador' || cargo === 'Engenheiro' || cargo === 'Instalador';
+  const admin = cargo === 'Administrador';
+
+  return {
+    criarEditarLeads: vendas,
+    emitirPropostas: vendas,
+    anexarDocumentos: vendas || campo,
+    emitirContratos: financeiro,
+    verLancamentosFinanceiro: financeiro,
+    gerenciarUsuarios: admin,
+    gerenciarObras: campo,
+    verAuditoria: admin,
+    gerenciarSite: admin,
+    usuarioAtivo: true,
+  };
+}
 
 interface UsersViewProps {
   usuarios: User[];
@@ -27,6 +76,13 @@ export const UsersView: React.FC<UsersViewProps> = ({
   const [senha, setSenha] = useState('');
   const [cargo, setCargo] = useState<'Administrador' | 'Vendedor' | 'Financeiro' | 'Engenheiro' | 'Instalador'>('Vendedor');
   const [status, setStatus] = useState<'ativo' | 'inativo'>('ativo');
+  const [permissoes, setPermissoes] = useState<UserPermissions>(padraoPorCargo('Vendedor'));
+
+  /** Trocar o cargo sugere as permissões daquele cargo — ainda dá para ajustar. */
+  const handleTrocarCargo = (novo: UserRole) => {
+    setCargo(novo);
+    setPermissoes(padraoPorCargo(novo));
+  };
 
   const handleOpenNew = () => {
     setEditingUser(null);
@@ -35,6 +91,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
     setSenha('');
     setCargo('Vendedor');
     setStatus('ativo');
+    setPermissoes(padraoPorCargo('Vendedor'));
     setIsModalOpen(true);
   };
 
@@ -45,6 +102,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
     setSenha(u.senha);
     setCargo(u.cargo);
     setStatus(u.status);
+    setPermissoes(u.permissoes ?? padraoPorCargo(u.cargo));
     setIsModalOpen(true);
   };
 
@@ -64,7 +122,11 @@ export const UsersView: React.FC<UsersViewProps> = ({
       cargo,
       dataCriacao: editingUser ? editingUser.dataCriacao : new Date().toLocaleDateString('pt-BR'),
       ultimoAcesso: editingUser ? editingUser.ultimoAcesso : 'Agora mesmo',
-      status
+      status,
+      // Administrador recebe tudo no servidor (carregarUsuario), independente
+      // do que for gravado aqui. Enviar o conjunto completo mantém a tabela
+      // coerente com o cargo em vez de deixar linhas meio preenchidas.
+      permissoes: cargo === 'Administrador' ? padraoPorCargo('Administrador') : permissoes,
     };
 
     onSaveUser(uObj);
@@ -182,7 +244,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
       {/* Modal Novo/Editar Usuário */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">{editingUser ? 'Editar Usuário' : 'Novo Usuário do Sistema'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-white">
@@ -232,7 +294,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                   <label className="block font-bold text-slate-600 mb-1 uppercase">Cargo / Perfil</label>
                   <select
                     value={cargo}
-                    onChange={(e: any) => setCargo(e.target.value)}
+                    onChange={(e: any) => handleTrocarCargo(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
                   >
                     <option value="Administrador">Administrador</option>
@@ -253,6 +315,53 @@ export const UsersView: React.FC<UsersViewProps> = ({
                     <option value="ativo">Ativo</option>
                     <option value="inativo">Inativo / Bloqueado</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block font-bold text-slate-600 uppercase">Permissões</label>
+                  {cargo === 'Administrador' && (
+                    <span className="text-[10px] font-bold text-emerald-600 normal-case">
+                      Administrador tem acesso total
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-1.5">
+                  {PERMISSOES.map((p) => {
+                    const admin = cargo === 'Administrador';
+                    const marcado = admin || permissoes[p.chave];
+                    return (
+                      <label
+                        key={p.chave}
+                        title={p.descricao}
+                        className={`flex items-start gap-2 p-2 rounded-xl border transition ${
+                          admin
+                            ? 'bg-slate-50 border-slate-200 cursor-not-allowed opacity-70'
+                            : marcado
+                              ? 'bg-blue-50 border-[#004276]/30 cursor-pointer'
+                              : 'bg-slate-50 border-slate-200 cursor-pointer hover:border-slate-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={marcado}
+                          disabled={admin}
+                          onChange={(e) =>
+                            setPermissoes((prev) => ({ ...prev, [p.chave]: e.target.checked }))
+                          }
+                          className="mt-0.5 accent-[#004276]"
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-bold text-slate-700">{p.rotulo}</span>
+                          <span className="block text-[10px] text-slate-500 leading-snug">
+                            {p.descricao}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
