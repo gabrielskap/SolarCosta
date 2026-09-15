@@ -472,7 +472,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 gap-y-2">
           <button
             onClick={handleSaveDraft}
             className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition"
@@ -831,7 +831,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
             {/* Kit Table */}
             <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-left text-xs">
+              <table className="tabela-mobile w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
                     <th className="p-3">DESCRIÇÃO</th>
@@ -844,8 +844,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {kitItens.map((item) => (
                     <tr key={item.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-semibold text-slate-900">{item.descricao}</td>
-                      <td className="p-3 text-center">
+                      <td data-label="DESCRIÇÃO" className="p-3 font-semibold text-slate-900">{item.descricao}</td>
+                      <td data-label="QTD." className="p-3 text-center">
                         <input
                           type="number"
                           min="1"
@@ -854,13 +854,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                           className="w-16 p-1 text-center bg-slate-50 border border-slate-200 rounded font-bold"
                         />
                       </td>
-                      <td className="p-3 text-right text-slate-600">
+                      <td data-label="VALOR UNIT." className="p-3 text-right text-slate-600">
                         R$ {item.valorUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="p-3 text-right font-bold text-slate-900">
+                      <td data-label="TOTAL" className="p-3 text-right font-bold text-slate-900">
                         R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="p-3 text-center">
+                      <td data-label="" className="p-3 text-center">
                         <button
                           onClick={() => handleRemoveItem(item.id)}
                           className="text-slate-400 hover:text-rose-600 p-1"

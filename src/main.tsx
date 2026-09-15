@@ -33,7 +33,7 @@ const PaginaCms = lazy(() => import('./site/PaginaCms').then((m) => ({ default: 
 const NaoEncontrado = lazy(() => import('./site/pages/NaoEncontrado').then((m) => ({ default: m.NaoEncontrado })));
 
 const Carregando = () => (
-  <div className="h-screen w-screen flex items-center justify-center bg-fundo">
+  <div className="altura-viewport w-full flex items-center justify-center bg-fundo">
     <div className="flex flex-col items-center gap-3">
       <Loader2 className="w-8 h-8 text-marca animate-spin" />
       <p className="text-sm font-semibold text-slate-500">Carregando…</p>

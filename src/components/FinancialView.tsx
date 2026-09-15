@@ -448,9 +448,9 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
       {/* 12-Month Bar Chart Banner */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-y-2">
           <h3 className="font-bold text-slate-900 text-sm">Evolução mensal · realizado e a vencer</h3>
-          <div className="flex items-center gap-4 text-xs font-semibold">
+          <div className="flex flex-wrap items-center gap-4 gap-y-1 text-xs font-semibold">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm bg-emerald-500" />
               <span className="text-slate-600">Receitas</span>
@@ -502,10 +502,10 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
         
         {/* Lançamentos de julho (2/3) */}
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-y-3">
             <h3 className="font-bold text-slate-900 text-base">Lançamentos de julho</h3>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 gap-y-2">
               <button
                 onClick={handleExportLancamentos}
                 title="Exportar lançamentos de caixa em CSV"

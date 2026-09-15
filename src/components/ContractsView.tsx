@@ -247,8 +247,8 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="bg-slate-200 p-1 rounded-xl flex gap-1 mr-2">
+        <div className="flex flex-wrap items-center gap-2 gap-y-2">
+          <div className="bg-slate-200 p-1 rounded-xl flex flex-wrap gap-1">
             <button
               onClick={() => setActiveSubTab('novo')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${

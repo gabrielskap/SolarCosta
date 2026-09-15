@@ -147,7 +147,7 @@ export const EditorPagina: React.FC<Props> = ({
           <h2 className="text-lg font-black text-[#004276]">{pagina.nome}</h2>
           <p className="text-xs text-slate-500 font-mono">{pagina.caminho}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 gap-y-2">
           <a
             href={pagina.caminho}
             target="_blank"

@@ -597,7 +597,7 @@ export default function App() {
   // Verificando se existe sessão salva antes de decidir entre login e app.
   if (verificandoSessao) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#f4f6fa]">
+      <div className="altura-viewport w-full flex items-center justify-center bg-[#f4f6fa]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 text-[#004276] animate-spin" />
           <p className="text-sm font-semibold text-slate-500">Carregando…</p>
@@ -617,7 +617,7 @@ export default function App() {
 
   if (erroCarga) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#f4f6fa] p-6">
+      <div className="altura-viewport w-full flex items-center justify-center bg-[#f4f6fa] p-6">
         <div className="max-w-md text-center bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
           <WifiOff className="w-10 h-10 text-red-500 mx-auto mb-4" />
           <h2 className="font-extrabold text-lg text-slate-900 mb-2">Falha ao carregar os dados</h2>
@@ -643,7 +643,7 @@ export default function App() {
 
   if (carregando && leads.length === 0) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#f4f6fa]">
+      <div className="altura-viewport w-full flex items-center justify-center bg-[#f4f6fa]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 text-[#004276] animate-spin" />
           <p className="text-sm font-semibold text-slate-500">Carregando o CRM…</p>
@@ -653,7 +653,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#f4f6fa] text-slate-800 flex flex-col font-sans antialiased">
+    <div className="altura-viewport w-full overflow-hidden bg-[#f4f6fa] text-slate-800 flex flex-col font-sans antialiased">
       {/* Mobile Top Header Navigation */}
       <header className="md:hidden bg-[#004276] text-white p-4 flex items-center justify-between border-b border-blue-900 sticky top-0 z-30 shadow-md shrink-0">
         <div className="flex items-center gap-2">
@@ -715,7 +715,22 @@ export default function App() {
             </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 w-full min-h-0">
+          {/*
+            `overflow-x-hidden` é deliberado, não decoração.
+
+            Declarar só `overflow-y-auto` faz o outro eixo virar `auto` pela
+            especificação — ou seja, o <main> era um contêiner de rolagem
+            HORIZONTAL. E como ele fica FORA de <Routes>, é o mesmo nó DOM em
+            todas as rotas: o `scrollLeft` não zerava ao navegar, então bastava
+            passar por uma tela que estourasse para todas as seguintes
+            aparecerem deslocadas e cortadas à direita.
+
+            Travar aqui transforma "a página inteira desliza" em "o componente
+            rola". Os que legitimamente rolam de lado — abas do lead, quadro
+            kanban, passos da calculadora — têm `overflow-x-auto` próprio e não
+            dependem deste elemento.
+          */}
+          <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 lg:px-8 py-6 w-full min-h-0">
             <div className="max-w-[1920px] mx-auto w-full">
               <Suspense
                 fallback={

@@ -154,7 +154,7 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
 
       {/* --------------------------------------------------- conteúdo --- */}
       {aba === 'paginas' && pagina && (
-        <div className="grid lg:grid-cols-[14rem_1fr] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[14rem_minmax(0,1fr)] gap-5 items-start">
           <nav className="bg-white border border-slate-200 rounded-2xl p-2 space-y-1">
             {dados.paginas.map((p) => (
               <button

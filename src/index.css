@@ -44,6 +44,27 @@
 }
 
 /*
+ * Altura da área REALMENTE visível.
+ *
+ * `100vh` no iOS Safari é o viewport *large*: a altura que a página teria se as
+ * barras do navegador estivessem retraídas. Só que a casca do CRM é
+ * `overflow-hidden` de ponta a ponta — nada no documento rola —, e sem rolagem
+ * o Safari nunca retrai as barras. O resultado é permanente: 60 a 115px do app
+ * ficam abaixo da tela, sem como alcançar. É o que obrigava a dar pinça para
+ * enxergar o sistema no iPhone.
+ *
+ * As duas declarações são propositais: a primeira é a base para quem não
+ * conhece `dvh` (iOS < 15.4, onde a segunda é simplesmente descartada); a
+ * segunda vence onde existe. Escrito à mão porque a ORDEM DAS CLASSES no
+ * `className` não decide a cascata — quem decide é a ordem no CSS gerado, e
+ * combinar `h-screen h-dvh` no Tailwind não garante qual delas ganha.
+ */
+.altura-viewport {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/*
  * Área segura do iPhone.
  *
  * Com `viewport-fit=cover` no index.html, o app instalado passa a desenhar sob
@@ -111,9 +132,10 @@
 /* ------------------------ TABELA VIRA CARTÃO ------------------------- */
 /*
  * As listagens do CRM são <table> nativa (não há biblioteca de tabela) com 5 a
- * 8 colunas. No celular elas resolvem hoje com `overflow-x-auto`: o usuário
- * arrasta a tabela de lado para ler uma linha, o que é lento e faz perder a
- * referência da coluna.
+ * 8 colunas. No celular, sem tratamento, elas ficavam dentro de um wrapper
+ * `overflow-hidden` — pior que rolar de lado: as últimas colunas eram
+ * simplesmente cortadas, sem como alcançar (era o caso do botão "Ver Boleto BB"
+ * na aba Financeiro do lead).
  *
  * Abaixo de 768px cada LINHA vira um cartão e cada CÉLULA vira "rótulo: valor".
  * O rótulo sai do atributo `data-label` do próprio <td>, então o nome da coluna

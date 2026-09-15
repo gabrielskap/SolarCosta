@@ -43,7 +43,7 @@ export const ContatoCanais: React.FC<{ conteudo: ConteudoContatoCanais }> = ({ c
 
   return (
     <Secao>
-      <div className="grid lg:grid-cols-5 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
         <div className="lg:col-span-3">
           <FormularioLead titulo={c.formulario_titulo} descricao={c.formulario_descricao} />
         </div>

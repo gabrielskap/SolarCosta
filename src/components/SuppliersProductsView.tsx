@@ -177,7 +177,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       </div>
 
       {/* Tabs Header */}
-      <div className="bg-white p-1 rounded-2xl border border-slate-200 flex items-center gap-1 w-fit">
+      <div className="bg-white p-1 rounded-2xl border border-slate-200 flex flex-wrap items-center gap-1 w-full sm:w-fit">
         <button
           onClick={() => setActiveTab('produtos')}
           className={`py-2 px-5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${

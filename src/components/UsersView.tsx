@@ -328,7 +328,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                   )}
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {PERMISSOES.map((p) => {
                     const admin = cargo === 'Administrador';
                     const marcado = admin || permissoes[p.chave];

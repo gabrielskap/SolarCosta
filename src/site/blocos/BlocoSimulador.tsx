@@ -93,7 +93,7 @@ export const BlocoSimulador: React.FC<{ conteudo: ConteudoSimulador }> = ({ cont
   return (
     <>
       <Secao>
-        <div className="grid lg:grid-cols-5 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
           {/* ------------------------------------------------ entrada --- */}
           <Cartao className="lg:col-span-2 lg:sticky lg:top-24" regua="from-amber-500 to-orange-400">
             <h2 className="text-lg font-black text-slate-900">{c.entrada_titulo}</h2>
@@ -215,7 +215,7 @@ export const BlocoSimulador: React.FC<{ conteudo: ConteudoSimulador }> = ({ cont
               </Cartao>
             ) : (
               <>
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {resultados.map((r) => (
                     <Cartao key={r.rotulo} className="p-5">
                       <div className="flex items-center justify-between">
@@ -290,7 +290,7 @@ export const BlocoSimulador: React.FC<{ conteudo: ConteudoSimulador }> = ({ cont
       </Secao>
 
       <Secao claro>
-        <div className="grid lg:grid-cols-2 gap-10 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
           <div>
             <TituloSecao
               rotulo={c.proximo_rotulo}

@@ -35,7 +35,7 @@ export const DadosEmpresa: React.FC<{ conteudo: ConteudoDadosEmpresa }> = ({ con
 
   return (
     <Secao claro>
-      <div className="grid lg:grid-cols-2 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         <div>
           <TituloSecao
             rotulo={c.rotulo_cadastro}

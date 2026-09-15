@@ -71,8 +71,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
+      {/*
+        A GAVETA INTEIRA ROLA — logo, itens e rodapé numa coluna só.
+
+        Antes, a navegação era `flex-1 overflow-y-auto` com o rodapé preso por
+        `shrink-0`. Somando 12 itens (~656px) + logo (~80px) + rodapé (~56px)
+        dá ~790px, contra ~650px visíveis num iPhone com as barras do Safari.
+        Os últimos itens — "Auditoria" e "Configuração do Site" — caíam dentro
+        de uma rolagem ANINHADA, que no iOS não mostra barra e não dá nenhuma
+        pista de existir. Na prática, "Configuração do Site" estava inacessível.
+
+        Com a rolagem na própria <aside>, o gesto é o óbvio: arrastar a gaveta.
+        E continua correto quando o 13º item for adicionado ao menu — que é o
+        motivo de não ter simplesmente compactado o espaçamento.
+      */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-40 w-64 h-dvh bg-[#004276] text-white flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${
+        className={`fixed top-0 left-0 bottom-0 z-40 w-64 altura-viewport overflow-y-auto overscroll-contain bg-[#004276] text-white flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
@@ -89,8 +103,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Navigation Sections */}
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+        {/* Navigation Sections — `flex-1` empurra o rodapé para o fim quando
+            sobra espaço; a rolagem agora é da <aside>, não daqui. */}
+        <div className="flex-1 py-4 px-3 space-y-6">
           {navItems.map((group) => (
             <div key={group.section}>
               <h3 className="text-[11px] font-bold text-blue-300 tracking-wider uppercase px-3 mb-2">

@@ -585,7 +585,7 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h3 className="font-bold text-slate-900 text-base">Boletos e parcelas do cliente</h3>
               <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
+                <table className="tabela-mobile w-full text-left text-xs">
                   <thead>
                     <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
                       <th className="p-3">Documento</th>
@@ -600,18 +600,18 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
                     {clientBoletos.length > 0 ? (
                       clientBoletos.map((bol) => (
                         <tr key={bol.id} className="hover:bg-slate-50">
-                          <td className="p-3 font-mono text-slate-700">{bol.numeroDocumento.slice(0, 15)}...</td>
-                          <td className="p-3 font-bold">{bol.parcela}</td>
-                          <td className="p-3 font-bold text-slate-900">R$ {bol.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-3">{bol.vencimento}</td>
-                          <td className="p-3">
+                          <td data-label="Documento" className="p-3 font-mono text-slate-700">{bol.numeroDocumento.slice(0, 15)}...</td>
+                          <td data-label="Parcela" className="p-3 font-bold">{bol.parcela}</td>
+                          <td data-label="Valor" className="p-3 font-bold text-slate-900">R$ {bol.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                          <td data-label="Vencimento" className="p-3">{bol.vencimento}</td>
+                          <td data-label="Situação" className="p-3">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                               bol.situacao === 'pago' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                             }`}>
                               {bol.situacao === 'pago' ? 'Pago' : 'Em aberto'}
                             </span>
                           </td>
-                          <td className="p-3 text-right">
+                          <td data-label="Ação" className="p-3 text-right">
                             <button
                               onClick={() => onOpenPDF('boleto', bol)}
                               className="text-blue-600 font-bold hover:underline"
