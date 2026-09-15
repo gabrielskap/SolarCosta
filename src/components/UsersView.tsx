@@ -174,7 +174,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
       {/* Users Table */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <div className="border border-slate-200 rounded-xl overflow-hidden">
-          <table className="w-full text-left text-xs">
+          <table className="tabela-mobile w-full text-left text-xs">
             <thead>
               <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
                 <th className="p-3">USUÁRIO</th>
@@ -189,21 +189,21 @@ export const UsersView: React.FC<UsersViewProps> = ({
             <tbody className="divide-y divide-slate-100">
               {usuarios.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50">
-                  <td className="p-3 font-bold text-slate-900 flex items-center gap-2">
+                  <td data-label="USUÁRIO" className="p-3 font-bold text-slate-900 flex items-center gap-2">
                     <div className="w-7 h-7 rounded-full bg-blue-100 text-[#004276] font-bold flex items-center justify-center text-[11px]">
                       {u.nome.slice(0, 2).toUpperCase()}
                     </div>
                     <span>{u.nome}</span>
                   </td>
-                  <td className="p-3 text-slate-600 font-medium">{u.email}</td>
-                  <td className="p-3">
+                  <td data-label="E-MAIL" className="p-3 text-slate-600 font-medium">{u.email}</td>
+                  <td data-label="CARGO / PERFIL" className="p-3">
                     <span className="bg-blue-50 text-[#004276] font-bold px-2.5 py-0.5 rounded-full text-[10px]">
                       {u.cargo}
                     </span>
                   </td>
-                  <td className="p-3 text-slate-500">{u.dataCriacao}</td>
-                  <td className="p-3 text-slate-500">{u.ultimoAcesso}</td>
-                  <td className="p-3">
+                  <td data-label="CRIAÇÃO" className="p-3 text-slate-500">{u.dataCriacao}</td>
+                  <td data-label="ÚLTIMO ACESSO" className="p-3 text-slate-500">{u.ultimoAcesso}</td>
+                  <td data-label="STATUS" className="p-3">
                     <button
                       onClick={() => handleToggleStatus(u)}
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -215,7 +215,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                       {u.status === 'ativo' ? 'Ativo' : 'Inativo'}
                     </button>
                   </td>
-                  <td className="p-3 text-right font-bold space-x-2">
+                  <td data-label="AÇÕES" className="p-3 text-right font-bold space-x-2">
                     <button
                       onClick={() => handleOpenEdit(u)}
                       className="text-blue-600 hover:underline"
@@ -243,9 +243,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
 
       {/* Modal Novo/Editar Usuário */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="bg-[#004276] text-white p-4 flex items-center justify-between">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel-rolante bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">{editingUser ? 'Editar Usuário' : 'Novo Usuário do Sistema'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-white">
                 <X className="w-5 h-5" />
@@ -289,7 +289,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-600 mb-1 uppercase">Cargo / Perfil</label>
                   <select

@@ -122,8 +122,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onLogin, s
                 E-MAIL DE ACESSO
               </label>
               <div className="relative">
+                {/*
+                  `autoComplete` e `name` existem para o gerenciador de senhas:
+                  sem eles o iOS e o Android não oferecem o preenchimento salvo,
+                  e digitar e-mail e senha à mão no celular a cada visita é o
+                  tipo de atrito que faz o vendedor desistir do app.
+                */}
                 <input
                   type="email"
+                  name="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -149,6 +160,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onLogin, s
               </div>
               <input
                 type={showSenha ? 'text' : 'password'}
+                name="senha"
+                autoComplete="current-password"
                 required
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}

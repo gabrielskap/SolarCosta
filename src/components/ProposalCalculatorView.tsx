@@ -32,6 +32,9 @@ interface ProposalCalculatorViewProps {
   onBack?: () => void;
 }
 
+/** Rótulos dos passos do formulário no celular; a ordem espelha os selos 1-5 das seções. */
+const PASSOS = ['Cliente', 'Sistema', 'Kit', 'Pagamento', 'Observações'] as const;
+
 export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   propostas,
   produtos,
@@ -251,6 +254,18 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
   // Modal to add catalog item
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
+  /*
+   * Navegação por seção NO CELULAR.
+   *
+   * Não é um wizard: nenhuma seção é desmontada — as escondidas saem por CSS
+   * (`hidden md:block`). Todo o estado dos ~35 campos continua vivo, os
+   * cálculos seguem rodando e o salvamento enxerga o formulário inteiro.
+   * A única coisa que muda é o que cabe na tela de uma vez.
+   *
+   * No desktop (md+) isto não existe: as cinco seções aparecem empilhadas
+   * como sempre.
+   */
+  const [secaoVisivel, setSecaoVisivel] = useState(1);
   const [selectedCatalogProdutoId, setSelectedCatalogProdutoId] = useState(produtos[0]?.id || '');
 
   // Dimensionamento e economia moram em utils/solar.ts — o simulador público
@@ -479,9 +494,35 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
         
         {/* LEFT FORM (7/12 or 8/12) */}
         <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+          {/* Passos — só no celular. Ver o comentário de `secaoVisivel`. */}
+          <div className="md:hidden -mx-4 px-4 flex gap-2 overflow-x-auto pb-1">
+            {PASSOS.map((rotulo, i) => {
+              const numero = i + 1;
+              const ativo = numero === secaoVisivel;
+              return (
+                <button
+                  key={rotulo}
+                  type="button"
+                  onClick={() => setSecaoVisivel(numero)}
+                  className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                    ativo ? 'bg-[#004276] text-white border-[#004276] shadow' : 'bg-white text-slate-600 border-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center ${
+                      ativo ? 'bg-white/20' : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {numero}
+                  </span>
+                  {rotulo}
+                </button>
+              );
+            })}
+          </div>
           
           {/* Section 1: Dados do cliente */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 1 ? '' : 'hidden md:block'}`}>
             <div className="flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
                 1
@@ -518,6 +559,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </label>
                 <input
                   type="text"
+                  autoComplete="name"
                   value={clienteNome}
                   onChange={(e) => setClienteNome(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
@@ -650,7 +692,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 2: Dimensionamento do sistema */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 2 ? '' : 'hidden md:block'}`}>
             <div className="flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
                 2
@@ -754,6 +796,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
           {/* Telhado por satélite — depois do dimensionamento porque precisa
               da quantidade de módulos já calculada. */}
+          <div className={secaoVisivel === 2 ? '' : 'hidden md:block'}>
           <PainelTelhado
             endereco={endereco}
             cidade={cidade}
@@ -765,9 +808,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             onResultado={setDadosTelhado}
             showToast={showToast}
           />
+          </div>
 
           {/* Section 3: Kit de equipamentos e serviços */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 3 ? '' : 'hidden md:block'}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
@@ -839,7 +883,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 4: Forma de pagamento */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 4 ? '' : 'hidden md:block'}`}>
             <h3 className="font-bold text-slate-900 text-base">Modalidades de pagamento</h3>
 
             {/* Selector Tabs */}
@@ -972,7 +1016,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
             {formaPagamento === 'cartao' && (
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-600 mb-1">PARCELAS CARTÃO</label>
                     <select
@@ -1002,7 +1046,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 5: Observações & Personalização do PDF */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 5 ? '' : 'hidden md:block'}`}>
             <div className="flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
                 5
@@ -1040,6 +1084,26 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Avanço entre seções no celular. */}
+          <div className="md:hidden flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSecaoVisivel((n) => Math.max(1, n - 1))}
+              disabled={secaoVisivel === 1}
+              className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm disabled:opacity-40"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() => setSecaoVisivel((n) => Math.min(PASSOS.length, n + 1))}
+              disabled={secaoVisivel === PASSOS.length}
+              className="flex-1 py-2.5 rounded-xl bg-[#004276] text-white font-bold text-sm disabled:opacity-40"
+            >
+              Próximo
+            </button>
           </div>
         </div>
 
@@ -1126,13 +1190,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
       {/* Modal Add Catalog Product */}
       {isAddItemOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-[#004276] text-white p-4 flex items-center justify-between">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">Adicionar produto do catálogo</h3>
               <button onClick={() => setIsAddItemOpen(false)} className="text-slate-300 hover:text-white">✕</button>
             </div>
-            <div className="p-5 space-y-4 text-xs">
+            <div className="modal-corpo p-5 space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-600 mb-1.5">Selecione o produto</label>
                 <select

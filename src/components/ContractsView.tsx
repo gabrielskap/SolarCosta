@@ -706,7 +706,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <h3 className="font-bold text-slate-900 text-base">Contratos Emitidos</h3>
           <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <table className="w-full text-left text-xs">
+            <table className="tabela-mobile w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
                   <th className="p-3">Contrato</th>
@@ -721,12 +721,12 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {contratos.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-bold text-[#004276]">Nº {c.numero}</td>
-                    <td className="p-3 font-semibold text-slate-900">{c.clienteNome}</td>
-                    <td className="p-3">{c.potenciaKwp} kWp</td>
-                    <td className="p-3 font-bold text-slate-900">R$ {c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    <td className="p-3 text-slate-500">{c.dataEmissao}</td>
-                    <td className="p-3">
+                    <td data-label="Contrato" className="p-3 font-bold text-[#004276]">Nº {c.numero}</td>
+                    <td data-label="Cliente" className="p-3 font-semibold text-slate-900">{c.clienteNome}</td>
+                    <td data-label="Potência" className="p-3">{c.potenciaKwp} kWp</td>
+                    <td data-label="Valor" className="p-3 font-bold text-slate-900">R$ {c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                    <td data-label="Data" className="p-3 text-slate-500">{c.dataEmissao}</td>
+                    <td data-label="Status" className="p-3">
                       <button
                         onClick={() => handleToggleStatus(c.id)}
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -738,7 +738,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                         {c.status === 'assinado' ? 'Assinado' : 'Aguardando assinatura'}
                       </button>
                     </td>
-                    <td className="p-3 text-right font-bold space-x-2">
+                    <td data-label="Ações" className="p-3 text-right font-bold space-x-2">
                       <button
                         onClick={() => onOpenPDF('contrato', c)}
                         className="text-blue-600 hover:underline"

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
   HardHat, Zap, MapPin, Plus, X, Trash2, CheckCircle2, Clock, AlertTriangle,
-  ArrowRight, ClipboardCheck, User as UserIcon, CalendarClock, Package
+  ArrowRight, ClipboardCheck, User as UserIcon, CalendarClock, Package, MoveRight
 } from 'lucide-react';
 import {
   Obra, ObraEtapa, HomologacaoChecklist, Contrato, Proposta, Produto,
   User, HistoricoItem, PropostaItem
 } from '../types';
 import { today, toISODateStr } from '../utils/dates';
+import { SeletorEtapa } from './comuns/SeletorEtapa';
 
 interface ObrasViewProps {
   obras: Obra[];
@@ -99,6 +100,10 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [novaNota, setNovaNota] = useState('');
+  // Etapa visível no celular; no desktop as seis colunas aparecem juntas.
+  const [etapaVisivel, setEtapaVisivel] = useState<ObraEtapa>(ETAPAS[0]);
+  // Obra com a folha de mover etapa aberta; null = fechada.
+  const [obraMovendo, setObraMovendo] = useState<Obra | null>(null);
 
   // ---- New obra form state ----
   const [fContratoId, setFContratoId] = useState('');
@@ -154,15 +159,17 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
     e.dataTransfer.setData('text/plain', id);
   };
 
-  const handleDrop = (e: React.DragEvent, targetEtapa: ObraEtapa) => {
-    e.preventDefault();
-    const id = e.dataTransfer.getData('text/plain') || draggedId;
-    if (!id) return;
-    const obra = obras.find(o => o.id === id);
-    if (!obra || obra.etapa === targetEtapa) {
-      setDraggedId(null);
-      return;
-    }
+  /**
+   * Mudança de etapa, com as regras que vêm junto: concluir fecha o status e
+   * carimba a data, e toda mudança entra no histórico.
+   *
+   * Está separada do `handleDrop` porque há DOIS caminhos até aqui — arrastar,
+   * no desktop, e a folha de seleção, no celular (o drag-and-drop do HTML5 não
+   * dispara em toque). Duplicar a regra nos dois lugares é como elas passam a
+   * divergir.
+   */
+  const moverObra = (obra: Obra, targetEtapa: ObraEtapa) => {
+    if (obra.etapa === targetEtapa) return;
     const concluida = targetEtapa === 'Concluída';
     const updated: Obra = {
       ...obra,
@@ -172,8 +179,16 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
       historico: addHistorico(obra, `Etapa alterada para "${targetEtapa}".`)
     };
     onSaveObra(updated);
-    setDraggedId(null);
     showToast('Etapa atualizada', 'success', `${obra.numero} movida para "${targetEtapa}".`);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetEtapa: ObraEtapa) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain') || draggedId;
+    setDraggedId(null);
+    if (!id) return;
+    const obra = obras.find(o => o.id === id);
+    if (obra) moverObra(obra, targetEtapa);
   };
 
   // ---- Homologação checklist toggle ----
@@ -414,6 +429,35 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
       </div>
 
       {/* Kanban */}
+      {/* Abas de etapa no celular — ver o comentário equivalente em LeadsKanbanView. */}
+      <div className="md:hidden -mx-4 px-4 flex gap-2 overflow-x-auto pb-1">
+        {ETAPAS.map((etapa) => {
+          const qtd = obras.filter((o) => o.etapa === etapa).length;
+          const ativa = etapa === etapaVisivel;
+          return (
+            <button
+              key={etapa}
+              onClick={() => setEtapaVisivel(etapa)}
+              className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                ativa
+                  ? 'bg-[#004276] text-white border-[#004276] shadow'
+                  : 'bg-white text-slate-600 border-slate-200'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ETAPA_COR[etapa] }} />
+              <span>{etapa}</span>
+              <span
+                className={`px-1.5 rounded-full text-[10px] ${
+                  ativa ? 'bg-white/20' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {qtd}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 overflow-x-auto pb-6">
         {ETAPAS.map(etapa => {
           const etapaObras = obras.filter(o => o.etapa === etapa);
@@ -423,7 +467,9 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
               key={etapa}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => handleDrop(e, etapa)}
-              className="bg-slate-100/90 rounded-2xl p-3 flex flex-col gap-3 min-w-[240px] border border-slate-200/80"
+              className={`bg-slate-100/90 rounded-2xl p-3 flex-col gap-3 min-w-[240px] border border-slate-200/80 ${
+                etapa === etapaVisivel ? 'flex' : 'hidden md:flex'
+              }`}
             >
               <div className="flex items-center justify-between pb-1 border-b border-slate-200">
                 <div className="flex items-center gap-1.5 min-w-0">
@@ -478,6 +524,16 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
                           <ClipboardCheck className="w-3 h-3" />{hDone}/6
                         </span>
                       </div>
+
+                      {/* Caminho de toque para mudar a etapa (arrastar não existe em touch). */}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setObraMovendo(o); }}
+                        className="md:hidden mt-2 w-full py-2 flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-600"
+                      >
+                        <MoveRight className="w-3.5 h-3.5" />
+                        Mover etapa
+                      </button>
                     </div>
                   );
                 })}
@@ -499,10 +555,10 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
         const o = selectedObra;
         const hDone = homologacaoDone(o.homologacao);
         return (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
               {/* Header */}
-              <div className="bg-[#004276] text-white p-5 flex items-start justify-between shrink-0">
+              <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-start justify-between shrink-0">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-mono text-blue-200">{o.numero}</span>
@@ -514,7 +570,7 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
                 <button onClick={() => setSelectedObra(null)} className="text-slate-300 hover:text-white p-1"><X className="w-5 h-5" /></button>
               </div>
 
-              <div className="p-5 space-y-5 overflow-y-auto">
+              <div className="modal-corpo p-5 space-y-5 overflow-y-auto">
                 {/* Specs */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
@@ -645,13 +701,13 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
 
       {/* New obra modal */}
       {isNewOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="bg-[#004276] text-white p-5 flex items-center justify-between shrink-0">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-center justify-between shrink-0">
               <h3 className="font-bold text-lg">Abrir nova obra</h3>
               <button onClick={() => setIsNewOpen(false)} className="text-slate-300 hover:text-white p-1"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleCreate} className="p-6 space-y-4 overflow-y-auto text-xs">
+            <form onSubmit={handleCreate} className="modal-corpo p-6 space-y-4 overflow-y-auto text-xs">
               {/* Origem contrato */}
               <div>
                 <label className="block font-bold text-slate-600 uppercase mb-1">Gerar a partir do contrato (opcional)</label>
@@ -734,13 +790,28 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
                 </div>
               </div>
 
-              <div className="pt-4 border-t flex justify-end gap-3">
+              <div className="barra-acoes bg-white pt-4 border-t flex justify-end gap-3">
                 <button type="button" onClick={() => setIsNewOpen(false)} className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl text-sm hover:bg-slate-100">Cancelar</button>
                 <button type="submit" className="px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow">Abrir obra</button>
               </div>
             </form>
           </div>
         </div>
+      )}
+      {/* Folha de "mover etapa" — substitui o arrastar no celular. */}
+      {obraMovendo && (
+        <SeletorEtapa
+          titulo={obraMovendo.clienteNome}
+          subtitulo={`${obraMovendo.numero} · ${obraMovendo.cidade}`}
+          etapas={ETAPAS}
+          etapaAtual={obraMovendo.etapa}
+          onEscolher={(etapa) => {
+            moverObra(obraMovendo, etapa);
+            // Segue o cartão, senão ele some da aba e parece que nada aconteceu.
+            setEtapaVisivel(etapa);
+          }}
+          onFechar={() => setObraMovendo(null)}
+        />
       )}
     </div>
   );

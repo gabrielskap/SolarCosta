@@ -21,6 +21,8 @@ import {
   Zap,
   Check
 } from 'lucide-react';
+import { AcoesContato } from './comuns/AcoesContato';
+import { ehCelular } from './comuns/useEhCelular';
 import { Agendamento, Lead, User as UserType, TipoAgendamento, StatusAgendamento } from '../types';
 
 interface InteractiveCalendarProps {
@@ -45,7 +47,13 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
   // Calendar View State
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 6, 31)); // July 31, 2026
   const [selectedDateStr, setSelectedDateStr] = useState<string>('2026-07-31');
-  const [viewMode, setViewMode] = useState<'mes' | 'semana' | 'lista'>('mes');
+  // No celular a grade de 7 colunas do mês não cabe: a lista é o que o
+  // vendedor precisa ao sair de casa. É só o PADRÃO — trocar para o mês
+  // continua possível, e a escolha não é desfeita ao girar o aparelho
+  // (por isso `ehCelular()` no inicializador, e não o hook reativo).
+  const [viewMode, setViewMode] = useState<'mes' | 'semana' | 'lista'>(() =>
+    ehCelular() ? 'lista' : 'mes',
+  );
   
   // Filters State
   const [filterTipo, setFilterTipo] = useState<string>('todos');
@@ -717,6 +725,19 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
                         <span>{ag.cidade} - {ag.endereco}</span>
                         <span className="text-slate-400">| Resp: {ag.responsavel}</span>
                       </div>
+
+                      {/*
+                        Ligar, WhatsApp e rota direto do compromisso: é o que
+                        se faz com uma visita agendada quando se está a
+                        caminho dela. O telefone vem do lead vinculado.
+                      */}
+                      <AcoesContato
+                        variante="compacto"
+                        className="pt-1"
+                        telefone={leads.find((l) => l.id === ag.leadId)?.telefone}
+                        endereco={[ag.endereco, ag.cidade]}
+                        mensagemWhatsApp={`Olá! Confirmando nossa ${ag.titulo} em ${ag.data.split('-').reverse().join('/')} às ${ag.horarioInicio}.`}
+                      />
                     </div>
                   </div>
 
@@ -752,11 +773,11 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
 
       {/* Modal: Agendar Novo Compromisso */}
       {isNewModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="modal-painel bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
             
             {/* Header */}
-            <div className="bg-[#004276] text-white p-5 flex items-center justify-between">
+            <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CalendarIcon className="w-5 h-5 text-[#FFD100]" />
                 <h3 className="font-black text-base">Agendar Visita ou Reunião</h3>
@@ -770,7 +791,7 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmitNewAgendamento} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+            <form onSubmit={handleSubmitNewAgendamento} className="modal-corpo p-6 space-y-4 overflow-y-auto flex-1 text-xs">
               
               {/* Tipo de Agendamento */}
               <div>
@@ -870,7 +891,7 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
               </div>
 
               {/* Data e Horários */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-700 font-extrabold mb-1">
                     Data *
@@ -931,7 +952,7 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
               </div>
 
               {/* Endereço e Cidade */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 font-extrabold mb-1">
                     Cidade
@@ -971,7 +992,7 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
               </div>
 
               {/* Actions */}
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+              <div className="barra-acoes bg-white pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsNewModalOpen(false)}
@@ -994,11 +1015,11 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
 
       {/* Modal: Detalhes do Compromisso */}
       {selectedEventDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
+        <div className="modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="modal-painel bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
             
             {/* Header */}
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
+            <div className="modal-cabecalho bg-slate-900 text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {getTipoBadge(selectedEventDetails.tipo)}
               </div>
@@ -1010,7 +1031,7 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
+            <div className="modal-corpo p-6 space-y-4 text-xs">
               <div>
                 <h3 className="font-extrabold text-slate-900 text-base mb-1">
                   {selectedEventDetails.titulo}

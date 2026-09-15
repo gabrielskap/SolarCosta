@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Package, Truck, Search, Plus, Edit2, Trash2, ExternalLink, X, AlertTriangle, TrendingDown, PackageX } from 'lucide-react';
-import { Produto, Fornecedor, User } from '../types';
+import { Produto, Fornecedor, TipoProdutoSlug, User } from '../types';
+import { slugDoTipoProduto } from '../services/mappers';
 import { maskCNPJ, maskPhone } from '../utils/format';
 
 interface SuppliersProductsViewProps {
@@ -34,7 +35,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
   // Form product state
   const [nomeProd, setNomeProd] = useState('');
-  const [tipoProd, setTipoProd] = useState<'modulo' | 'inversor' | 'estrutura' | 'cabo' | 'protecao' | 'acessorio'>('modulo');
+  const [tipoProd, setTipoProd] = useState<TipoProdutoSlug>('modulo');
   const [fornecedorIdProd, setFornecedorIdProd] = useState(fornecedores[0]?.id || 'f1');
   const [potenciaProd, setPotenciaProd] = useState('710 Wp');
   const [estoqueProd, setEstoqueProd] = useState(10);
@@ -78,7 +79,9 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   const handleOpenEditProduct = (p: Produto) => {
     setEditingProduct(p);
     setNomeProd(p.nome);
-    setTipoProd(p.tipo);
+    // `p.tipo` chega da API como RÓTULO ('Estrutura'), mas o <select> abaixo
+    // trabalha com slug — sem converter, o campo abria em branco ao editar.
+    setTipoProd(slugDoTipoProduto(p.tipo));
     setFornecedorIdProd(p.fornecedorId);
     setPotenciaProd(p.potencia || '');
     setEstoqueProd(p.estoque);
@@ -251,7 +254,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <table className="w-full text-left text-xs">
+            <table className="tabela-mobile w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
                   <th className="p-3">CÓDIGO</th>
@@ -267,16 +270,16 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {filteredProducts.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono font-bold text-slate-600">{p.codigo}</td>
-                    <td className="p-3 font-bold text-slate-900">{p.nome}</td>
-                    <td className="p-3 text-slate-600">{p.fornecedorNome}</td>
-                    <td className="p-3">
+                    <td data-label="CÓDIGO" className="p-3 font-mono font-bold text-slate-600">{p.codigo}</td>
+                    <td data-label="PRODUTO" className="p-3 font-bold text-slate-900">{p.nome}</td>
+                    <td data-label="FORNECEDOR" className="p-3 text-slate-600">{p.fornecedorNome}</td>
+                    <td data-label="TIPO" className="p-3">
                       <span className="bg-blue-50 text-[#004276] font-bold px-2 py-0.5 rounded text-[10px] capitalize">
                         {p.tipo}
                       </span>
                     </td>
-                    <td className="p-3 font-medium text-slate-700">{p.potencia || '–'}</td>
-                    <td className="p-3">
+                    <td data-label="POTÊNCIA" className="p-3 font-medium text-slate-700">{p.potencia || '–'}</td>
+                    <td data-label="ESTOQUE" className="p-3">
                       {(() => {
                         const b = stockBadge(p.estoque || 0);
                         return (
@@ -287,10 +290,10 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                         );
                       })()}
                     </td>
-                    <td className="p-3 text-right font-black text-[#004276]">
+                    <td data-label="PREÇO UNIT." className="p-3 text-right font-black text-[#004276]">
                       R$ {p.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="p-3 text-right font-bold space-x-2">
+                    <td data-label="AÇÕES" className="p-3 text-right font-bold space-x-2">
                       <button
                         onClick={() => handleOpenEditProduct(p)}
                         className="text-blue-600 hover:underline"
@@ -370,15 +373,15 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
       {/* Modal Novo/Editar Produto */}
       {isNewProductOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-[#004276] text-white p-4 flex items-center justify-between">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">{editingProduct ? 'Editar Produto' : 'Cadastrar Novo Produto'}</h3>
               <button onClick={() => setIsNewProductOpen(false)} className="text-slate-300 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleProductSubmit} className="p-5 space-y-4 text-xs">
+            <form onSubmit={handleProductSubmit} className="modal-corpo p-5 space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-600 mb-1 uppercase">Nome do Equipamento</label>
                 <input
@@ -391,12 +394,12 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-600 mb-1 uppercase">Tipo</label>
                   <select
                     value={tipoProd}
-                    onChange={(e: any) => setTipoProd(e.target.value)}
+                    onChange={(e) => setTipoProd(e.target.value as TipoProdutoSlug)}
                     className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
                   >
                     <option value="modulo">Módulo</option>
@@ -405,6 +408,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                     <option value="cabo">Cabo</option>
                     <option value="protecao">Proteção</option>
                     <option value="acessorio">Acessório</option>
+                    <option value="outro">Outro</option>
                   </select>
                 </div>
 
@@ -422,7 +426,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-600 mb-1 uppercase">Potência</label>
                   <input
@@ -456,7 +460,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="barra-acoes bg-white flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsNewProductOpen(false)}
@@ -478,15 +482,15 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
       {/* Modal Novo Fornecedor */}
       {isNewSupplierOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-[#004276] text-white p-4 flex items-center justify-between">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">Cadastrar Fornecedor</h3>
               <button onClick={() => setIsNewSupplierOpen(false)} className="text-slate-300 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleSupplierSubmit} className="p-5 space-y-4 text-xs">
+            <form onSubmit={handleSupplierSubmit} className="modal-corpo p-5 space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-600 mb-1 uppercase">Nome da Empresa / Fornecedor</label>
                 <input
@@ -499,7 +503,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-600 mb-1 uppercase">CNPJ</label>
                   <input
@@ -523,7 +527,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-600 mb-1 uppercase">Contato</label>
                   <input
@@ -558,7 +562,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="barra-acoes bg-white flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsNewSupplierOpen(false)}

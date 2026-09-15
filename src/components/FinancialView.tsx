@@ -545,7 +545,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
           </div>
 
           <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <table className="w-full text-left text-xs">
+            <table className="tabela-mobile w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
                   <th className="p-3">DATA</th>
@@ -558,15 +558,15 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {filteredLancamentos.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="p-3 text-slate-500 font-mono">{item.data}</td>
-                    <td className="p-3 font-semibold text-slate-900">{item.descricao}</td>
-                    <td className="p-3">
+                    <td data-label="DATA" className="p-3 text-slate-500 font-mono">{item.data}</td>
+                    <td data-label="DESCRIÇÃO" className="p-3 font-semibold text-slate-900">{item.descricao}</td>
+                    <td data-label="CATEGORIA" className="p-3">
                       <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px]">
                         {item.categoria}
                       </span>
                     </td>
-                    <td className="p-3 font-mono text-slate-500">{item.obraRef}</td>
-                    <td className={`p-3 text-right font-bold ${
+                    <td data-label="OBRA" className="p-3 font-mono text-slate-500">{item.obraRef}</td>
+                    <td data-label="VALOR" className={`p-3 text-right font-bold ${
                       item.valor > 0 ? 'text-emerald-600' : 'text-rose-600'
                     }`}>
                       {item.valor > 0 ? '+' : ''} R$ {Math.abs(item.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -664,7 +664,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
         </div>
 
         <div className="border border-slate-200 rounded-xl overflow-hidden">
-          <table className="w-full text-left text-xs">
+          <table className="tabela-mobile w-full text-left text-xs">
             <thead>
               <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
                 <th className="p-3">VENCIMENTO</th>
@@ -679,21 +679,21 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredBoletos.map((bol) => (
                 <tr key={bol.id} className="hover:bg-slate-50">
-                  <td className="p-3 font-mono font-semibold text-slate-800">{bol.vencimento}</td>
-                  <td className="p-3">
+                  <td data-label="VENCIMENTO" className="p-3 font-mono font-semibold text-slate-800">{bol.vencimento}</td>
+                  <td data-label="DESCRIÇÃO / CLIENTE" className="p-3">
                     <p className="font-bold text-slate-900">{bol.clienteNome}</p>
                     <p className="text-[10px] text-slate-400 font-mono">Parcela {bol.parcela} ({bol.obraRef || 'Geral'})</p>
                   </td>
-                  <td className="p-3 font-semibold">
+                  <td data-label="TIPO" className="p-3 font-semibold">
                     <span className={bol.tipo === 'A receber' ? 'text-emerald-600' : 'text-rose-600'}>
                       {bol.tipo}
                     </span>
                   </td>
-                  <td className="p-3 text-slate-600">{bol.categoria}</td>
-                  <td className="p-3 text-right font-bold text-slate-900">
+                  <td data-label="CATEGORIA" className="p-3 text-slate-600">{bol.categoria}</td>
+                  <td data-label="VALOR" className="p-3 text-right font-bold text-slate-900">
                     R$ {bol.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="p-3">
+                  <td data-label="SITUAÇÃO" className="p-3">
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                       bol.situacao === 'pago'
                         ? 'bg-emerald-100 text-emerald-800'
@@ -704,7 +704,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                       {bol.situacao === 'pago' ? 'Pago' : bol.situacao === 'vencido' ? 'Vencido' : 'Em aberto'}
                     </span>
                   </td>
-                  <td className="p-3 text-right space-x-2 font-bold">
+                  <td data-label="AÇÕES" className="p-3 text-right space-x-2 font-bold">
                     <button
                       onClick={() => handleCopyLinhaDigitavel(bol.linhaDigitavel)}
                       title="Copiar Linha Digitável"
@@ -736,15 +736,15 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
       {/* Modal Novo Lançamento */}
       {isNovoLancamentoOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-[#004276] text-white p-4 flex items-center justify-between">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">Novo Lançamento Financeiro</h3>
               <button onClick={() => setIsNovoLancamentoOpen(false)} className="text-slate-300 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleFormLancamentoSubmit} className="p-5 space-y-4 text-xs">
+            <form onSubmit={handleFormLancamentoSubmit} className="modal-corpo p-5 space-y-4 text-xs">
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -778,7 +778,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-600 mb-1 uppercase">Categoria</label>
                   <select
@@ -831,17 +831,17 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
       {/* Modal Emitir Boleto Banco do Brasil */}
       {isEmitirBoletoOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="bg-[#004276] text-white p-4 flex items-center justify-between">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">Emitir Boleto Banco do Brasil</h3>
               <button onClick={() => setIsEmitirBoletoOpen(false)} className="text-slate-300 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleFormEmitirBoletoSubmit} className="p-5 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
+            <form onSubmit={handleFormEmitirBoletoSubmit} className="modal-corpo p-5 space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="col-span-1 sm:col-span-2">
                   <label className="block font-bold text-slate-600 mb-1 uppercase">Cliente / Sacado</label>
                   <input
                     type="text"

@@ -19,7 +19,7 @@
 // entra em `layoutManual` e passa a mandar na figura — ver o efeito de
 // `modulosQtd` para o que acontece quando o kit muda depois disso.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ChevronDown,
@@ -52,7 +52,16 @@ import {
 } from '../../utils/layoutModulos';
 import { ajustarQuantidade, criarContexto, segmentosOrientados } from '../../utils/edicaoLayout';
 import { TelhadoSatelite } from './TelhadoSatelite';
-import { EditorTelhado } from './EditorTelhado';
+
+/**
+ * O editor em tela cheia (1.000 linhas + toda a geometria de edição) só é
+ * baixado quando alguém clica em "ajustar manualmente". Ele já era montado sob
+ * demanda; agora também é BAIXADO sob demanda, o que tira o peso do primeiro
+ * carregamento da calculadora — que é a tela quente do vendedor em campo.
+ */
+const EditorTelhado = lazy(() =>
+  import('./EditorTelhado').then((m) => ({ default: m.EditorTelhado })),
+);
 
 /** Acima disso a foto é velha o bastante para o telhado ter mudado. */
 const IMAGEM_VELHA_ANOS = 3;
@@ -896,18 +905,27 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
           telhado grande) a cada tecla digitada no campo de consumo. Montar na
           hora também garante que ele sempre parta do layout atual. */}
       {telhado && editorAberto && (
-        <EditorTelhado
-          aberto={editorAberto}
-          onFechar={() => setEditorAberto(false)}
-          telhado={telhado}
-          modulos={modulos}
-          modulosQtd={modulosQtd}
-          modulo={modulo}
-          espacamentoM={espacamentoM}
-          chaveMaps={chaveMaps}
-          enderecoFormatado={geo?.enderecoFormatado}
-          onAplicar={aplicarEdicao}
-        />
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 bg-slate-900/80 flex items-center justify-center gap-3 text-white">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <span className="text-sm font-semibold">Abrindo o editor…</span>
+            </div>
+          }
+        >
+          <EditorTelhado
+            aberto={editorAberto}
+            onFechar={() => setEditorAberto(false)}
+            telhado={telhado}
+            modulos={modulos}
+            modulosQtd={modulosQtd}
+            modulo={modulo}
+            espacamentoM={espacamentoM}
+            chaveMaps={chaveMaps}
+            enderecoFormatado={geo?.enderecoFormatado}
+            onAplicar={aplicarEdicao}
+          />
+        </Suspense>
       )}
     </div>
   );

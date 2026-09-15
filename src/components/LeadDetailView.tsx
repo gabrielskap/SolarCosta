@@ -4,6 +4,7 @@ import {
   MessageSquare, FileCheck, DollarSign, Calendar, ChevronRight, CheckCircle2, X 
 } from 'lucide-react';
 import { Lead, LeadStage, DocumentoItem, Proposta, Contrato, Boleto, User } from '../types';
+import { AcoesContato } from './comuns/AcoesContato';
 
 interface LeadDetailViewProps {
   lead: Lead;
@@ -169,7 +170,18 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
           {/* Card Dados do cliente */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
             <h3 className="font-bold text-[#004276] text-base border-b pb-2">Dados do cliente</h3>
-            
+
+            {/*
+              Ligar / WhatsApp / rota logo no topo: é o que o vendedor faz com
+              esta tela quando está em campo. Antes o telefone era só texto para
+              copiar à mão.
+            */}
+            <AcoesContato
+              telefone={lead.telefone}
+              endereco={[lead.endereco, lead.cidade]}
+              mensagemWhatsApp={`Olá, ${lead.nome.split(' ')[0]}! Aqui é da Solar Costa.`}
+            />
+
             <div className="space-y-3 text-xs">
               <div>
                 <span className="font-bold text-slate-400 uppercase">CPF / CNPJ</span>
@@ -402,7 +414,7 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
                 </div>
 
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-xs">
+                  <table className="tabela-mobile w-full text-left text-xs">
                     <thead>
                       <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
                         <th className="p-3">Arquivo</th>
@@ -416,15 +428,15 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
                       {currentFolderDocs.length > 0 ? (
                         currentFolderDocs.map((doc) => (
                           <tr key={doc.id} className="hover:bg-slate-50">
-                            <td className="p-3 font-semibold text-slate-900">{doc.nome}</td>
-                            <td className="p-3">
+                            <td data-label="Arquivo" className="p-3 font-semibold text-slate-900">{doc.nome}</td>
+                            <td data-label="Tipo" className="p-3">
                               <span className="bg-slate-100 text-slate-700 font-mono px-2 py-0.5 rounded text-[10px]">
                                 {doc.tipo}
                               </span>
                             </td>
-                            <td className="p-3 text-slate-500">{doc.tamanho}</td>
-                            <td className="p-3 text-slate-600">{doc.enviadoPor} - {doc.dataEnvio}</td>
-                            <td className="p-3 text-right font-bold space-x-2">
+                            <td data-label="Tamanho" className="p-3 text-slate-500">{doc.tamanho}</td>
+                            <td data-label="Enviado por" className="p-3 text-slate-600">{doc.enviadoPor} - {doc.dataEnvio}</td>
+                            <td data-label="Ações" className="p-3 text-right font-bold space-x-2">
                               <button
                                 onClick={() => showToast('Download iniciado', 'info', `Baixando ${doc.nome}...`)}
                                 className="text-blue-600 hover:underline"
@@ -626,15 +638,15 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
 
       {/* Modal Registrar Contato */}
       {isRegistrarContatoOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-[#004276] text-white p-4 flex items-center justify-between">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">Registrar Novo Contato</h3>
               <button onClick={() => setIsRegistrarContatoOpen(false)} className="text-slate-300 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="modal-corpo p-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
                   Descrição da Interação

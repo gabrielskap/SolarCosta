@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Plus, Filter, User, MapPin, Zap, ArrowRight, MoveRight, X, Download, FileSpreadsheet, Loader2, MapPinned } from 'lucide-react';
+import { SeletorEtapa } from './comuns/SeletorEtapa';
 import { Lead, LeadStage, User as UserType } from '../types';
 import {
   maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel,
@@ -42,6 +43,10 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
   const [responsavelFilter, setResponsavelFilter] = useState('todos');
   const [origemFilter, setOrigemFilter] = useState('todas');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Etapa mostrada no celular (o desktop mostra as seis colunas de uma vez).
+  const [etapaVisivel, setEtapaVisivel] = useState<LeadStage>(STAGES[0]);
+  // Lead com a folha de mover etapa aberta; null = fechada.
+  const [leadMovendo, setLeadMovendo] = useState<Lead | null>(null);
 
   // New lead form state
   const [novoNome, setNovoNome] = useState('');
@@ -382,6 +387,39 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
         </span>
       </div>
 
+      {/*
+        NAVEGAÇÃO DE ETAPA NO CELULAR
+        Seis colunas empilhadas davam ~2.400px de rolagem para ver o funil
+        inteiro. Aqui as etapas viram abas e só a selecionada é montada; no
+        desktop (md+) isto some e o quadro volta a ser um quadro.
+      */}
+      <div className="md:hidden -mx-4 px-4 flex gap-2 overflow-x-auto pb-1">
+        {STAGES.map((stage) => {
+          const qtd = filteredLeads.filter((l) => l.etapa === stage).length;
+          const ativa = stage === etapaVisivel;
+          return (
+            <button
+              key={stage}
+              onClick={() => setEtapaVisivel(stage)}
+              className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                ativa
+                  ? 'bg-[#004276] text-white border-[#004276] shadow'
+                  : 'bg-white text-slate-600 border-slate-200'
+              }`}
+            >
+              <span>{stage}</span>
+              <span
+                className={`px-1.5 rounded-full text-[10px] ${
+                  ativa ? 'bg-white/20' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {qtd}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* KANBAN BOARD */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 overflow-x-auto pb-6">
         {STAGES.map((stage) => {
@@ -393,7 +431,9 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
               key={stage}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, stage)}
-              className="bg-slate-100/90 rounded-2xl p-3 flex flex-col gap-3 min-w-[240px] border border-slate-200/80"
+              className={`bg-slate-100/90 rounded-2xl p-3 flex-col gap-3 min-w-[240px] border border-slate-200/80 ${
+                stage === etapaVisivel ? 'flex' : 'hidden md:flex'
+              }`}
             >
               {/* Column Header */}
               <div className="flex items-center justify-between pb-1 border-b border-slate-200">
@@ -446,6 +486,24 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                         {lead.historico && lead.historico[0]?.data ? `há ${lead.historico[0].data.slice(0, 5)}` : 'recente'}
                       </span>
                     </div>
+
+                    {/*
+                      Só no celular: no desktop o cartão continua sendo movido
+                      arrastando. `stopPropagation` impede que o toque no botão
+                      também abra o detalhe do lead (onClick do cartão).
+                    */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLeadMovendo(lead);
+                      }}
+                      className="md:hidden mt-2 w-full py-2 flex items-center justify-center gap-1.5 rounded-lg
+                                 border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-600"
+                    >
+                      <MoveRight className="w-3.5 h-3.5" />
+                      Mover etapa
+                    </button>
                   </div>
                 ))}
 
@@ -467,9 +525,9 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
 
       {/* Modal Cadastro de Novo Lead */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in">
-            <div className="bg-[#004276] text-white p-5 flex items-center justify-between">
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in">
+            <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-center justify-between">
               <h3 className="font-bold text-lg">Novo Lead de Energia Solar</h3>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -479,15 +537,16 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleFormSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+            <form onSubmit={handleFormSubmit} className="modal-corpo p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="col-span-1 sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
                     Nome Completo / Razão Social *
                   </label>
                   <input
                     type="text"
                     required
+                    autoComplete="name"
                     value={novoNome}
                     onChange={(e) => setNovoNome(e.target.value)}
                     placeholder="Ex: João da Silva / Padaria Sol"
@@ -577,7 +636,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                   />
                 </div>
 
-                <div className="col-span-2">
+                <div className="col-span-1 sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
                     Endereço Completo
                   </label>
@@ -596,6 +655,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                   </label>
                   <input
                     type="number"
+                    inputMode="numeric"
                     value={novoConsumo}
                     onChange={(e) => setNovoConsumo(Number(e.target.value))}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
@@ -652,7 +712,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                 </div>
               </div>
 
-              <div className="pt-4 border-t flex justify-end gap-3">
+              <div className="barra-acoes bg-white pt-4 border-t flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
@@ -670,6 +730,24 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Folha de "mover etapa" — o caminho de toque que substitui o arrastar. */}
+      {leadMovendo && (
+        <SeletorEtapa
+          titulo={leadMovendo.nome}
+          subtitulo={leadMovendo.cidade}
+          etapas={STAGES}
+          etapaAtual={leadMovendo.etapa}
+          onEscolher={(etapa) => {
+            onUpdateLeadStage(leadMovendo.id, etapa);
+            // Acompanha o cartão: sem isto ele some da aba atual e o usuário
+            // fica olhando uma coluna vazia sem saber se a ação funcionou.
+            setEtapaVisivel(etapa);
+            showToast('Lead movido', 'success', `${leadMovendo.nome} agora está em "${etapa}".`);
+          }}
+          onFechar={() => setLeadMovendo(null)}
+        />
       )}
     </div>
   );

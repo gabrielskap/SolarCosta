@@ -17,13 +17,20 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import './index.css';
 
-import { SiteLayout } from './site/SiteLayout';
 import { useSeo } from './site/seo';
-import { PaginaCms } from './site/PaginaCms';
-import { NaoEncontrado } from './site/pages/NaoEncontrado';
 
 // O CRM carrega recharts, motion e ~15 telas. Nada disso deve pesar na home.
 const Crm = lazy(() => import('./App'));
+
+// E o inverso também vale: o site arrasta o registry de blocos do CMS, e quem
+// abre /sistema no celular não renderiza nenhum deles. Com os dois lados lazy,
+// o entry fica só com o roteador — cada app baixa o que é seu.
+//
+// O site não perde LCP com isso: o conteúdo já espera /api/publico/site antes
+// de renderizar, e o chunk viaja em paralelo com essa chamada.
+const SiteLayout = lazy(() => import('./site/SiteLayout').then((m) => ({ default: m.SiteLayout })));
+const PaginaCms = lazy(() => import('./site/PaginaCms').then((m) => ({ default: m.PaginaCms })));
+const NaoEncontrado = lazy(() => import('./site/pages/NaoEncontrado').then((m) => ({ default: m.NaoEncontrado })));
 
 const Carregando = () => (
   <div className="h-screen w-screen flex items-center justify-center bg-fundo">
@@ -51,19 +58,21 @@ const Sistema = () => {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <Routes>
-        <Route element={<SiteLayout />}>
-          <Route index element={<PaginaCms slug="home" />} />
-          <Route path="servicos" element={<PaginaCms slug="servicos" />} />
-          <Route path="simulador" element={<PaginaCms slug="simulador" />} />
-          <Route path="sobre" element={<PaginaCms slug="sobre" />} />
-          <Route path="contato" element={<PaginaCms slug="contato" />} />
-          <Route path="*" element={<NaoEncontrado />} />
-        </Route>
+      <Suspense fallback={<Carregando />}>
+        <Routes>
+          <Route element={<SiteLayout />}>
+            <Route index element={<PaginaCms slug="home" />} />
+            <Route path="servicos" element={<PaginaCms slug="servicos" />} />
+            <Route path="simulador" element={<PaginaCms slug="simulador" />} />
+            <Route path="sobre" element={<PaginaCms slug="sobre" />} />
+            <Route path="contato" element={<PaginaCms slug="contato" />} />
+            <Route path="*" element={<NaoEncontrado />} />
+          </Route>
 
-        {/* Wildcard: as subrotas reais (/dashboard, /leads, ...) vivem dentro do próprio CRM. */}
-        <Route path="/sistema/*" element={<Sistema />} />
-      </Routes>
+          {/* Wildcard: as subrotas reais (/dashboard, /leads, ...) vivem dentro do próprio CRM. */}
+          <Route path="/sistema/*" element={<Sistema />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   </StrictMode>,
 );

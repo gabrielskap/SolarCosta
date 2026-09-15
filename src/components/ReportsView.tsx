@@ -262,7 +262,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
 
             <div className="report-block border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-left text-xs">
+              <table className="tabela-mobile w-full text-left text-xs">
                 <thead>
                   <tr className="bg-[#004276] text-white font-bold uppercase text-[10px]">
                     <th className="p-2.5">Vendedor</th>
@@ -277,13 +277,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {vendedores.map((v) => (
                     <tr key={v.nome} className="hover:bg-slate-50">
-                      <td className="p-2.5 font-bold text-slate-900">{v.nome}</td>
-                      <td className="p-2.5 text-center text-slate-600">{v.leads}</td>
-                      <td className="p-2.5 text-center text-slate-600">{v.propostas}</td>
-                      <td className="p-2.5 text-center font-bold text-[#004276]">{v.fechados}</td>
-                      <td className="p-2.5 text-right font-bold text-emerald-700">{formatCurrencyBRL(v.valorFechado)}</td>
-                      <td className="p-2.5 text-right text-slate-600">{formatCurrencyBRL(v.pipeline)}</td>
-                      <td className="p-2.5 text-center font-bold text-slate-900">{v.conversao.toFixed(0)}%</td>
+                      <td data-label="Vendedor" className="p-2.5 font-bold text-slate-900">{v.nome}</td>
+                      <td data-label="Leads" className="p-2.5 text-center text-slate-600">{v.leads}</td>
+                      <td data-label="Propostas" className="p-2.5 text-center text-slate-600">{v.propostas}</td>
+                      <td data-label="Fechados" className="p-2.5 text-center font-bold text-[#004276]">{v.fechados}</td>
+                      <td data-label="Valor fechado" className="p-2.5 text-right font-bold text-emerald-700">{formatCurrencyBRL(v.valorFechado)}</td>
+                      <td data-label="Pipeline" className="p-2.5 text-right text-slate-600">{formatCurrencyBRL(v.pipeline)}</td>
+                      <td data-label="Conversão" className="p-2.5 text-center font-bold text-slate-900">{v.conversao.toFixed(0)}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -336,7 +336,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
 
             <div className="report-block border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-left text-xs">
+              <table className="tabela-mobile w-full text-left text-xs">
                 <thead>
                   <tr className="bg-[#004276] text-white font-bold uppercase text-[10px]">
                     <th className="p-2.5">Etapa</th>
@@ -349,14 +349,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {funil.map((f, i) => (
                     <tr key={f.etapa} className="hover:bg-slate-50">
-                      <td className="p-2.5 font-bold text-slate-900 flex items-center gap-2">
+                      <td data-label="Etapa" className="p-2.5 font-bold text-slate-900 flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: f.fill }} />
                         {f.etapa}
                       </td>
-                      <td className="p-2.5 text-center font-bold">{f.qtd}</td>
-                      <td className="p-2.5 text-right text-slate-700">{formatCurrencyBRL(f.valor)}</td>
-                      <td className="p-2.5 text-center text-slate-600">{f.pctTotal.toFixed(0)}%</td>
-                      <td className="p-2.5 text-center text-slate-600">
+                      <td data-label="Qtd." className="p-2.5 text-center font-bold">{f.qtd}</td>
+                      <td data-label="Valor" className="p-2.5 text-right text-slate-700">{formatCurrencyBRL(f.valor)}</td>
+                      <td data-label="% do total" className="p-2.5 text-center text-slate-600">{f.pctTotal.toFixed(0)}%</td>
+                      <td data-label="Passagem da etapa anterior" className="p-2.5 text-center text-slate-600">
                         {i === 0 ? '—' : `${f.pctEtapaAnterior.toFixed(0)}%`}
                       </td>
                     </tr>

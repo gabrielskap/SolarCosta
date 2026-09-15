@@ -8,7 +8,7 @@
 import {
   Agendamento, AuditEntry, Boleto, Contrato, DocumentoItem, Fornecedor,
   HistoricoItem, LancamentoFinanceiro, Lead, Obra, Produto, Proposta,
-  PropostaItem, User,
+  PropostaItem, TipoProdutoSlug, User,
 } from '../types';
 
 /* ============================================================== DATAS === */
@@ -271,7 +271,7 @@ export function paraProduto(linha: any): Produto {
 }
 
 /** Mapa rótulo -> slug, para o caminho inverso. */
-const SLUG_POR_ROTULO: Record<string, string> = {
+const SLUG_POR_ROTULO: Record<string, TipoProdutoSlug> = {
   'Módulo fotovoltaico': 'modulo',
   Inversor: 'inversor',
   Estrutura: 'estrutura',
@@ -280,6 +280,25 @@ const SLUG_POR_ROTULO: Record<string, string> = {
   Acessório: 'acessorio',
   Outro: 'outro',
 };
+
+/**
+ * Normaliza `Produto.tipo` (que vem como rótulo da API) para o slug do banco.
+ * Um valor que já seja slug passa direto; qualquer coisa fora da lista cai em
+ * 'outro', que é um código válido em `SolarCosta_TiposProduto`.
+ *
+ * Existe para quem precisa alimentar um <select> de slugs a partir de um
+ * produto carregado — ver SuppliersProductsView.
+ */
+export function slugDoTipoProduto(tipo: string | undefined): TipoProdutoSlug {
+  if (!tipo) return 'outro';
+  const porRotulo = SLUG_POR_ROTULO[tipo];
+  if (porRotulo) return porRotulo;
+  return SLUGS_VALIDOS.includes(tipo as TipoProdutoSlug) ? (tipo as TipoProdutoSlug) : 'outro';
+}
+
+const SLUGS_VALIDOS: TipoProdutoSlug[] = [
+  'modulo', 'inversor', 'estrutura', 'cabo', 'protecao', 'acessorio', 'outro',
+];
 
 export function deProduto(p: Partial<Produto> & { estoque?: number }): Record<string, unknown> {
   const tipo = txt(p.tipo);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Api, Auth, carregarTudo, type ConfigApp } from './services/api';
 import { aoExpirarSessao, ErroApi } from './services/http';
@@ -7,26 +7,49 @@ import {
   User, LeadStage, Agendamento, AuditEntry, Obra, AppNotification,
 } from './types';
 import { Sidebar } from './components/Sidebar';
-import { DashboardView } from './components/DashboardView';
-import { InteractiveCalendar } from './components/InteractiveCalendar';
 import { LoginView } from './components/LoginView';
-import { LeadsKanbanView } from './components/LeadsKanbanView';
-import { LeadDetailView } from './components/LeadDetailView';
-import { ProposalCalculatorView } from './components/ProposalCalculatorView';
-import { ProposalsListView } from './components/ProposalsListView';
-import { ContractsView } from './components/ContractsView';
-import { FinancialView } from './components/FinancialView';
-import { SuppliersProductsView } from './components/SuppliersProductsView';
-import { UsersView } from './components/UsersView';
-import { ObrasView } from './components/ObrasView';
-import { ReportsView } from './components/ReportsView';
-import { AuditTrailView } from './components/AuditTrailView';
-import { SiteConfigView } from './components/site/SiteConfigView';
 import { NotificationCenter } from './components/NotificationCenter';
-import { PDFModal } from './components/PDFModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
+import { registrarServiceWorker } from './pwa/registrar';
+
+/*
+ * ------------------------------------------------------------------ rotas ---
+ *
+ * Cada tela do CRM é um chunk próprio, baixado quando a rota é aberta.
+ *
+ * O que estava em jogo: `recharts` pesa ~400 kB e só o Dashboard, o Relatórios
+ * e o PDFModal usam gráfico. Com tudo importado de forma estática, quem abria
+ * a Agenda no celular baixava os gráficos do mesmo jeito. Agora `/sistema/agenda`
+ * não toca em `recharts`.
+ *
+ * Ficam de fora (carregam junto com a casca, porque aparecem sempre): Sidebar,
+ * LoginView, NotificationCenter e Toast.
+ */
+const DashboardView = lazy(() => import('./components/DashboardView').then((m) => ({ default: m.DashboardView })));
+const InteractiveCalendar = lazy(() => import('./components/InteractiveCalendar').then((m) => ({ default: m.InteractiveCalendar })));
+const LeadsKanbanView = lazy(() => import('./components/LeadsKanbanView').then((m) => ({ default: m.LeadsKanbanView })));
+const LeadDetailView = lazy(() => import('./components/LeadDetailView').then((m) => ({ default: m.LeadDetailView })));
+const ProposalCalculatorView = lazy(() => import('./components/ProposalCalculatorView').then((m) => ({ default: m.ProposalCalculatorView })));
+const ProposalsListView = lazy(() => import('./components/ProposalsListView').then((m) => ({ default: m.ProposalsListView })));
+const ContractsView = lazy(() => import('./components/ContractsView').then((m) => ({ default: m.ContractsView })));
+const FinancialView = lazy(() => import('./components/FinancialView').then((m) => ({ default: m.FinancialView })));
+const SuppliersProductsView = lazy(() => import('./components/SuppliersProductsView').then((m) => ({ default: m.SuppliersProductsView })));
+const UsersView = lazy(() => import('./components/UsersView').then((m) => ({ default: m.UsersView })));
+const ObrasView = lazy(() => import('./components/ObrasView').then((m) => ({ default: m.ObrasView })));
+const ReportsView = lazy(() => import('./components/ReportsView').then((m) => ({ default: m.ReportsView })));
+const AuditTrailView = lazy(() => import('./components/AuditTrailView').then((m) => ({ default: m.AuditTrailView })));
+const SiteConfigView = lazy(() => import('./components/site/SiteConfigView').then((m) => ({ default: m.SiteConfigView })));
 import { Menu, Loader2, WifiOff } from 'lucide-react';
 import logoFull from './assets/logo-full.png';
+
+/**
+ * O documento (proposta/contrato/boleto) sai do bundle principal: são 1.100
+ * linhas que arrastam o `recharts` junto (gráficos de produção mensal), e a
+ * maioria das sessões nunca abre um PDF. Chega sob demanda, no clique.
+ */
+const PDFModal = lazy(() =>
+  import('./components/PDFModal').then((m) => ({ default: m.PDFModal })),
+);
 
 interface LeadDetailRouteProps {
   leads: Lead[];
@@ -143,6 +166,39 @@ export default function App() {
   );
 
   const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  /* --------------------------------------------------- service worker -- */
+
+  /*
+   * Registra o SW e trata a chegada de uma versão nova.
+   *
+   * O aviso é persistente e tem botão porque a troca recarrega a página: fazer
+   * isso sozinho poderia descartar uma proposta meio preenchida. `CHAVE_SW`
+   * fixa o id do toast para que uma segunda notificação (o SW consulta de
+   * tempos em tempos) não empilhe um segundo aviso idêntico na tela.
+   */
+  useEffect(() => {
+    const CHAVE_SW = 'sw-nova-versao';
+    registrarServiceWorker({
+      aoTerNovaVersao: (atualizar) => {
+        setToasts((prev) =>
+          prev.some((t) => t.id === CHAVE_SW)
+            ? prev
+            : [
+                ...prev,
+                {
+                  id: CHAVE_SW,
+                  type: 'info',
+                  title: 'Nova versão disponível',
+                  description: 'Atualize para receber as últimas correções.',
+                  persistente: true,
+                  action: { label: 'Atualizar agora', onClick: atualizar },
+                },
+              ],
+        );
+      },
+    });
+  }, []);
 
   /** Traduz a falha da API num toast legível e devolve `false` para o chamador. */
   const tratarErro = useCallback(
@@ -661,6 +717,13 @@ export default function App() {
 
           <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 w-full min-h-0">
             <div className="max-w-[1920px] mx-auto w-full">
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-24">
+                    <Loader2 className="w-7 h-7 text-[#004276] animate-spin" />
+                  </div>
+                }
+              >
               <Routes>
                 <Route index element={<Navigate to="/sistema/dashboard" replace />} />
 
@@ -882,17 +945,26 @@ export default function App() {
 
                 <Route path="*" element={<Navigate to="/sistema/dashboard" replace />} />
               </Routes>
+              </Suspense>
             </div>
           </main>
         </div>
       </div>
 
       {pdfModal.isOpen && (
-        <PDFModal
-          type={pdfModal.type}
-          data={pdfModal.data}
-          onClose={() => setPdfModal({ isOpen: false, type: 'proposta', data: null })}
-        />
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-white animate-spin" />
+            </div>
+          }
+        >
+          <PDFModal
+            type={pdfModal.type}
+            data={pdfModal.data}
+            onClose={() => setPdfModal({ isOpen: false, type: 'proposta', data: null })}
+          />
+        </Suspense>
       )}
 
       <ToastContainer toasts={toasts} onClose={removeToast} />

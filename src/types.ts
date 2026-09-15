@@ -97,18 +97,33 @@ export interface Fornecedor {
   produtosCount?: number;
 }
 
-export type TipoProduto = 
+/**
+ * O código do tipo, como gravado no banco — é o que `SolarCosta_TiposProduto`
+ * usa como chave e o que a API aceita ao salvar (ver catalogo.routes.ts).
+ */
+export type TipoProdutoSlug =
   | 'modulo'
   | 'inversor'
   | 'estrutura'
   | 'cabo'
   | 'protecao'
   | 'acessorio'
-  | 'Módulo fotovoltaico' 
-  | 'Inversor' 
-  | 'Estrutura' 
-  | 'Proteção' 
-  | 'Cabeamento' 
+  | 'outro';
+
+/**
+ * `Produto.tipo` carrega o RÓTULO ('Estrutura'), não o slug: é o que a tela
+ * exibe, e `paraProduto`/`deProduto` (services/mappers.ts) fazem a tradução nas
+ * duas pontas. Um formulário que alimenta um <select> de slugs precisa
+ * converter antes — use `slugDoTipoProduto`.
+ */
+export type TipoProduto =
+  | TipoProdutoSlug
+  | 'Módulo fotovoltaico'
+  | 'Inversor'
+  | 'Estrutura'
+  | 'Proteção'
+  | 'Cabeamento'
+  | 'Acessório'
   | 'Outro';
 
 export interface Produto {

@@ -17,6 +17,254 @@
   --color-fundo: #f4f6fa;         /* fundo da aplicação                       */
 }
 
+/* ============================== MOBILE ============================== */
+/*
+ * Zoom involuntário no iOS.
+ *
+ * O Safari do iPhone dá zoom na página sempre que o campo focado tem fonte
+ * MENOR que 16px. O CRM inteiro usa `text-xs` (12px) e `text-sm` (14px) nos
+ * inputs, então hoje o vendedor toca no campo de CPF e a tela salta — e não
+ * volta sozinha ao desfocar. É o defeito mais visível do sistema num celular.
+ *
+ * Por que a regra fica FORA de @layer: as utilitárias do Tailwind v4 vivem em
+ * `@layer utilities`, e a cascata dá precedência a estilo sem camada sobre
+ * estilo em camada. Escrita aqui, ela vence o `text-xs` do componente sem
+ * precisar de !important e sem obrigar a editar 40 arquivos.
+ *
+ * O preço é o campo ficar maior do que o desenho previa no celular. É o preço
+ * certo: 16px é o mínimo que o iOS aceita sem dar zoom, e no desktop (>= 768px)
+ * nada muda.
+ */
+@media screen and (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/*
+ * Área segura do iPhone.
+ *
+ * Com `viewport-fit=cover` no index.html, o app instalado passa a desenhar sob
+ * a barra de gestos. Quem estiver preso ao rodapé precisa reservar esse espaço,
+ * senão o botão "Salvar" fica embaixo da barra e não recebe o toque.
+ *
+ * `env()` devolve 0 em aparelho sem entalhe e no desktop, então a classe é
+ * inofensiva onde não é necessária.
+ */
+.area-segura-inferior {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/*
+ * Rodapé de ações que acompanha a rolagem do formulário.
+ *
+ * Só no celular: no desktop o modal cabe na tela e grudar os botões mudaria um
+ * visual que hoje está correto. No celular, sem isto, "Salvar" fica no fim de
+ * um formulário de 14 campos — o usuário rola até o fim toda vez que quer
+ * confirmar, e com o teclado aberto muitas vezes nem alcança.
+ *
+ * Quem usar precisa dar um fundo opaco (ex.: `bg-white`), senão o conteúdo
+ * rolando por baixo aparece através da barra.
+ */
+@media screen and (max-width: 767px) {
+  .barra-acoes {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------------------- FOLHA DO PDF NO CELULAR ---------------------- */
+/*
+ * A folha da proposta tem 896px de projeto. Abaixo de 768px ela é reduzida
+ * para caber na largura da tela, para que mostrar a proposta ao cliente não
+ * dependa de arrastar a tela de lado.
+ *
+ * `--escala-folha` é medida pelo PDFModal (ResizeObserver) — o CSS sozinho não
+ * consegue produzir o número adimensional que o `zoom` exige a partir de `vw`.
+ * O valor padrão 1 deixa tudo como está caso o script não rode.
+ *
+ * Quem quiser ler o texto miúdo continua podendo dar pinça: o viewport do
+ * index.html não bloqueia zoom.
+ */
+@media screen and (max-width: 767px) {
+  .documento-folhas {
+    zoom: var(--escala-folha, 1);
+  }
+}
+
+/*
+ * Na impressão o encaixe de tela não vale: quem manda é o `zoom: 0.784` da
+ * `.folha-pdf` (bloco "IMPRESSÃO DO DOCUMENTO" mais abaixo), calculado para o
+ * A4. Sem zerar aqui, os dois zooms se multiplicariam e sairia uma folha
+ * minúscula no papel.
+ */
+@media print {
+  body.documento-aberto .documento-folhas {
+    zoom: 1 !important;
+  }
+}
+
+/* ------------------------ TABELA VIRA CARTÃO ------------------------- */
+/*
+ * As listagens do CRM são <table> nativa (não há biblioteca de tabela) com 5 a
+ * 8 colunas. No celular elas resolvem hoje com `overflow-x-auto`: o usuário
+ * arrasta a tabela de lado para ler uma linha, o que é lento e faz perder a
+ * referência da coluna.
+ *
+ * Abaixo de 768px cada LINHA vira um cartão e cada CÉLULA vira "rótulo: valor".
+ * O rótulo sai do atributo `data-label` do próprio <td>, então o nome da coluna
+ * continua ao lado do dado em vez de sumir com o <thead>.
+ *
+ * Aplicar: `tabela-mobile` na <table> e `data-label="Cliente"` em cada <td>.
+ * Colunas dispensáveis no celular podem levar `data-oculta-mobile`.
+ *
+ * Fora de @layer pelo mesmo motivo do bloco de fonte acima: precisa vencer as
+ * utilitárias de padding/alinhamento do Tailwind já presentes nas células.
+ */
+@media screen and (max-width: 767px) {
+  .tabela-mobile,
+  .tabela-mobile tbody,
+  .tabela-mobile tr,
+  .tabela-mobile td {
+    display: block;
+    width: 100%;
+  }
+
+  .tabela-mobile thead {
+    display: none;
+  }
+
+  .tabela-mobile tr {
+    border: 1px solid #e2e8f0; /* slate-200 */
+    border-radius: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    background: #fff;
+  }
+
+  .tabela-mobile td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    text-align: right;
+    border-bottom: 1px solid #f1f5f9; /* slate-100 */
+  }
+
+  .tabela-mobile tr td:last-child {
+    border-bottom: 0;
+  }
+
+  .tabela-mobile td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #94a3b8; /* slate-400 */
+  }
+
+  /* Célula sem rótulo (ações, estado vazio) não ganha prefixo. */
+  .tabela-mobile td:not([data-label])::before,
+  .tabela-mobile td[data-label='']::before {
+    content: none;
+  }
+
+  /* Linha de "nenhum registro": ocupa o cartão inteiro, centralizada. */
+  .tabela-mobile td[colspan] {
+    display: block;
+    text-align: center;
+  }
+  .tabela-mobile td[colspan]::before {
+    content: none;
+  }
+
+  /* Coluna que não vale o espaço num celular. */
+  .tabela-mobile td[data-oculta-mobile] {
+    display: none;
+  }
+}
+
+/* -------------------------- MODAL COMO SHEET -------------------------- */
+/*
+ * No desktop os modais do CRM são um cartão centrado com o corpo limitado a
+ * 80–90vh. Num celular esse desenho desmonta: com o teclado virtual aberto, os
+ * 80vh viram uma faixa de ~150px e o usuário preenche o formulário por uma
+ * fresta — quando consegue alcançar o botão de salvar.
+ *
+ * Aqui, abaixo de 768px, o mesmo modal vira uma folha de tela cheia.
+ *
+ * Por que CSS e não um componente React: os dez modais do sistema não têm
+ * estrutura uniforme (uns rolam no cartão, outros no <form>, os cabeçalhos
+ * variam entre p-4 e p-5). Um componente exigiria reescrever o JSX de todos,
+ * e no momento não há banco local para conferir o resultado tela por tela.
+ * Assim cada modal precisa apenas GANHAR uma classe, sem nada ser movido —
+ * e no desktop as regras não existem, então o visual atual fica intacto.
+ *
+ * Como aplicar, nesta ordem:
+ *   .modal-overlay   -> na div de fundo  (fixed inset-0 …)
+ *   .modal-painel    -> no cartão branco (bg-white rounded-2xl …)
+ *   .modal-cabecalho -> na faixa azul do título
+ *   .modal-corpo     -> no elemento que rola (o que tem max-h-[NNvh])
+ */
+@media screen and (max-width: 767px) {
+  .modal-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .modal-painel {
+    width: 100%;
+    max-width: none;
+    height: 100dvh; /* dvh e não vh: a barra de endereço do Safari mente sobre vh */
+    max-height: none;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .modal-cabecalho {
+    flex-shrink: 0;
+  }
+
+  /*
+   * Variante para o modal em que o CARTÃO rola (não há corpo separado; o
+   * cartão leva `max-h-[90vh] overflow-y-auto` e os campos são filhos diretos).
+   * Aqui não dá para usar flex + .modal-corpo porque não existe elemento a
+   * receber a classe — então a folha inteira vira o container de rolagem.
+   * Usar no lugar de .modal-painel, nunca junto.
+   */
+  .modal-painel-rolante {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+    overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /*
+   * Anula o `max-h-[80vh]` do componente e deixa o corpo ocupar o que sobra
+   * entre cabeçalho e rodapé — é isso que faz a folha acompanhar o teclado em
+   * vez de brigar com ele.
+   */
+  .modal-corpo {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+}
+
 /* ============================ IMPRESSÃO ============================ */
 /* Elementos marcados com .no-print somem em qualquer impressão. */
 @media print {

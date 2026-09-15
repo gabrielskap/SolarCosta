@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, Printer, Download, CheckCircle2, ChevronLeft, ChevronRight, Award, DollarSign,
@@ -18,6 +18,23 @@ interface PDFModalProps {
   data: Proposta | Contrato | Boleto | null;
   onClose: () => void;
 }
+
+/*
+ * Páginas que a proposta REALMENTE renderiza.
+ *
+ * Existem PageWrapper para 1-5 e 8; as de número 6 e 7 nunca foram
+ * escritas. O seletor oferecia [1..8] e o rodapé imprimia "PÁGINA n DE 8",
+ * então clicar em P6/P7 abria uma folha em branco e o cliente recebia um
+ * documento que pulava da página 5 para a 8.
+ *
+ * Os números aqui são os `pageNum` internos (usados para decidir o que
+ * renderizar) e continuam como estavam; o que o usuário e o cliente veem
+ * passa por `ordinalPagina`, que numera 1..6 sem buracos.
+ */
+const PAGINAS_PROPOSTA = [1, 2, 3, 4, 5, 8] as const;
+const TOTAL_PAGINAS = PAGINAS_PROPOSTA.length;
+const ordinalPagina = (pageNum: number): number =>
+  PAGINAS_PROPOSTA.indexOf(pageNum as (typeof PAGINAS_PROPOSTA)[number]) + 1;
 
 export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
   const [activePage, setActivePage] = useState<number>(0); // 0 = all pages, 1..8 = page 1..8
@@ -84,6 +101,44 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
     };
     // Depende do enquadramento resolvido, não do objeto (recriado a cada render).
   }, [enqTelhado?.centro.latitude, enqTelhado?.centro.longitude, enqTelhado?.zoom]);
+
+  /*
+   * Encaixe da folha na largura do celular.
+   *
+   * A folha é desenhada com 896px fixos (max-w-4xl). Num aparelho de 375px
+   * isso virava rolagem horizontal, e mostrar a proposta para o cliente
+   * exigia arrastar a tela de lado. Aqui a área disponível é medida e a
+   * razão vai para `--escala-folha`; o zoom é aplicado no CSS, só abaixo de
+   * 768px e nunca na impressão (ver index.css).
+   *
+   * `zoom`, e não `transform: scale`: só o zoom entra no cálculo de layout,
+   * então a folha reduzida ocupa o espaço reduzido em vez de deixar uma
+   * área vazia embaixo. É a mesma escolha já feita nas regras de impressão.
+   *
+   * O pinça-para-ampliar continua valendo — o viewport não bloqueia zoom.
+   */
+  const areaFolhasRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = areaFolhasRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+
+    const LARGURA_FOLHA = 896; // max-w-4xl
+    const medir = () => {
+      const estilo = getComputedStyle(el);
+      const util =
+        el.clientWidth -
+        parseFloat(estilo.paddingLeft || '0') -
+        parseFloat(estilo.paddingRight || '0');
+      const escala = Math.min(1, util / LARGURA_FOLHA);
+      el.style.setProperty('--escala-folha', String(Number(escala.toFixed(4))));
+    };
+
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, []);
 
   // Enquanto o documento está aberto o <body> carrega esta marca: é por ela
   // que a folha de estilos tira o restante do app do papel e imprime só as
@@ -226,15 +281,15 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
                     onClick={() => setActivePage(0)}
                     className={`px-2.5 py-1 rounded transition ${activePage === 0 ? 'bg-[#FFD100] text-[#004276] font-bold' : 'text-slate-300 hover:text-white'}`}
                   >
-                    Todas (8 Págs)
+                    Todas ({TOTAL_PAGINAS} Págs)
                   </button>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((p) => (
+                  {PAGINAS_PROPOSTA.map((p) => (
                     <button
                       key={p}
                       onClick={() => setActivePage(p)}
                       className={`w-7 h-7 rounded flex items-center justify-center transition ${activePage === p ? 'bg-[#FFD100] text-[#004276] font-extrabold' : 'text-slate-300 hover:text-white'}`}
                     >
-                      P{p}
+                      P{ordinalPagina(p)}
                     </button>
                   ))}
                 </div>
@@ -262,7 +317,10 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
         <div className="documento-area flex-1 flex overflow-hidden">
           
           {/* MAIN DOCUMENT VIEWPORT */}
-          <div className="documento-folhas flex-1 p-3 sm:p-6 overflow-y-auto bg-slate-200/80 print:bg-white print:p-0">
+          <div
+            ref={areaFolhasRef}
+            className="documento-folhas flex-1 p-3 sm:p-6 overflow-y-auto bg-slate-200/80 print:bg-white print:p-0"
+          >
             
             {/* PROPOSTA DE ORÇAMENTO COMPLETA (8 PÁGINAS) */}
             {type === 'proposta' && (() => {
@@ -341,7 +399,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
                       {renderLogo()}
                       <div className="text-right">
                         <span className="text-[10px] font-bold uppercase tracking-widest bg-blue-100 text-[#004276] px-2.5 py-1 rounded">
-                          PÁGINA {pageNum} DE 8
+                          PÁGINA {ordinalPagina(pageNum)} DE {TOTAL_PAGINAS}
                         </span>
                         {title && <p className="text-xs font-bold text-slate-500 mt-1">{title}</p>}
                       </div>
@@ -519,7 +577,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
                               <XAxis dataKey="mes" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={45} />
                               <YAxis tick={{ fontSize: 10 }} />
                               <Tooltip formatter={(value: any) => [`${value} kWh`, '']} />
-                              <Legend wrapperStyle={{ fontSize: '11px', pt: '10px' }} />
+                              <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
                               <Bar dataKey="geracao" name="Geração (kWh)" fill="#004276" radius={[4, 4, 0, 0]} />
                               <Bar dataKey="consumo" name="Consumo (kWh)" fill="#f97316" radius={[4, 4, 0, 0]} />
                             </BarChart>
@@ -1052,7 +1110,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
                       placeholder="Cargo / Especialidade"
                       className="w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-300"
                     />
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <input
                         type="text"
                         value={consultorTelefone}
