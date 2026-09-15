@@ -72,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-40 w-64 h-screen bg-[#004276] text-white flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${
+        className={`fixed top-0 left-0 bottom-0 z-40 w-64 h-dvh bg-[#004276] text-white flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
@@ -127,7 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Footer User Profile */}
-        <div className="p-3 bg-blue-950/50 border-t border-blue-900/60 flex items-center justify-between shrink-0">
+        <div className="area-segura-inferior p-3 bg-blue-950/50 border-t border-blue-900/60 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-full bg-[#FFD100] text-[#004276] font-extrabold text-xs flex items-center justify-center shrink-0 shadow">
               {getInitials(currentUser.nome)}
