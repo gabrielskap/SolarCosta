@@ -149,7 +149,24 @@ export function criarApp(): express.Express {
   // Estático do front (build do Vite) — não existe em dev, quando o front
   // sobe separado pelo `vite` na porta 3000.
   if (existsSync(PUBLIC_DIR)) {
-    app.use(express.static(PUBLIC_DIR, { index: false, maxAge: '1y', immutable: true }));
+    app.use(
+      express.static(PUBLIC_DIR, {
+        index: false,
+        maxAge: '1y',
+        immutable: true,
+        setHeaders(res, filePath) {
+          // sw.js e o manifest NÃO têm hash no nome — cachear como imutável
+          // trava o navegador na versão antiga do service worker para sempre,
+          // porque ele nunca revalida o arquivo para descobrir que mudou. É
+          // isso que fazia o menu "Configuração do Site" sumir só no celular:
+          // o SW instalado continuava servindo o bundle de antes do CMS.
+          const nome = path.basename(filePath);
+          if (nome === 'sw.js' || nome === 'manifest.webmanifest') {
+            res.setHeader('Cache-Control', 'no-cache');
+          }
+        },
+      }),
+    );
   }
 
   app.use((req, res) => {
