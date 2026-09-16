@@ -25,6 +25,13 @@ const PERMISSOES: { chave: keyof UserPermissions; rotulo: string; descricao: str
     rotulo: 'Configuração do Site',
     descricao: 'Editar textos, imagens e menus do site.',
   },
+  // Conectar e desconectar o número NÃO está aqui: isso exige "Usuários",
+  // porque trocar o WhatsApp da empresa derruba o canal de todo mundo.
+  {
+    chave: 'usarWhatsapp',
+    rotulo: 'WhatsApp',
+    descricao: 'Atender clientes e enviar propostas pelo WhatsApp.',
+  },
 ];
 
 /**
@@ -48,6 +55,7 @@ function padraoPorCargo(cargo: UserRole): UserPermissions {
     gerenciarObras: campo,
     verAuditoria: admin,
     gerenciarSite: admin,
+    usarWhatsapp: vendas,
     usuarioAtivo: true,
   };
 }

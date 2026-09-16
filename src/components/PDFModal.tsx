@@ -17,6 +17,26 @@ interface PDFModalProps {
   type: 'proposta' | 'contrato' | 'boleto';
   data: Proposta | Contrato | Boleto | null;
   onClose: () => void;
+  /**
+   * `modal` (padrão) é o uso de dentro do CRM: sobreposição no <body>, barra
+   * de ações e painel de customização.
+   *
+   * `pagina` é o mesmo documento aberto pelo CLIENTE, em /p/:token. Sem
+   * portal, sem customização e com uma barra enxuta — quem está do outro lado
+   * quer ler e salvar, não reconfigurar o layout.
+   *
+   * As FOLHAS são idênticas nas duas variantes, e é esse o ponto: o cliente vê
+   * exatamente o documento que o vendedor aprovou. Duplicar o JSX em um
+   * componente "versão pública" garantiria que os dois divergissem na primeira
+   * correção feita só de um lado.
+   */
+  variante?: 'modal' | 'pagina';
+  /**
+   * Token do link público. Quando presente, a imagem de satélite vem da rota
+   * aberta em vez de /api/solar/imagem, que exige sessão — sem isso a folha do
+   * telhado abriria em branco no navegador do cliente.
+   */
+  tokenPublico?: string;
 }
 
 /*
@@ -36,7 +56,14 @@ const TOTAL_PAGINAS = PAGINAS_PROPOSTA.length;
 const ordinalPagina = (pageNum: number): number =>
   PAGINAS_PROPOSTA.indexOf(pageNum as (typeof PAGINAS_PROPOSTA)[number]) + 1;
 
-export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
+export const PDFModal: React.FC<PDFModalProps> = ({
+  type,
+  data,
+  onClose,
+  variante = 'modal',
+  tokenPublico,
+}) => {
+  const ehPagina = variante === 'pagina';
   const [activePage, setActivePage] = useState<number>(0); // 0 = all pages, 1..8 = page 1..8
   const [isCustomizeOpen, setIsCustomizeOpen] = useState<boolean>(false);
 
@@ -76,6 +103,18 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
 
   useEffect(() => {
     if (!enqTelhado) return;
+
+    // Modo público: a rota aberta serve a imagem direto, então basta um src —
+    // nada de blob nem de object URL para revogar. O blob só existe no CRM
+    // porque lá a rota exige o header Authorization, que um <img> não manda.
+    if (tokenPublico) {
+      setImagemTelhadoUrl(
+        `/api/publico/documento/${encodeURIComponent(tokenPublico)}/telhado.png` +
+          `?largura=${enqTelhado.larguraPx}&altura=${enqTelhado.alturaPx}`,
+      );
+      return;
+    }
+
     let vivo = true;
     let urlCriada: string | null = null;
 
@@ -100,7 +139,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
       if (urlCriada) URL.revokeObjectURL(urlCriada);
     };
     // Depende do enquadramento resolvido, não do objeto (recriado a cada render).
-  }, [enqTelhado?.centro.latitude, enqTelhado?.centro.longitude, enqTelhado?.zoom]);
+  }, [enqTelhado?.centro.latitude, enqTelhado?.centro.longitude, enqTelhado?.zoom, tokenPublico]);
 
   /*
    * Encaixe da folha na largura do celular.
@@ -140,13 +179,20 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
     return () => observador.disconnect();
   }, []);
 
-  // Enquanto o documento está aberto o <body> carrega esta marca: é por ela
-  // que a folha de estilos tira o restante do app do papel e imprime só as
-  // páginas. Ver o bloco "IMPRESSÃO DO DOCUMENTO" em src/index.css.
+  // Enquanto o documento está aberto o <body> carrega uma marca: é por ela que
+  // a folha de estilos prepara a impressão. Ver "IMPRESSÃO DO DOCUMENTO" em
+  // src/index.css.
+  //
+  // São DUAS marcas, e a diferença importa. `documento-aberto` esconde do
+  // papel todo filho do <body> que não seja o documento — o que só é correto
+  // porque o modal vive num portal, irmão do #root. Em /p/:token o documento
+  // está DENTRO do #root, e essa mesma regra esconderia justamente o que se
+  // quer imprimir: o cliente clicaria em salvar e receberia uma folha branca.
   useEffect(() => {
-    document.body.classList.add('documento-aberto');
-    return () => document.body.classList.remove('documento-aberto');
-  }, []);
+    const marca = ehPagina ? 'documento-pagina' : 'documento-aberto';
+    document.body.classList.add(marca);
+    return () => document.body.classList.remove(marca);
+  }, [ehPagina]);
 
   if (!data) return null;
 
@@ -237,13 +283,28 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
     );
   };
 
-  // O modal é montado direto no <body>, e não no meio da árvore do app: a
-  // impressão precisa esconder tudo o que não é o documento, e isso só é
+  // No CRM o modal é montado direto no <body>, e não no meio da árvore do app:
+  // a impressão precisa esconder tudo o que não é o documento, e isso só é
   // simples de escrever quando o documento é irmão do #root, não um
   // descendente dele.
-  return createPortal(
-    <div className="documento-overlay fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="documento-moldura bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[96vh] flex flex-col overflow-hidden">
+  //
+  // Em /p/:token o documento é a página inteira — não há app em volta para
+  // esconder, e um portal só o tiraria do fluxo sem ganho nenhum.
+  const conteudo = (
+    <div
+      className={
+        ehPagina
+          ? 'documento-overlay min-h-screen bg-slate-200/80 flex items-start justify-center p-0 sm:p-4'
+          : 'documento-overlay fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto'
+      }
+    >
+      <div
+        className={
+          ehPagina
+            ? 'documento-moldura bg-white w-full max-w-6xl min-h-screen sm:min-h-0 sm:rounded-2xl sm:shadow-2xl flex flex-col overflow-hidden'
+            : 'documento-moldura bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[96vh] flex flex-col overflow-hidden'
+        }
+      >
         
         {/* TOP BAR CONTROLS (Hidden during print) */}
         <div className="no-print bg-[#004276] text-white px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 border-b border-blue-900">
@@ -264,6 +325,11 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
             {type === 'proposta' && (
               <>
+                {/* O painel de customização é ferramenta de quem EMITE. Para o
+                    cliente ele não faz sentido: o documento que ele recebeu já
+                    é o aprovado, e deixá-lo mexer em logo e observações só
+                    criaria dúvida sobre qual versão vale. */}
+                {!ehPagina && (
                 <button
                   onClick={() => setIsCustomizeOpen(!isCustomizeOpen)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
@@ -275,6 +341,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
                   <SlidersHorizontal className="w-4 h-4 text-amber-400" />
                   <span>Customizar Layout PDF</span>
                 </button>
+                )}
 
                 <div className="flex items-center bg-blue-950/80 rounded-lg p-1 border border-blue-800/80 text-xs font-semibold">
                   <button
@@ -301,15 +368,18 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
               className="flex items-center gap-1.5 bg-[#FFD100] hover:bg-amber-300 text-[#004276] px-3.5 py-1.5 rounded-lg text-xs font-black shadow transition"
             >
               <Printer className="w-4 h-4" />
-              <span>Imprimir / PDF</span>
+              <span>{ehPagina ? 'Salvar em PDF' : 'Imprimir / PDF'}</span>
             </button>
 
-            <button
-              onClick={onClose}
-              className="text-slate-300 hover:text-white p-1.5 rounded-lg transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {/* Em /p/:token não há para onde fechar: o documento É a página. */}
+            {!ehPagina && (
+              <button
+                onClick={onClose}
+                className="text-slate-300 hover:text-white p-1.5 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -953,7 +1023,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
           </div>
 
           {/* CUSTOMIZATION DRAWER / SIDEBAR (no-print) */}
-          {isCustomizeOpen && type === 'proposta' && (
+          {isCustomizeOpen && type === 'proposta' && !ehPagina && (
             <div className="no-print w-full md:w-96 bg-slate-900 text-slate-100 border-l border-slate-800 p-5 overflow-y-auto flex flex-col justify-between shrink-0 shadow-2xl z-20">
               <div className="space-y-6">
                 
@@ -1160,7 +1230,8 @@ export const PDFModal: React.FC<PDFModalProps> = ({ type, data, onClose }) => {
 
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+
+  return ehPagina ? conteudo : createPortal(conteudo, document.body);
 };

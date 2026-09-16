@@ -11,6 +11,16 @@ const schema = z.object({
 
   // postgres://usuario:senha@host:porta/banco
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória'),
+
+  // Conexão usada SÓ pelo `npm run migrate`, com o papel solarcosta_migrator
+  // (ver database/03_papel_migracao.sql). O processo que atende requisição
+  // nunca a utiliza — é o que mantém a conexão da API incapaz de CREATE,
+  // ALTER ou DROP, mesmo diante de injeção de SQL ou bug de rota.
+  //
+  // Opcional para não quebrar instalação antiga: sem ela o migrate cai no
+  // DATABASE_URL e, se aquele papel não tiver DDL, falha dizendo exatamente
+  // isso em vez de despejar "permission denied for schema public".
+  MIGRATION_DATABASE_URL: z.string().min(1).optional(),
   DATABASE_SSL: z
     .enum(['true', 'false'])
     .default('false')
@@ -48,6 +58,42 @@ const schema = z.object({
   // continua igual, só não abre em tela cheia.
   GOOGLE_MAPS_BROWSER_KEY: z.string().min(1).optional(),
 
+  // URL pública da aplicação, com protocolo e sem barra final
+  // (https://crm.solarcosta.com.br). Duas coisas dependem dela e NENHUMA
+  // consegue adivinhá-la a partir de um request:
+  //   · o endereço do webhook que registramos na uazapi — ela precisa saber
+  //     para onde mandar a mensagem recebida, e quem conta somos nós;
+  //   · o link da proposta que vai para o cliente. Montar esse link pelo
+  //     Host da requisição pareceria funcionar em desenvolvimento e mandaria
+  //     "http://localhost:4000/p/..." para o WhatsApp de um cliente real no
+  //     dia em que alguém rodasse o envio pela máquina errada.
+  APP_URL: z.string().url('APP_URL precisa ser uma URL completa.').optional(),
+
+  // -------------------------------------------------------------- WhatsApp --
+  // Integração com a uazapi (uazapiGO). Opcional pelo mesmo motivo das chaves
+  // do Google: sem ela a API sobe igual e só o WhatsApp fica desligado.
+  //
+  // Host do SEU container uazapi, sem barra final. O free.uazapi.com serve
+  // para testar o fluxo do QR e nada mais — ele apaga a instância em 1 hora.
+  UAZAPI_URL: z.string().url('UAZAPI_URL precisa ser uma URL completa.').optional(),
+
+  // Token de ADMINISTRADOR do container (header `admintoken`). Só cria e lista
+  // instâncias; todo o resto usa o token da instância, que nasce do
+  // /instance/create e fica cifrado no banco.
+  //
+  // Este token é raiz: GET /instance/all devolve o token de TODAS as
+  // instâncias do container em texto puro. Nunca exponha por rota nenhuma.
+  UAZAPI_ADMIN_TOKEN: z.string().min(1).optional(),
+
+  // Chave que cifra o token da instância em SolarCosta_WhatsAppInstancia
+  // (AES-256-GCM, ver services/segredos.ts). Gere com:
+  //   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+  //
+  // Separada do JWT_SECRET de propósito: trocar o segredo do JWT é uma
+  // operação de rotina que só derruba as sessões: se ele também cifrasse este
+  // token, a mesma troca desconectaria o WhatsApp da empresa sem aviso.
+  WHATSAPP_CRIPTO_KEY: z.string().min(32, 'WHATSAPP_CRIPTO_KEY precisa de pelo menos 32 caracteres').optional(),
+
   // Rotina diária (boletos vencidos, obras atrasadas). Desligue se estiver
   // rodando a mesma função pelo pg_cron.
   SCHEDULER_ATIVO: z
@@ -56,7 +102,29 @@ const schema = z.object({
     .transform((v) => v === 'true'),
   SCHEDULER_HORA: z.coerce.number().int().min(0).max(23).default(3),
   SCHEDULER_MINUTO: z.coerce.number().int().min(0).max(59).default(10),
-});
+})
+  // O WhatsApp é tudo ou nada: ligar pela metade dá erro no meio de um envio,
+  // que é o pior lugar possível para descobrir uma variável faltando. Quem
+  // não usa a integração não ganha variável obrigatória nenhuma.
+  .superRefine((v, ctx) => {
+    if (!v.UAZAPI_ADMIN_TOKEN) return;
+
+    const faltando: Array<[keyof typeof v, string]> = [
+      ['UAZAPI_URL', 'o endereço do seu container uazapi'],
+      ['WHATSAPP_CRIPTO_KEY', 'a chave que cifra o token da instância no banco'],
+      ['APP_URL', 'a URL pública, para o webhook e para o link da proposta'],
+    ];
+
+    for (const [chave, porque] of faltando) {
+      if (!v[chave]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [chave],
+          message: `obrigatória quando UAZAPI_ADMIN_TOKEN está definida — ${porque}.`,
+        });
+      }
+    }
+  });
 
 const parsed = schema.safeParse(process.env);
 
@@ -77,5 +145,11 @@ export const config = {
   googleMapsAtivo: Boolean(parsed.data.GOOGLE_MAPS_SERVER_KEY),
   /** Falso quando GOOGLE_MAPS_BROWSER_KEY não foi configurada. */
   googleMapsBrowserAtivo: Boolean(parsed.data.GOOGLE_MAPS_BROWSER_KEY),
+  /**
+   * Falso quando a integração com a uazapi não foi configurada. O superRefine
+   * acima garante que, sendo verdadeiro, UAZAPI_URL, WHATSAPP_CRIPTO_KEY e
+   * APP_URL também estão preenchidas — o resto do código conta com isso.
+   */
+  whatsappAtivo: Boolean(parsed.data.UAZAPI_ADMIN_TOKEN),
   isProd: parsed.data.NODE_ENV === 'production',
 };

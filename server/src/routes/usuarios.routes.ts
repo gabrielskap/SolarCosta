@@ -26,6 +26,7 @@ const permissoesSchema = z.object({
   gerenciar_obras: z.boolean().optional(),
   ver_auditoria: z.boolean().optional(),
   gerenciar_site: z.boolean().optional(),
+  usar_whatsapp: z.boolean().optional(),
 });
 
 const usuarioSchema = z.object({
@@ -49,7 +50,8 @@ const SELECT_USUARIO = `
          COALESCE(p.gerenciar_usuarios, false)         AS gerenciar_usuarios,
          COALESCE(p.gerenciar_obras, false)            AS gerenciar_obras,
          COALESCE(p.ver_auditoria, false)              AS ver_auditoria,
-         COALESCE(p.gerenciar_site, false)             AS gerenciar_site
+         COALESCE(p.gerenciar_site, false)             AS gerenciar_site,
+         COALESCE(p.usar_whatsapp, false)              AS usar_whatsapp
     FROM "SolarCosta_Usuarios" u
     LEFT JOIN "SolarCosta_UsuarioPermissoes" p ON p.usuario_id = u.id
    WHERE u.excluido_em IS NULL`;
@@ -291,6 +293,7 @@ function padraoPorCargo(cargo: (typeof CARGOS)[number]): Permissoes {
     gerenciar_obras: campo,
     ver_auditoria: admin,
     gerenciar_site: admin,
+    usar_whatsapp: vendas,
   };
 }
 
@@ -302,8 +305,9 @@ async function gravarPermissoes(
   await cliente.query(
     `INSERT INTO "SolarCosta_UsuarioPermissoes" (
         usuario_id, criar_editar_leads, emitir_propostas, anexar_documentos, emitir_contratos,
-        ver_lancamentos_financeiro, gerenciar_usuarios, gerenciar_obras, ver_auditoria, gerenciar_site
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ver_lancamentos_financeiro, gerenciar_usuarios, gerenciar_obras, ver_auditoria, gerenciar_site,
+        usar_whatsapp
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (usuario_id) DO UPDATE SET
         criar_editar_leads         = COALESCE(EXCLUDED.criar_editar_leads, "SolarCosta_UsuarioPermissoes".criar_editar_leads),
         emitir_propostas           = COALESCE(EXCLUDED.emitir_propostas, "SolarCosta_UsuarioPermissoes".emitir_propostas),
@@ -314,6 +318,7 @@ async function gravarPermissoes(
         gerenciar_obras            = COALESCE(EXCLUDED.gerenciar_obras, "SolarCosta_UsuarioPermissoes".gerenciar_obras),
         ver_auditoria              = COALESCE(EXCLUDED.ver_auditoria, "SolarCosta_UsuarioPermissoes".ver_auditoria),
         gerenciar_site             = COALESCE(EXCLUDED.gerenciar_site, "SolarCosta_UsuarioPermissoes".gerenciar_site),
+        usar_whatsapp              = COALESCE(EXCLUDED.usar_whatsapp, "SolarCosta_UsuarioPermissoes".usar_whatsapp),
         atualizado_em              = now()`,
     [
       usuarioId,
@@ -321,6 +326,7 @@ async function gravarPermissoes(
       p.anexar_documentos ?? false, p.emitir_contratos ?? false,
       p.ver_lancamentos_financeiro ?? false, p.gerenciar_usuarios ?? false,
       p.gerenciar_obras ?? false, p.ver_auditoria ?? false, p.gerenciar_site ?? false,
+      p.usar_whatsapp ?? false,
     ],
   );
 }

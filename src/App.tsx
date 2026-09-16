@@ -39,6 +39,7 @@ const ObrasView = lazy(() => import('./components/ObrasView').then((m) => ({ def
 const ReportsView = lazy(() => import('./components/ReportsView').then((m) => ({ default: m.ReportsView })));
 const AuditTrailView = lazy(() => import('./components/AuditTrailView').then((m) => ({ default: m.AuditTrailView })));
 const SiteConfigView = lazy(() => import('./components/site/SiteConfigView').then((m) => ({ default: m.SiteConfigView })));
+const WhatsAppView = lazy(() => import('./components/whatsapp/WhatsAppView').then((m) => ({ default: m.WhatsAppView })));
 import { Menu, Loader2, WifiOff } from 'lucide-react';
 import logoFull from './assets/logo-full.png';
 
@@ -816,6 +817,8 @@ export default function App() {
                       propostas={propostas}
                       onNovaProposta={handleOpenNewProposal}
                       onOpenPDF={handleOpenPDF}
+                      currentUser={currentUser}
+                      showToast={showToast}
                     />
                   }
                 />
@@ -952,6 +955,20 @@ export default function App() {
                   element={
                     currentUser.cargo === 'Administrador' || currentUser.permissoes?.gerenciarSite ? (
                       <SiteConfigView currentUser={currentUser} showToast={showToast} />
+                    ) : (
+                      <Navigate to="/sistema/dashboard" replace />
+                    )
+                  }
+                />
+
+                {/* Mesmo raciocínio do /sistema/site acima: o servidor barra
+                    de qualquer jeito, isto só evita abrir uma tela que vai
+                    falhar em toda ação. */}
+                <Route
+                  path="whatsapp"
+                  element={
+                    currentUser.cargo === 'Administrador' || currentUser.permissoes?.usarWhatsapp ? (
+                      <WhatsAppView currentUser={currentUser} showToast={showToast} />
                     ) : (
                       <Navigate to="/sistema/dashboard" replace />
                     )

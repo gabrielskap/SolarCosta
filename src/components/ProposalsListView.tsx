@@ -1,12 +1,15 @@
-import React from 'react';
-import { FileText, Plus } from 'lucide-react';
-import { Proposta } from '../types';
+import React, { useState } from 'react';
+import { FileText, MessageCircle, Plus } from 'lucide-react';
+import { Proposta, User } from '../types';
 import { TabelaResponsiva, type ColunaTabela } from './comuns/TabelaResponsiva';
+import { EnviarPorWhatsApp } from './whatsapp/EnviarPorWhatsApp';
 
 interface ProposalsListViewProps {
   propostas: Proposta[];
   onNovaProposta: () => void;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
+  currentUser: User;
+  showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
 
 const STATUS_LABEL: Record<Proposta['status'], string> = {
@@ -25,8 +28,16 @@ export const ProposalsListView: React.FC<ProposalsListViewProps> = ({
   propostas,
   onNovaProposta,
   onOpenPDF,
+  currentUser,
+  showToast,
 }) => {
   const aguardandoAceite = propostas.filter((p) => p.status === 'enviada').length;
+
+  /** Proposta escolhida para envio; null com o modal fechado. */
+  const [enviando, setEnviando] = useState<Proposta | null>(null);
+
+  const podeEnviarWhatsApp =
+    currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.usarWhatsapp;
 
   /*
    * Quem é `principal` e quem é `secundaria` responde a uma pergunta só: o que
@@ -86,13 +97,24 @@ export const ProposalsListView: React.FC<ProposalsListViewProps> = ({
       titulo: 'Ações',
       alinhamento: 'direita',
       celula: (p) => (
-        <button
-          onClick={() => onOpenPDF('proposta', p)}
-          className="text-blue-600 hover:underline inline-flex items-center gap-1 font-bold"
-        >
-          <FileText className="w-3.5 h-3.5" />
-          Visualizar PDF
-        </button>
+        <div className="inline-flex items-center gap-3">
+          <button
+            onClick={() => onOpenPDF('proposta', p)}
+            className="text-blue-600 hover:underline inline-flex items-center gap-1 font-bold"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Visualizar PDF
+          </button>
+          {podeEnviarWhatsApp && (
+            <button
+              onClick={() => setEnviando(p)}
+              className="text-emerald-700 hover:underline inline-flex items-center gap-1 font-bold"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              Enviar
+            </button>
+          )}
+        </div>
       ),
     },
   ];
@@ -128,6 +150,17 @@ export const ProposalsListView: React.FC<ProposalsListViewProps> = ({
           vazio="Nenhuma proposta cadastrada ainda."
         />
       </div>
+
+      {enviando && (
+        <EnviarPorWhatsApp
+          referencia={{ tipo: 'proposta', id: enviando.id }}
+          clienteNome={enviando.clienteNome}
+          telefoneSugerido={enviando.telefone}
+          leadId={enviando.leadId || null}
+          onFechar={() => setEnviando(null)}
+          showToast={showToast}
+        />
+      )}
     </div>
   );
 };

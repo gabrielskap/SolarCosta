@@ -124,7 +124,8 @@
  * minúscula no papel.
  */
 @media print {
-  body.documento-aberto .documento-folhas {
+  body.documento-aberto .documento-folhas,
+  body.documento-pagina .documento-folhas {
     zoom: 1 !important;
   }
 }
@@ -329,8 +330,16 @@
  * PDFModal.tsx), o resto do app sai do papel, as caixas que recortam voltam ao
  * fluxo normal e cada `.folha-pdf` ocupa uma página A4.
  *
- * Tudo depende da marca `documento-aberto` no <body>: sem ela a primeira regra
- * esconderia o #root em QUALQUER impressão, inclusive a dos relatórios.
+ * Tudo depende de uma marca no <body>: sem ela a primeira regra esconderia o
+ * #root em QUALQUER impressão, inclusive a dos relatórios.
+ *
+ * São DUAS marcas, porque há dois enquadramentos:
+ *   · `documento-aberto` — o modal do CRM, que vive num portal irmão do #root.
+ *     Aí dá para esconder todo filho do <body> que não seja o documento.
+ *   · `documento-pagina` — /p/:token, onde o documento está DENTRO do #root e
+ *     já ocupa a página inteira. Não há o que esconder, e aplicar a regra de
+ *     cima deixaria o cliente com uma folha em branco ao salvar em PDF.
+ * Da segunda regra em diante vale para as duas.
  */
 @media print {
   body.documento-aberto > *:not(.documento-overlay) { display: none !important; }
@@ -338,7 +347,11 @@
   body.documento-aberto .documento-overlay,
   body.documento-aberto .documento-moldura,
   body.documento-aberto .documento-area,
-  body.documento-aberto .documento-folhas {
+  body.documento-aberto .documento-folhas,
+  body.documento-pagina .documento-overlay,
+  body.documento-pagina .documento-moldura,
+  body.documento-pagina .documento-area,
+  body.documento-pagina .documento-folhas {
     position: static !important;
     display: block !important;
     inset: auto !important;
@@ -371,7 +384,8 @@
    * pré-visualização. E o conteúdo cabe com folga: a altura útil (273mm ≈
    * 1.305px na escala da folha) é bem maior que os 1.050px do desenho.
    */
-  body.documento-aberto .folha-pdf {
+  body.documento-aberto .folha-pdf,
+  body.documento-pagina .folha-pdf {
     zoom: 0.784;
     box-sizing: border-box;
     width: 896px !important;
@@ -386,7 +400,8 @@
   }
 
   /* Sem isto o documento termina com uma página em branco. */
-  body.documento-aberto .folha-pdf:last-child {
+  body.documento-aberto .folha-pdf:last-child,
+  body.documento-pagina .folha-pdf:last-child {
     break-after: auto;
     page-break-after: auto;
   }
@@ -397,7 +412,9 @@
    * diferente do que a tela mostra.
    */
   body.documento-aberto .documento-folhas,
-  body.documento-aberto .documento-folhas * {
+  body.documento-aberto .documento-folhas *,
+  body.documento-pagina .documento-folhas,
+  body.documento-pagina .documento-folhas * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

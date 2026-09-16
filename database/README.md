@@ -127,18 +127,25 @@ atrasadas — o que hoje o front simula com a data fixa `REFERENCE_TODAY`.
 
 ## Usuários do banco
 
-Recomendado criar dois papéis separados:
+São **três** papéis, cada um para um momento diferente. Não crie à mão — os
+scripts prontos fazem tudo, inclusive os privilégios padrão, que é a parte
+fácil de esquecer:
 
-```sql
--- Aplicação: só DML nas tabelas do CRM
-CREATE ROLE solarcosta_app LOGIN PASSWORD '<senha forte>';
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO solarcosta_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO solarcosta_app;
+| Papel | Quem usa | Pode |
+|---|---|---|
+| `solarcosta_app` | o processo da API (`DATABASE_URL`) | só DML |
+| `solarcosta_migrator` | só o `npm run migrate` (`MIGRATION_DATABASE_URL`) | DDL; é dono dos objetos `SolarCosta_` |
+| `solarcosta_leitura` | DBeaver, relatórios, BI | só `SELECT` |
 
--- Consulta no DBeaver: somente leitura
-CREATE ROLE solarcosta_leitura LOGIN PASSWORD '<senha forte>';
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO solarcosta_leitura;
+```bash
+psql -f database/02_papeis.sql          # app + leitura
+psql -f database/03_papel_migracao.sql  # migrator (e transfere a propriedade)
 ```
+
+A separação entre `app` e `migrator` é o que torna verdadeiro o aviso da seção
+das migrations acima: como o papel da API não tem DDL, `ALTER TABLE` a partir de
+uma rota é impossível por construção, não por disciplina. É também o que faz o
+`npm run migrate` do Dockerfile funcionar — ver [EASYPANEL.md](../EASYPANEL.md).
 
 Ajuste os `GRANT` para as tabelas com prefixo `SolarCosta_` se o banco for
 compartilhado com outros sistemas.

@@ -11,6 +11,7 @@ export interface UserPermissions {
   gerenciarObras: boolean;
   verAuditoria: boolean;
   gerenciarSite: boolean;
+  usarWhatsapp: boolean;
   usuarioAtivo: boolean;
 }
 

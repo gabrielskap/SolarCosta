@@ -34,6 +34,7 @@ consegue abrir a porta 80 (privilegiada, <1024) sem precisar rodar como root.
 | Variável | Exemplo | Observação |
 |---|---|---|
 | `DATABASE_URL` | `postgres://solarcosta_app:SENHA@HOST:5432/SolarCosta` | Use o papel `solarcosta_app`, **não** `postgres`. Ver [database/README.md](database/README.md#usuários-do-banco). O Postgres roda fora deste container — precisa estar acessível pela rede do Easypanel. |
+| `MIGRATION_DATABASE_URL` | `postgres://solarcosta_migrator:SENHA@HOST:5432/SolarCosta` | Papel `solarcosta_migrator`, usado **só** pelo `npm run migrate` do passo de deploy. O `solarcosta_app` acima não tem DDL de propósito — sem esta variável o deploy para em `permission denied for schema public` e a API não sobe. Ver [database/03_papel_migracao.sql](database/03_papel_migracao.sql). |
 | `JWT_SECRET` | — | Mín. 32 caracteres. Gere com `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `JWT_REFRESH_SECRET` | — | Igual acima, **diferente** de `JWT_SECRET`. |
 | `CORS_ORIGINS` | `https://crm.solarcosta.com.br` | Domínio público que o Easypanel vai atribuir ao app. Como front e API são a mesma origem em produção, isso só importa para clientes externos (Postman, app mobile, etc.). |
@@ -73,14 +74,25 @@ deploy:
 
 1. Crie os papéis (`solarcosta_app`, `solarcosta_leitura`) rodando
    [database/02_papeis.sql](database/02_papeis.sql) como superusuário.
-2. Garanta que o host/porta do Postgres aceitem conexão vindas do Easypanel
+2. Crie o papel de migração rodando
+   [database/03_papel_migracao.sql](database/03_papel_migracao.sql), também
+   como superusuário. **Este passo não é opcional** — sem ele o deploy
+   automático do item abaixo não funciona.
+3. Garanta que o host/porta do Postgres aceitem conexão vindas do Easypanel
    (rede privada, ou libere o IP de saída do Easypanel no firewall).
 
-**As migrations (`database/migrations/V001` a `V006`) rodam automaticamente**
-a cada deploy, antes da API subir (`npm run migrate && npm start` no
-Dockerfile — ver [server/src/migrate.ts](server/src/migrate.ts)). É
-idempotente: uma tabela `SolarCosta_SchemaMigrations` registra o que já foi
-aplicado, então redeploys não tentam recriar nada.
+**As migrations rodam automaticamente** a cada deploy, antes da API subir
+(`npm run migrate && npm start` no Dockerfile — ver
+[server/src/migrate.ts](server/src/migrate.ts)). É idempotente: uma tabela
+`SolarCosta_SchemaMigrations` registra o que já foi aplicado, então redeploys
+não tentam recriar nada.
+
+> **Isto exige `MIGRATION_DATABASE_URL`.** Até a introdução do
+> `03_papel_migracao.sql`, esta seção descrevia um passo que não tinha como
+> funcionar: o `solarcosta_app` tem `USAGE` no schema, não `CREATE`, então o
+> migrate saía com código 1, o `&&` cortava o `npm start` e o container não
+> subia. Na prática as migrations vinham sendo aplicadas à mão como `postgres`.
+> Quem tem uma instalação anterior precisa rodar o `03` e definir a variável.
 
 **Os seeds continuam manuais** — rode uma vez, via DBeaver, depois do
 primeiro deploy bem-sucedido:
@@ -91,8 +103,8 @@ primeiro deploy bem-sucedido:
 
 ## 5. Primeiro deploy — checklist
 
-- [ ] Papéis do Postgres criados (`02_papeis.sql`)
-- [ ] `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CORS_ORIGINS` configurados
+- [ ] Papéis do Postgres criados (`02_papeis.sql` **e** `03_papel_migracao.sql`)
+- [ ] `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CORS_ORIGINS` configurados
 - [ ] Porta do serviço apontando para `80`
 - [ ] Deploy concluído e log mostrando `[migrate] banco atualizado.` seguido de `[api] Solar Costa ouvindo em http://localhost:80`
 - [ ] `S001__configuracao_base.sql` rodado manualmente (uma vez)

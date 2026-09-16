@@ -32,6 +32,11 @@ const SiteLayout = lazy(() => import('./site/SiteLayout').then((m) => ({ default
 const PaginaCms = lazy(() => import('./site/PaginaCms').then((m) => ({ default: m.PaginaCms })));
 const NaoEncontrado = lazy(() => import('./site/pages/NaoEncontrado').then((m) => ({ default: m.NaoEncontrado })));
 
+// Proposta/contrato abertos pelo CLIENTE, por link do WhatsApp. Fica fora do
+// SiteLayout (sem menu nem rodapé institucional) e fora de /sistema (sem
+// login): o token da URL é a credencial inteira.
+const DocumentoPublico = lazy(() => import('./components/documento/DocumentoPublico').then((m) => ({ default: m.DocumentoPublico })));
+
 const Carregando = () => (
   <div className="altura-viewport w-full flex items-center justify-center bg-fundo">
     <div className="flex flex-col items-center gap-3">
@@ -71,6 +76,10 @@ createRoot(document.getElementById('root')!).render(
 
           {/* Wildcard: as subrotas reais (/dashboard, /leads, ...) vivem dentro do próprio CRM. */}
           <Route path="/sistema/*" element={<Sistema />} />
+
+          {/* Mais específica que o "*" do SiteLayout, então vence por
+              ranqueamento do React Router — a ordem aqui não importa. */}
+          <Route path="/p/:token" element={<DocumentoPublico />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

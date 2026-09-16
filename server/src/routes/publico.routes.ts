@@ -10,11 +10,13 @@
 //   2. Toda escrita tem rate limit, honeypot e schema estreito. O corpo do
 //      POST vem de um formulário público: assumir que é hostil é o padrão.
 
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { consultar, consultarUm, emTransacao } from '../db.js';
 import { asyncHandler } from '../errors.js';
+import { abrirLink, lerLink } from '../services/linksPublicos.js';
+import { imagemSatelite } from '../services/googleSolar.js';
 
 export const publicoRouter = Router();
 
@@ -278,5 +280,182 @@ publicoRouter.get(
     }
 
     res.send(linha.conteudo);
+  }),
+);
+
+// ------------------------------------------------------------ DOCUMENTO ---
+//
+// A proposta e o contrato que o cliente abre pelo link do WhatsApp.
+//
+// É a rota mais delicada deste arquivo. As outras devolvem conteúdo que já é
+// público por natureza — texto de site, tarifa de concessionária. Esta devolve
+// o documento comercial de UMA pessoa, e a credencial é só o token da URL.
+//
+// Daí a whitelist abaixo ser mais estreita do que a do /api/propostas: fora
+// dela ficam `consumo_kwh` e `tarifa_kwh` (entradas do cálculo, não resultado),
+// o `consultor_id`, o `lead_id`, as datas internas de fluxo e qualquer coluna
+// criada no futuro. O que entra é o que já está impresso na folha que o
+// cliente receberia em mãos.
+
+/**
+ * 30 aberturas por IP a cada 15 minutos.
+ *
+ * Mais folgado que o formulário de leads (5) porque aqui o mesmo cliente
+ * recarrega a página, compartilha com o cônjuge e volta dias depois; e o token
+ * de 32 bytes já torna a força bruta inviável muito antes do rate limit. O
+ * limite existe contra varredura, não contra o cliente.
+ */
+const limiteDocumento = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/** Mesma resposta para token inexistente, revogado e vencido — ver abrirLink. */
+function documentoNaoEncontrado(res: Response): void {
+  res.status(404).json({
+    erro: 'Este link não está mais disponível. Peça um novo ao seu consultor.',
+    codigo: 'link_invalido',
+  });
+}
+
+publicoRouter.get(
+  '/documento/:token',
+  limiteDocumento,
+  asyncHandler(async (req, res) => {
+    const link = await abrirLink(req.params.token ?? '');
+    if (!link) {
+      documentoNaoEncontrado(res);
+      return;
+    }
+
+    const empresa = await consultarUm(
+      `SELECT razao_social, nome_fantasia, cnpj, endereco, bairro, cidade, uf, cep,
+              telefone, whatsapp, email::text AS email, site, logo_url,
+              responsavel_tecnico, crea
+         FROM "SolarCosta_Empresa" LIMIT 1`,
+    );
+
+    if (link.tipo === 'proposta') {
+      const proposta = await consultarUm(
+        `SELECT p.id, p.numero, p.cliente_nome, p.cpf_cnpj, p.endereco, p.cidade, p.cep,
+                p.potencia_kwp, p.modulos_qtd, p.modulo_wp, p.area_estimada_m2,
+                p.geracao_media_kwh, p.cobertura_pct,
+                p.economia_mensal, p.economia_anual, p.economia_25_anos, p.payback_anos,
+                p.valor_total, p.forma_pagamento::text AS forma_pagamento,
+                p.desconto_avista_pct, p.parcelas_cartao, p.taxa_cartao_pct,
+                p.entrada_financiamento_valor, p.entrada_financiamento_pct,
+                p.parcelas_financiamento, p.juros_financiamento_mes_pct,
+                p.observacoes, p.logo_customizada_url, p.validade_dias, p.criado_em,
+                p.latitude, p.longitude, p.mapa_zoom, p.telhado_area_m2,
+                p.layout_modulos, p.layout_segmentos, p.layout_modulo,
+                c.nome AS concessionaria, t.nome AS telhado,
+                b.nome AS banco_financiamento, u.nome AS consultor
+           FROM "SolarCosta_Propostas" p
+           LEFT JOIN "SolarCosta_Concessionarias"     c ON c.id = p.concessionaria_id
+           LEFT JOIN "SolarCosta_TiposTelhado"        t ON t.id = p.tipo_telhado_id
+           LEFT JOIN "SolarCosta_BancosFinanciamento" b ON b.id = p.banco_financiamento_id
+           LEFT JOIN "SolarCosta_Usuarios"            u ON u.id = p.consultor_id
+          WHERE p.id = $1 AND p.excluido_em IS NULL`,
+        [link.referencia_id],
+      );
+
+      if (!proposta) {
+        documentoNaoEncontrado(res);
+        return;
+      }
+
+      const itens = await consultar(
+        `SELECT descricao, qtd, valor_unit, total
+           FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1 ORDER BY ordem`,
+        [link.referencia_id],
+      );
+
+      // Sem cache: o contador de aberturas depende de a requisição chegar até
+      // aqui, e um documento corrigido precisa aparecer corrigido no mesmo link.
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ tipo: 'proposta', documento: { ...proposta, itens }, empresa });
+      return;
+    }
+
+    const contrato = await consultarUm(
+      `SELECT id, numero, cliente_nome, cpf_cnpj, rg_inscricao, endereco, cep,
+              potencia_kwp, modulos_qtd, modulo_modelo, inversor_modelo, estrutura,
+              prazo_execucao, local_instalacao,
+              valor_total, forma_pagamento, entrada, parcelas_info, banco_agente,
+              primeiro_vencimento, multa_atraso, foro_eleito,
+              garantia_modulos, garantia_inversores, garantia_instalacao,
+              garantia_homologacao, responsavel_tecnico, crea,
+              status::text AS status, data_emissao, data_assinatura, observacoes
+         FROM "SolarCosta_Contratos" WHERE id = $1 AND excluido_em IS NULL`,
+      [link.referencia_id],
+    );
+
+    if (!contrato) {
+      documentoNaoEncontrado(res);
+      return;
+    }
+
+    const clausulas = await consultar(
+      `SELECT ordem, titulo, texto FROM "SolarCosta_ContratoClausulas"
+        WHERE contrato_id = $1 ORDER BY ordem`,
+      [link.referencia_id],
+    );
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ tipo: 'contrato', documento: { ...contrato, clausulas }, empresa });
+  }),
+);
+
+/**
+ * Recorte de satélite do telhado, para a página do documento.
+ *
+ * Existe porque GET /api/solar/imagem exige login: sem esta rota, a folha do
+ * telhado abriria em branco no navegador do cliente.
+ *
+ * Usa `lerLink` em vez de `abrirLink` de propósito — a página busca a imagem
+ * logo depois de carregar, e contar a abertura duas vezes por visita inflaria
+ * justamente o número que o vendedor usa para decidir quando ligar.
+ *
+ * As coordenadas vêm do BANCO, nunca da query string. Aceitá-las do cliente
+ * transformaria esta rota num proxy aberto para a API paga do Google, com a
+ * nossa chave e a nossa fatura.
+ */
+publicoRouter.get(
+  '/documento/:token/telhado.png',
+  limiteDocumento,
+  asyncHandler(async (req, res) => {
+    const link = await lerLink(req.params.token ?? '');
+    if (!link || link.tipo !== 'proposta') {
+      documentoNaoEncontrado(res);
+      return;
+    }
+
+    const p = await consultarUm<{ latitude: number | null; longitude: number | null; mapa_zoom: number | null }>(
+      `SELECT latitude, longitude, mapa_zoom FROM "SolarCosta_Propostas"
+        WHERE id = $1 AND excluido_em IS NULL`,
+      [link.referencia_id],
+    );
+
+    if (!p?.latitude || !p.longitude) {
+      documentoNaoEncontrado(res);
+      return;
+    }
+
+    const { largura, altura } = z
+      .object({
+        largura: z.coerce.number().int().min(100).max(640).default(640),
+        altura: z.coerce.number().int().min(100).max(640).default(640),
+      })
+      .parse(req.query);
+
+    const imagem = await imagemSatelite(p.latitude, p.longitude, p.mapa_zoom ?? 20, largura, altura);
+
+    // A imagem de um ponto fixo não muda; o ToS do Google permite cache
+    // temporário e 24h é o mesmo teto que o googleSolar.ts já usa em memória.
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Content-Type', imagem.tipo);
+    res.send(imagem.bytes);
   }),
 );

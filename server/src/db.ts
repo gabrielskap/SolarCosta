@@ -108,9 +108,9 @@ export async function verificarConexao(): Promise<void> {
   );
 
   const total = linha?.tabelas ?? 0;
-  if (total < 36) {
+  if (total < 48) {
     throw new Error(
-      `Banco incompleto: encontrei ${total} tabelas SolarCosta_ (esperado 36). ` +
+      `Banco incompleto: encontrei ${total} tabelas SolarCosta_ (esperado 48). ` +
         'Aplique as migrations em database/ antes de subir a API.',
     );
   }

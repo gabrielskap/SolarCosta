@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FileCheck, Printer, Send, CheckCircle2, FileText, Search, Plus, Trash2 } from 'lucide-react';
+import { FileCheck, Printer, Send, CheckCircle2, FileText, Search, Plus, Trash2, MessageCircle } from 'lucide-react';
 import { Contrato, Lead, Proposta, User } from '../types';
 import { param, type ConfigApp } from '../services/api';
+import { EnviarPorWhatsApp } from './whatsapp/EnviarPorWhatsApp';
 
 interface ContractsViewProps {
   contratos: Contrato[];
@@ -27,6 +28,12 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   showToast
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'novo' | 'lista'>('novo');
+
+  /** Contrato escolhido para envio; null com o modal fechado. */
+  const [enviando, setEnviando] = useState<Contrato | null>(null);
+
+  const podeEnviarWhatsApp =
+    currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.usarWhatsapp;
 
   // Origem do contrato: escolher uma proposta preenche o formulário inteiro.
   // Antes, o formulário nascia com um cliente fixo de demonstração.
@@ -210,12 +217,23 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
     onOpenPDF('contrato', currentContractObj);
   };
 
-  const handleSendElectronicSign = () => {
+  /**
+   * Salva e leva para a lista, de onde o contrato é enviado.
+   *
+   * O envio NÃO acontece aqui porque `currentContractObj.id` é sempre '' — o
+   * formulário monta um contrato novo e quem gera o id é o banco. Sem id não
+   * há como criar o link público, e era isso que a versão anterior escondia:
+   * ela mostrava "link de assinatura enviado via SMS/E-mail" sem nenhuma
+   * chamada de API atrás, para um canal que nunca existiu no sistema.
+   */
+  const handleSalvarParaEnviar = () => {
+    if (!validarContrato()) return;
     onSaveContract(currentContractObj);
+    setActiveSubTab('lista');
     showToast(
-      'Enviado para assinatura',
+      'Contrato salvo',
       'success',
-      `Link de assinatura eletrônica enviado via SMS/E-mail para ${clienteNome}.`
+      'Use "Enviar" na lista para mandar o contrato pelo WhatsApp do cliente.',
     );
   };
 
@@ -691,11 +709,11 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                 </button>
 
                 <button
-                  onClick={handleSendElectronicSign}
+                  onClick={handleSalvarParaEnviar}
                   className="w-full bg-white hover:bg-slate-50 text-[#004276] border border-slate-300 font-bold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2"
                 >
                   <Send className="w-4 h-4 text-blue-600" />
-                  <span>Enviar para assinatura eletrônica</span>
+                  <span>Salvar e enviar por WhatsApp</span>
                 </button>
               </div>
             </div>
@@ -738,13 +756,22 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                         {c.status === 'assinado' ? 'Assinado' : 'Aguardando assinatura'}
                       </button>
                     </td>
-                    <td data-label="Ações" className="p-3 text-right font-bold space-x-2">
+                    <td data-label="Ações" className="p-3 text-right font-bold space-x-3">
                       <button
                         onClick={() => onOpenPDF('contrato', c)}
                         className="text-blue-600 hover:underline"
                       >
                         Visualizar PDF
                       </button>
+                      {podeEnviarWhatsApp && (
+                        <button
+                          onClick={() => setEnviando(c)}
+                          className="text-emerald-700 hover:underline inline-flex items-center gap-1"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          Enviar
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -752,6 +779,17 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
             </table>
           </div>
         </div>
+      )}
+
+      {enviando && (
+        <EnviarPorWhatsApp
+          referencia={{ tipo: 'contrato', id: enviando.id }}
+          clienteNome={enviando.clienteNome}
+          telefoneSugerido={enviando.telefone}
+          leadId={enviando.leadId || null}
+          onFechar={() => setEnviando(null)}
+          showToast={showToast}
+        />
       )}
     </div>
   );

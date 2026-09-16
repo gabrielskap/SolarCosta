@@ -27,6 +27,8 @@ import { publicoRouter } from './routes/publico.routes.js';
 import { siteRouter } from './routes/site.routes.js';
 import { solarRouter } from './routes/solar.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
+import { whatsappRouter } from './routes/whatsapp.routes.js';
+import { whatsappWebhookRouter } from './routes/whatsappWebhook.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // dist/app.js -> ../public, onde o Dockerfile copia o build do frontend.
@@ -115,6 +117,12 @@ export function criarApp(): express.Express {
   // Site institucional: único router sem exigirLogin. Ver publico.routes.ts.
   app.use('/api/publico', publicoRouter);
 
+  // Webhook da uazapi: aberto, como o publicoRouter, mas sem nenhuma relação
+  // com o site — ele autentica por segredo na URL e token no corpo, não por
+  // sessão. Fica junto do outro router aberto para que "o que não exige login"
+  // seja uma lista curta e visível num lugar só.
+  app.use('/api/webhooks/whatsapp', whatsappWebhookRouter);
+
   app.use('/api/auth', authRouter);
   app.use('/api/leads', leadsRouter);
   app.use('/api/propostas', propostasRouter);
@@ -128,6 +136,7 @@ export function criarApp(): express.Express {
   app.use('/api/notificacoes', notificacoesRouter);
   app.use('/api/solar', solarRouter);
   app.use('/api/config', configRouter);
+  app.use('/api/whatsapp', whatsappRouter);
 
   // Upload de imagem da biblioteca do site: o browser manda o File CRU como
   // corpo, com o Content-Type do arquivo. Fica antes do router para que o

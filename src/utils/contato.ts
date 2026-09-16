@@ -19,6 +19,10 @@ const DDI_BR = '55';
  *
  * Aceita com e sem DDI. Fixo tem 10 dígitos com DDD, celular tem 11 — abaixo
  * disso falta o DDD, e sem DDD não há link que funcione.
+ *
+ * ATENÇÃO: esta mesma regra está repetida em server/src/utils/telefone.ts,
+ * porque server/ é um pacote npm independente e um import atravessando a
+ * fronteira quebraria o build do Docker. Mudou aqui, muda lá.
  */
 export function telefoneInternacional(telefone: string | undefined | null): string | null {
   const d = onlyDigits(telefone);
@@ -65,4 +69,22 @@ export function linkMapa(...partes: (string | undefined | null)[]): string | nul
     .join(', ');
   if (!destino) return null;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destino)}`;
+}
+
+/**
+ * Formato legível de um número internacional só com dígitos.
+ * `5531986588456` -> `+55 (31) 98658-8456`.
+ *
+ * É o caminho inverso de `telefoneInternacional`: aquele prepara o número para
+ * a máquina, este para a tela. Usado onde o número vem do WhatsApp, que só
+ * devolve dígitos — o cadastro do lead já guarda o telefone formatado.
+ *
+ * Número fora do padrão brasileiro sai como `+<dígitos>`, sem inventar
+ * agrupamento: um DDD errado inventado é pior que um número sem máscara.
+ */
+export function formatarTelefoneInternacional(numero: string | undefined | null): string {
+  const d = onlyDigits(numero);
+  if (!d) return '—';
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(d);
+  return m ? `+55 (${m[1]}) ${m[2]}-${m[3]}` : `+${d}`;
 }

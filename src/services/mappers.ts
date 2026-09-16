@@ -100,6 +100,7 @@ export function paraUser(linha: any): User {
       gerenciarObras: !!linha.gerenciar_obras,
       verAuditoria: !!linha.ver_auditoria,
       gerenciarSite: !!linha.gerenciar_site,
+      usarWhatsapp: !!linha.usar_whatsapp,
       usuarioAtivo: linha.status === 'ativo',
     },
   };
@@ -130,6 +131,7 @@ export function deUser(u: Partial<User> & { senha?: string }): Record<string, un
       gerenciar_obras: u.permissoes.gerenciarObras,
       ver_auditoria: u.permissoes.verAuditoria,
       gerenciar_site: u.permissoes.gerenciarSite,
+      usar_whatsapp: u.permissoes.usarWhatsapp,
     };
   }
   return corpo;

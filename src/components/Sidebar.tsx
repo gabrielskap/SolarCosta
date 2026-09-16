@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, ChevronRight, X, Calendar, BarChart3, History, HardHat, Globe
+  LayoutDashboard, Users, FileText, FileCheck, DollarSign, Package, UserCheck, LogOut, ChevronRight, X, Calendar, BarChart3, History, HardHat, Globe, MessageCircle
 } from 'lucide-react';
 import { User, UserPermissions } from '../types';
 import logoFull from '../assets/logo-full.png';
@@ -40,6 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { to: '/sistema/propostas', label: 'Propostas de orçamento', icon: FileText },
         { to: '/sistema/contratos', label: 'Contratos', icon: FileCheck },
         { to: '/sistema/obras', label: 'Obras & Instalação', icon: HardHat },
+        { to: '/sistema/whatsapp', label: 'WhatsApp', icon: MessageCircle, permissao: 'usarWhatsapp' as keyof UserPermissions },
       ]
     },
     {
