@@ -12,16 +12,17 @@
 // explícito ("a alteração já está no ar") e que existe o link "Ver no site".
 
 import React, { useEffect, useState } from 'react';
-import { FileText, Globe, Image as ImageIcon, Loader2, Menu as MenuIcon, WifiOff } from 'lucide-react';
+import { FileText, Globe, Image as ImageIcon, Loader2, Menu as MenuIcon, Plus, WifiOff } from 'lucide-react';
 import { Api } from '../../services/api';
 import { ErroApi } from '../../services/http';
-import { Site, type PaginaAdmin, type MenuAdmin, type SiteAdmin } from '../../services/site';
+import { Site, PAGINAS_FIXAS, type PaginaAdmin, type MenuAdmin, type SiteAdmin } from '../../services/site';
 import type { MidiaSite } from '../../site/blocos/tipos';
 import type { User } from '../../types';
 import { EditorPagina } from './EditorPagina';
 import { EditorMenus } from './EditorMenus';
 import { EditorSeo } from './EditorSeo';
 import { BibliotecaMidia } from './BibliotecaMidia';
+import { NovaPaginaModal } from './NovaPaginaModal';
 
 type Aba = 'paginas' | 'menus' | 'midia' | 'seo';
 
@@ -44,6 +45,9 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
   const [slug, setSlug] = useState<string>('home');
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [modalNovaPagina, setModalNovaPagina] = useState<{ nome?: string; caminho?: string } | null>(
+    null,
+  );
 
   const admin = currentUser.cargo === 'Administrador';
   const podeEditarEmpresa = admin || !!currentUser.permissoes?.gerenciarUsuarios;
@@ -81,6 +85,37 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
 
   const trocarMenus = (menus: MenuAdmin[]) => setDados((d) => (d ? { ...d, menus } : d));
   const trocarMidia = (midia: MidiaSite[]) => setDados((d) => (d ? { ...d, midia } : d));
+
+  const criarPagina = async (novaPagina: { nome: string; caminho: string }) => {
+    const pagina = await Site.criarPagina(novaPagina);
+    setDados((d) => (d ? { ...d, paginas: [...d.paginas, pagina] } : d));
+    setAba('paginas');
+    setSlug(pagina.slug);
+    setModalNovaPagina(null);
+    showToast('Página criada', 'success', `${pagina.nome} já está no ar em ${pagina.caminho}`);
+  };
+
+  const excluirPagina = async (alvo: PaginaAdmin) => {
+    if (
+      !window.confirm(
+        `Excluir a página "${alvo.nome}"? Os blocos dela somem junto, e o endereço ${alvo.caminho} deixa de existir no site.`,
+      )
+    )
+      return;
+    try {
+      await Site.excluirPagina(alvo.id);
+      const restantes = dados?.paginas.filter((p) => p.id !== alvo.id) ?? [];
+      setDados((d) => (d ? { ...d, paginas: restantes } : d));
+      if (slug === alvo.slug) setSlug(restantes[0]?.slug ?? 'home');
+      showToast('Página excluída', 'success', alvo.nome);
+    } catch (e) {
+      showToast(
+        'Não foi possível excluir a página',
+        'error',
+        e instanceof ErroApi ? e.mensagemCompleta : 'Erro inesperado.',
+      );
+    }
+  };
 
   /* ----------------------------------------------------------- estados -- */
 
@@ -155,30 +190,41 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
       {/* --------------------------------------------------- conteúdo --- */}
       {aba === 'paginas' && pagina && (
         <div className="grid grid-cols-1 lg:grid-cols-[14rem_minmax(0,1fr)] gap-5 items-start">
-          <nav className="bg-white border border-slate-200 rounded-2xl p-2 space-y-1">
-            {dados.paginas.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setSlug(p.slug)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-semibold transition ${
-                  p.slug === slug
-                    ? 'bg-[#004276] text-white'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <span className="block truncate">{p.nome}</span>
-                <span
-                  className={`block text-[10px] font-mono ${
-                    p.slug === slug ? 'text-blue-200' : 'text-slate-400'
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setModalNovaPagina({})}
+              className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-[#004276] border border-dashed border-slate-300 hover:border-[#004276] hover:bg-blue-50/40 rounded-xl px-3 py-2.5 transition"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nova página
+            </button>
+
+            <nav className="bg-white border border-slate-200 rounded-2xl p-2 space-y-1">
+              {dados.paginas.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setSlug(p.slug)}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-semibold transition ${
+                    p.slug === slug
+                      ? 'bg-[#004276] text-white'
+                      : 'text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  {p.caminho}
-                  {p.publicada ? '' : ' · fora do ar'}
-                </span>
-              </button>
-            ))}
-          </nav>
+                  <span className="block truncate">{p.nome}</span>
+                  <span
+                    className={`block text-[10px] font-mono ${
+                      p.slug === slug ? 'text-blue-200' : 'text-slate-400'
+                    }`}
+                  >
+                    {p.caminho}
+                    {p.publicada ? '' : ' · fora do ar'}
+                  </span>
+                </button>
+              ))}
+            </nav>
+          </div>
 
           <div className="bg-white border border-slate-200 rounded-2xl p-5">
             <EditorPagina
@@ -186,6 +232,8 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
               midia={dados.midia}
               onPaginaAlterada={trocarPagina}
               onMidiaAlterada={trocarMidia}
+              podeExcluir={!PAGINAS_FIXAS.has(pagina.slug)}
+              onExcluir={() => excluirPagina(pagina)}
               showToast={showToast}
             />
           </div>
@@ -193,7 +241,13 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
       )}
 
       {aba === 'menus' && (
-        <EditorMenus menus={dados.menus} onMenusAlterados={trocarMenus} showToast={showToast} />
+        <EditorMenus
+          menus={dados.menus}
+          paginas={dados.paginas}
+          onMenusAlterados={trocarMenus}
+          onCriarPagina={(sugestao) => setModalNovaPagina(sugestao)}
+          showToast={showToast}
+        />
       )}
 
       {aba === 'midia' && (
@@ -214,6 +268,15 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
           onEmpresaAlterada={setEmpresa}
           podeEditarEmpresa={podeEditarEmpresa}
           showToast={showToast}
+        />
+      )}
+
+      {modalNovaPagina && (
+        <NovaPaginaModal
+          nomeInicial={modalNovaPagina.nome}
+          caminhoInicial={modalNovaPagina.caminho}
+          onCriar={criarPagina}
+          onFechar={() => setModalNovaPagina(null)}
         />
       )}
     </div>

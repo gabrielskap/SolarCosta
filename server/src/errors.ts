@@ -82,6 +82,8 @@ function mensagemUnica(e: ErroPostgres): string {
   if (c.includes('Propostas_numero')) return 'Já existe uma proposta com esse número.';
   if (c.includes('Contratos_numero')) return 'Já existe um contrato com esse número.';
   if (c.includes('Obras_numero')) return 'Já existe uma obra com esse número.';
+  if (c.includes('SitePaginas_slug') || c.includes('SitePaginas_caminho'))
+    return 'Já existe uma página com esse endereço.';
   return 'Esse registro já existe.';
 }
 

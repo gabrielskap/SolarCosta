@@ -28,6 +28,9 @@ interface Props {
   midia: MidiaSite[];
   onPaginaAlterada: (pagina: PaginaAdmin) => void;
   onMidiaAlterada: (midia: MidiaSite[]) => void;
+  /** false para as 5 páginas com rota fixa em src/main.tsx — essas não se excluem. */
+  podeExcluir: boolean;
+  onExcluir: () => Promise<void>;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
 
@@ -36,11 +39,14 @@ export const EditorPagina: React.FC<Props> = ({
   midia,
   onPaginaAlterada,
   onMidiaAlterada,
+  podeExcluir,
+  onExcluir,
   showToast,
 }) => {
   const [editando, setEditando] = useState<BlocoAdmin | null>(null);
   const [catalogoAberto, setCatalogoAberto] = useState(false);
   const [ocupado, setOcupado] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [arrastando, setArrastando] = useState<string | null>(null);
 
   const erro = (e: unknown, acao: string) =>
@@ -138,6 +144,17 @@ export const EditorPagina: React.FC<Props> = ({
     void reordenar(copia);
   };
 
+  // Confirmação e chamada à API ficam no pai (SiteConfigView): é ele quem
+  // sabe o que fazer com a lista de páginas e o slug selecionado depois.
+  const excluirPagina = async () => {
+    setExcluindo(true);
+    try {
+      await onExcluir();
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
   /* ----------------------------------------------------------- render -- */
 
   return (
@@ -165,6 +182,21 @@ export const EditorPagina: React.FC<Props> = ({
             {ocupado ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             Adicionar bloco
           </button>
+          {podeExcluir && (
+            <button
+              type="button"
+              onClick={() => void excluirPagina()}
+              disabled={excluindo}
+              title="Excluir página"
+              className="p-2.5 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50 rounded-xl transition disabled:opacity-40"
+            >
+              {excluindo ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </button>
+          )}
         </div>
       </div>
 

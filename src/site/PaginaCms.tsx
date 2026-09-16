@@ -6,7 +6,8 @@
 // mas não tem conteúdo no ar.
 
 import React from 'react';
-import { usePagina } from './contexto';
+import { useLocation } from 'react-router-dom';
+import { useConfigPublica, usePagina } from './contexto';
 import { useSeo } from './seo';
 import { RenderizadorBlocos } from './RenderizadorBlocos';
 import { NaoEncontrado } from './pages/NaoEncontrado';
@@ -26,4 +27,25 @@ export const PaginaCms: React.FC<{ slug: string }> = ({ slug }) => {
   if (!pagina) return <NaoEncontrado />;
 
   return <RenderizadorBlocos blocos={pagina.blocos} />;
+};
+
+/**
+ * Cobre qualquer endereço fora das 5 rotas fixas de src/main.tsx — o destino
+ * de uma página criada em Configuração do Site › Páginas. Sem slug conhecido
+ * de antemão, resolve pelo `caminho` batendo com a URL atual.
+ *
+ * Sem fallback de conteudoPadrao.ts (página nova não existe lá): enquanto o
+ * /api/publico/site não responde, não dá para saber se o endereço é uma
+ * página de verdade ou um 404, então não decide nada — só depois de carregar.
+ */
+export const PaginaPorCaminho: React.FC = () => {
+  const { pathname } = useLocation();
+  const { site, carregando } = useConfigPublica();
+
+  if (carregando) return null;
+
+  const pagina = site?.paginas.find((p) => p.caminho === pathname);
+  if (!pagina) return <NaoEncontrado />;
+
+  return <PaginaCms slug={pagina.slug} />;
 };

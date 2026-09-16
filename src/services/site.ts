@@ -55,6 +55,27 @@ export interface SiteAdmin {
   midia: MidiaSite[];
 }
 
+/**
+ * Slugs das 5 páginas com rota própria em src/main.tsx — espelha
+ * PAGINAS_FIXAS em server/src/routes/site.routes.ts. Só elas não podem ser
+ * excluídas: uma página nova é servida pela rota curinga (PaginaPorCaminho),
+ * que resolve qualquer `caminho` do banco.
+ */
+export const PAGINAS_FIXAS = new Set(['home', 'servicos', 'simulador', 'sobre', 'contato']);
+
+/** Mesmo formato aceito pela API: um segmento minúsculo, começando com "/". */
+export const CAMINHO_VALIDO = /^\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** "Serviço Pós-venda!" → "servico-pos-venda" */
+export function slugificar(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 /* ---------------------------------------------------------- conversão --- */
 
 function paraBloco(b: any): BlocoAdmin {
@@ -130,6 +151,11 @@ export const Site = {
     };
   },
 
+  criarPagina: async (dados: { nome: string; caminho: string }): Promise<PaginaAdmin> => {
+    const r = await http.post<any>('/api/site/paginas', dados);
+    return paraPagina(r.pagina);
+  },
+
   salvarPagina: async (
     id: string,
     dados: { titulo_seo?: string; descricao_seo?: string; publicada?: boolean },
@@ -137,6 +163,8 @@ export const Site = {
     const r = await http.patch<any>(`/api/site/paginas/${id}`, dados);
     return paraPagina(r.pagina);
   },
+
+  excluirPagina: (id: string): Promise<void> => http.delete<void>(`/api/site/paginas/${id}`),
 
   criarBloco: async (
     paginaId: string,

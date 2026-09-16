@@ -30,7 +30,11 @@ const Crm = lazy(() => import('./App'));
 // de renderizar, e o chunk viaja em paralelo com essa chamada.
 const SiteLayout = lazy(() => import('./site/SiteLayout').then((m) => ({ default: m.SiteLayout })));
 const PaginaCms = lazy(() => import('./site/PaginaCms').then((m) => ({ default: m.PaginaCms })));
-const NaoEncontrado = lazy(() => import('./site/pages/NaoEncontrado').then((m) => ({ default: m.NaoEncontrado })));
+// Rota curinga: cobre as páginas criadas em Configuração do Site, que não têm
+// uma <Route> própria como as 5 fixas abaixo (ver PaginaCms.tsx).
+const PaginaPorCaminho = lazy(() =>
+  import('./site/PaginaCms').then((m) => ({ default: m.PaginaPorCaminho })),
+);
 
 // Proposta/contrato abertos pelo CLIENTE, por link do WhatsApp. Fica fora do
 // SiteLayout (sem menu nem rodapé institucional) e fora de /sistema (sem
@@ -71,7 +75,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="simulador" element={<PaginaCms slug="simulador" />} />
             <Route path="sobre" element={<PaginaCms slug="sobre" />} />
             <Route path="contato" element={<PaginaCms slug="contato" />} />
-            <Route path="*" element={<NaoEncontrado />} />
+            <Route path="*" element={<PaginaPorCaminho />} />
           </Route>
 
           {/* Wildcard: as subrotas reais (/dashboard, /leads, ...) vivem dentro do próprio CRM. */}

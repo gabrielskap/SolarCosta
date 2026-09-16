@@ -138,6 +138,67 @@ siteRouter.get(
 
 /* ============================================================== páginas == */
 
+/**
+ * Slugs das 5 páginas com rota própria em src/main.tsx. Só elas têm um lugar
+ * garantido para aparecer no site — por isso não podem ser excluídas nem ter
+ * `caminho`/`nome` trocados (o que quebraria a rota fixa). Página nova, criada
+ * por aqui, é servida pela rota curinga (PaginaPorCaminho em PaginaCms.tsx),
+ * que resolve qualquer `caminho` do banco — essa sim pode ser excluída.
+ */
+const PAGINAS_FIXAS = new Set(['home', 'servicos', 'simulador', 'sobre', 'contato']);
+
+/** Só um segmento, minúsculo, sem barra dupla — mesmo padrão das 5 fixas. */
+const CAMINHO_REGEX = /^\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Rotas e pastas que o Express já usa. (Arquivos estáticos com ponto no nome
+ * — robots.txt, sw.js, favicon.png — não entram aqui: CAMINHO_REGEX já barra
+ * qualquer segmento com ".", então nunca chegariam a esta lista.)
+ */
+const CAMINHOS_RESERVADOS = new Set(['api', 'sistema', 'p', 'health', 'icons']);
+
+const criarPaginaSchema = z.object({
+  nome: z.string().trim().min(1, 'Informe o nome da página.').max(120),
+  caminho: z
+    .string()
+    .trim()
+    .min(1, 'Informe o endereço da página.')
+    .max(80)
+    .regex(CAMINHO_REGEX, 'Use letras minúsculas, números e hífen, começando com "/". Ex.: /pagina-teste'),
+});
+
+siteRouter.post(
+  '/paginas',
+  escrever,
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const d = criarPaginaSchema.parse(req.body);
+    const slug = d.caminho.slice(1);
+
+    if (CAMINHOS_RESERVADOS.has(slug)) {
+      throw conflito('Esse endereço é reservado pelo sistema. Escolha outro.');
+    }
+
+    const pagina = await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query(
+        `INSERT INTO "SolarCosta_SitePaginas"
+            (slug, caminho, nome, titulo_seo, descricao_seo, ordem)
+         VALUES ($1, $2, $3, $3, $3,
+                 (SELECT COALESCE(max(ordem), 0) + 1 FROM "SolarCosta_SitePaginas"))
+         RETURNING id, slug, caminho, nome, titulo_seo, descricao_seo, publicada, ordem`,
+        [slug, d.caminho, d.nome],
+      );
+
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('criar', 'Site', $1, NULL, $2)`,
+        [`Página ${d.nome}`, `Criada em ${d.caminho}`],
+      );
+      return { ...rows[0], blocos: [] };
+    }, ator(req));
+
+    res.status(201).json({ pagina });
+  }),
+);
+
 siteRouter.patch(
   '/paginas/:id',
   escrever,
@@ -172,6 +233,35 @@ siteRouter.patch(
     }, ator(req));
 
     res.json({ pagina });
+  }),
+);
+
+siteRouter.delete(
+  '/paginas/:id',
+  escrever,
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+
+    await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query(
+        `SELECT slug, nome FROM "SolarCosta_SitePaginas" WHERE id = $1`,
+        [id],
+      );
+      if (rows.length === 0) throw naoEncontrado('Página');
+      if (PAGINAS_FIXAS.has(rows[0]!.slug)) {
+        throw conflito('Esta página é fixa do sistema e não pode ser excluída.');
+      }
+
+      // Blocos somem junto por ON DELETE CASCADE (V008).
+      await cliente.query(`DELETE FROM "SolarCosta_SitePaginas" WHERE id = $1`, [id]);
+
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('excluir', 'Site', $1, NULL, 'Página removida do site')`,
+        [`Página ${rows[0]!.nome}`],
+      );
+    }, ator(req));
+
+    res.status(204).end();
   }),
 );
 
