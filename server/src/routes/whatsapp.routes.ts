@@ -4,9 +4,13 @@
 // abria o app do celular e perdia a mensagem de vista; aqui ele fala com a
 // uazapi e guarda o que aconteceu.
 //
-// Esta rodada cobre só a CONEXÃO (conectar pelo QR, ver status, desconectar).
-// Envio, recebimento e caixa de entrada entram nas fases seguintes, sobre a
-// mesma instância e o mesmo serviço.
+// Este arquivo cobre a CONEXÃO (QR, status, desconectar), os modelos de
+// mensagem e o envio a partir de um documento. Conversas, thread, mídia e
+// resposta ficam em whatsappCaixa.routes.ts, montado no mesmo prefixo — a
+// divisão é por tamanho, não por domínio: juntos os dois passariam de mil
+// linhas e ninguém acharia nada.
+//
+// O recebimento entra por whatsappWebhook.routes.ts, que não exige login.
 //
 // REGRA QUE VALE PARA TODO ESTE ARQUIVO: o token da instância nunca sai daqui.
 // Ele entra na resposta de nenhuma rota, nem para administrador — quem o tiver
@@ -21,8 +25,17 @@ import { asyncHandler, AppError, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
 import { cifrar, decifrar } from '../services/segredos.js';
 import { obterOuCriarLink, urlPublica } from '../services/linksPublicos.js';
-import { chatidDeTelefone, telefoneInternacional } from '../utils/telefone.js';
+import { telefoneInternacional } from '../utils/telefone.js';
 import * as uazapi from '../services/uazapi.js';
+import { enviarERegistrar } from '../services/envioWhatsapp.js';
+import { registrarNaTimeline } from '../services/whatsappConversas.js';
+import {
+  carregarInstancia,
+  comRegistroDeErro,
+  exigirConectada,
+  exigirToken,
+  type LinhaInstancia,
+} from '../services/whatsappInstancia.js';
 
 export const whatsappRouter = Router();
 whatsappRouter.use(exigirLogin);
@@ -33,54 +46,6 @@ whatsappRouter.use(exigirLogin);
  * atende cliente não precisa poder derrubar o canal de todo mundo.
  */
 const exigirAdmin = exigirPermissao('gerenciar_usuarios');
-
-interface LinhaInstancia {
-  id: string;
-  nome_instancia: string;
-  instancia_id: string | null;
-  token_cifrado: string | null;
-  status: uazapi.StatusInstancia;
-  numero_conectado: string | null;
-  profile_name: string | null;
-  webhook_segredo: string;
-  ultimo_erro: string | null;
-  conectado_em: string | null;
-}
-
-/**
- * A linha única de SolarCosta_WhatsAppInstancia.
- *
- * O V009 insere essa linha na migration, então ela existe desde o primeiro
- * deploy. Faltar aqui significa banco desatualizado — e dizer isso é mais útil
- * do que um 500 genérico.
- */
-async function carregarInstancia(): Promise<LinhaInstancia> {
-  const linha = await consultarUm<LinhaInstancia>(
-    `SELECT id, nome_instancia, instancia_id, token_cifrado, status::text AS status,
-            numero_conectado, profile_name, webhook_segredo, ultimo_erro, conectado_em
-       FROM "SolarCosta_WhatsAppInstancia" WHERE registro_unico`,
-  );
-  if (!linha) {
-    throw new AppError(
-      503,
-      'Cadastro da instância de WhatsApp não encontrado. Aplique a migration V009.',
-      'whatsapp_sem_instancia',
-    );
-  }
-  return linha;
-}
-
-/** Token em texto claro, ou 409 quando ninguém conectou ainda. */
-function exigirToken(linha: LinhaInstancia): string {
-  if (!linha.token_cifrado) {
-    throw new AppError(
-      409,
-      'Nenhum número conectado. Conecte o WhatsApp pelo QR code antes.',
-      'whatsapp_nao_conectado',
-    );
-  }
-  return decifrar(linha.token_cifrado);
-}
 
 /** Endereço que a uazapi vai chamar quando chegar mensagem. */
 function urlWebhook(segredo: string): string {
@@ -197,8 +162,13 @@ whatsappRouter.post(
       );
     }, ator(req));
 
+    // `conectando.paircode` NÃO vai na resposta: `uazapi.conectar()` não manda
+    // `phone`, e sem ele a uazapi sempre devolve QR, nunca código de
+    // pareamento. O campo existe no contrato deles e continua lido pelo
+    // normalizar() do uazapi.ts — devolvê-lo aqui só faria parecer que existe
+    // um pareamento por código que ninguém implementou.
     const atualizada = await carregarInstancia();
-    res.json({ instancia: paraApi(atualizada, conectando.qrcode), paircode: conectando.paircode });
+    res.json({ instancia: paraApi(atualizada, conectando.qrcode) });
   }),
 );
 
@@ -221,7 +191,7 @@ whatsappRouter.get(
     await emTransacao((cliente) => salvarEstado(cliente, linha.id, atual), ator(req));
 
     const atualizada = await carregarInstancia();
-    res.json({ instancia: paraApi(atualizada, atual.qrcode), paircode: atual.paircode });
+    res.json({ instancia: paraApi(atualizada, atual.qrcode) });
   }),
 );
 
@@ -424,13 +394,7 @@ whatsappRouter.post(
 
     const instancia = await carregarInstancia();
     const token = exigirToken(instancia);
-    if (instancia.status !== 'conectada') {
-      throw new AppError(
-        409,
-        'O WhatsApp está desconectado. Reconecte o número antes de enviar.',
-        'whatsapp_nao_conectado',
-      );
-    }
+    exigirConectada(instancia);
 
     const doc = d.referencia ? await dadosDoDocumento(d.referencia.tipo, d.referencia.id) : null;
 
@@ -457,104 +421,84 @@ whatsappRouter.post(
 
     // Tudo o que escreve acontece numa transação só: se o INSERT da mensagem
     // falhar, o link recém-criado não fica órfão na tabela.
-    const resultado = await emTransacao(async (cliente) => {
-      let link = '';
-      if (d.referencia) {
-        const tk = await obterOuCriarLink(
-          cliente,
-          d.referencia.tipo,
-          d.referencia.id,
-          req.usuario.id,
-        );
-        link = urlPublica(tk);
-      }
+    const resultado = await comRegistroDeErro(async () =>
+      emTransacao(async (cliente) => {
+        let link = '';
+        if (d.referencia) {
+          const tk = await obterOuCriarLink(
+            cliente,
+            d.referencia.tipo,
+            d.referencia.id,
+            req.usuario.id,
+          );
+          link = urlPublica(tk);
+        }
 
-      let texto = d.texto ?? '';
-      if (d.modelo_id) {
-        const { rows } = await cliente.query<{ texto: string }>(
-          `SELECT texto FROM "SolarCosta_WhatsAppModelos" WHERE id = $1 AND ativo`,
-          [d.modelo_id],
-        );
-        if (rows.length === 0) throw naoEncontrado('Modelo de mensagem');
-        texto = rows[0]!.texto;
-      }
+        let texto = d.texto ?? '';
+        if (d.modelo_id) {
+          const { rows } = await cliente.query<{ texto: string }>(
+            `SELECT texto FROM "SolarCosta_WhatsAppModelos" WHERE id = $1 AND ativo`,
+            [d.modelo_id],
+          );
+          if (rows.length === 0) throw naoEncontrado('Modelo de mensagem');
+          texto = rows[0]!.texto;
+        }
 
-      texto = interpolar(texto, {
-        ...(doc?.valores ?? {}),
-        link,
-        consultor: req.usuario.nome,
-      }).trim();
+        texto = interpolar(texto, {
+          ...(doc?.valores ?? {}),
+          link,
+          consultor: req.usuario.nome,
+        }).trim();
 
-      if (!texto) throw new AppError(422, 'A mensagem ficou vazia.', 'mensagem_vazia');
-
-      // O envio fica DENTRO da transação de propósito. Enviar antes e gravar
-      // depois perde o registro se o INSERT falhar — e mensagem enviada sem
-      // registro é pior que uma transação um pouco mais longa: o cliente
-      // recebeu, o sistema não sabe, e o vendedor manda de novo. O caminho
-      // inverso mentiria na tela se a uazapi recusasse.
-      const enviada = await uazapi.enviarTexto(token, telefone, texto);
-
-      const { rows: conversa } = await cliente.query<{ id: string }>(
-        `INSERT INTO "SolarCosta_WhatsAppConversas"
-            (chatid, telefone, lead_id, ultima_mensagem_texto, ultima_mensagem_em)
-         VALUES ($1, $2, $3, $4, now())
-         ON CONFLICT (chatid) DO UPDATE SET
-            ultima_mensagem_texto = EXCLUDED.ultima_mensagem_texto,
-            ultima_mensagem_em    = EXCLUDED.ultima_mensagem_em,
-            -- Não desvincula um lead já apontado: o vínculo pode ter sido
-            -- corrigido à mão, e um envio avulso não pode desfazer isso.
-            lead_id               = COALESCE("SolarCosta_WhatsAppConversas".lead_id, EXCLUDED.lead_id)
-         RETURNING id`,
-        [chatidDeTelefone(telefone), telefone, leadId, texto.slice(0, 200)],
-      );
-      const conversaId = conversa[0]!.id;
-
-      await cliente.query(
-        `INSERT INTO "SolarCosta_WhatsAppMensagens"
-            (conversa_id, mensagem_id, de_mim, tipo, texto, status,
-             enviada_por_id, referencia_tipo, referencia_id)
-         VALUES ($1, $2, true, 'texto', $3, $4, $5, $6, $7)
-         ON CONFLICT (mensagem_id) DO NOTHING`,
-        [
-          conversaId,
-          enviada.messageid,
+        const gravada = await enviarERegistrar(cliente, {
+          token,
+          telefone,
           texto,
-          uazapi.traduzirStatusMensagem(enviada.status),
-          req.usuario.id,
-          d.referencia?.tipo ?? null,
-          d.referencia?.id ?? null,
-        ],
-      );
+          leadId,
+          autor: { id: req.usuario.id, nome: req.usuario.nome },
+          referenciaTipo: d.referencia?.tipo ?? null,
+          referenciaId: d.referencia?.id ?? null,
+          descricaoAuditoria: d.referencia
+            ? `${d.referencia.tipo} ${doc?.valores.numero ?? ''}`.trim()
+            : null,
+        });
 
-      // A timeline do lead é onde o vendedor olha antes de ligar. Sem esta
-      // linha o WhatsApp viraria um histórico paralelo — que é exatamente o
-      // problema que o CRM veio resolver.
-      if (leadId) {
-        const descricao = d.referencia
-          ? `${d.referencia.tipo === 'proposta' ? 'Proposta' : 'Contrato'} ${doc?.valores.numero ?? ''} enviado por WhatsApp.`.replace(
-              /\s+/g,
-              ' ',
-            )
-          : `Mensagem enviada por WhatsApp: ${texto.slice(0, 160)}`;
+        // A timeline do lead é onde o vendedor olha antes de ligar. Sem esta
+        // linha o WhatsApp viraria um histórico paralelo — que é exatamente o
+        // problema que o CRM veio resolver.
+        //
+        // Envio de DOCUMENTO é marco e entra sempre, sem a janela de 12 h que
+        // segura a conversa miúda: uma proposta enviada tem de aparecer na
+        // timeline mesmo que o vendedor tenha trocado mensagens dez minutos
+        // antes.
+        if (leadId) {
+          if (d.referencia) {
+            await cliente.query(
+              `INSERT INTO "SolarCosta_LeadHistorico" (lead_id, descricao, tipo, usuario_id, usuario_nome)
+               VALUES ($1, $2, 'whatsapp', $3, $4)`,
+              [
+                leadId,
+                `${d.referencia.tipo === 'proposta' ? 'Proposta' : 'Contrato'} ${doc?.valores.numero ?? ''} enviado por WhatsApp.`.replace(
+                  /\s+/g,
+                  ' ',
+                ),
+                req.usuario.id,
+                req.usuario.nome,
+              ],
+            );
+          } else {
+            await registrarNaTimeline(
+              cliente,
+              leadId,
+              `Conversa no WhatsApp: ${texto.slice(0, 120)}`,
+              { id: req.usuario.id, nome: req.usuario.nome },
+            );
+          }
+        }
 
-        await cliente.query(
-          `INSERT INTO "SolarCosta_LeadHistorico" (lead_id, descricao, tipo, usuario_id, usuario_nome)
-           VALUES ($1, $2, 'whatsapp', $3, $4)`,
-          [leadId, descricao, req.usuario.id, req.usuario.nome],
-        );
-      }
-
-      await cliente.query(
-        `SELECT "SolarCosta_fn_auditar"('criar','WhatsApp',$1,$2,$3)`,
-        [
-          `Mensagem para ${telefone}`,
-          d.referencia?.id ?? null,
-          d.referencia ? `${d.referencia.tipo} ${doc?.valores.numero ?? ''}`.trim() : null,
-        ],
-      );
-
-      return { conversaId, link, texto };
-    }, ator(req));
+        return { conversaId: gravada.conversaId, link, texto };
+      }, ator(req)),
+    );
 
     res.status(201).json({
       conversa_id: resultado.conversaId,
@@ -563,3 +507,5 @@ whatsappRouter.post(
     });
   }),
 );
+
+

@@ -28,7 +28,8 @@ import { siteRouter } from './routes/site.routes.js';
 import { solarRouter } from './routes/solar.routes.js';
 import { usuariosRouter } from './routes/usuarios.routes.js';
 import { whatsappRouter } from './routes/whatsapp.routes.js';
-import { whatsappWebhookRouter } from './routes/whatsappWebhook.routes.js';
+import { whatsappCaixaRouter } from './routes/whatsappCaixa.routes.js';
+import { whatsappWebhookRouter, limiteWebhookWhatsapp } from './routes/whatsappWebhook.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // dist/app.js -> ../public, onde o Dockerfile copia o build do frontend.
@@ -103,6 +104,20 @@ export function criarApp(): express.Express {
       credentials: true,
     }),
   );
+  // O WEBHOOK DA UAZAPI VEM ANTES DO PARSER GLOBAL, e a ordem é o ponto.
+  //
+  //   · Limitador primeiro: dentro do router ele só rodaria DEPOIS do parse, e
+  //     aí um anônimo forçaria a leitura de megabytes de JSON sem nunca passar
+  //     pelo contador.
+  //   · Parser próprio, mais folgado: o limite de 2mb abaixo vale para TODA a
+  //     API e precisa continuar baixo. Se a uazapi mandar mídia embutida em
+  //     base64 (não sabemos se manda), 2mb devolveria 413 antes do handler —
+  //     e 413 é 4xx, exatamente o que faz a uazapi ficar reenviando. 6mb dá
+  //     folga sem afrouxar o resto; arquivo grande vem por download, não aqui.
+  //
+  // O parser marca `req._body`, então o express.json global não reparseia.
+  app.use('/api/webhooks/whatsapp', limiteWebhookWhatsapp, express.json({ limit: '6mb' }));
+
   app.use(express.json({ limit: '2mb' }));
 
   // Sonda para o Docker/Nginx: confirma que o banco responde.
@@ -136,7 +151,12 @@ export function criarApp(): express.Express {
   app.use('/api/notificacoes', notificacoesRouter);
   app.use('/api/solar', solarRouter);
   app.use('/api/config', configRouter);
+  // Dois routers no MESMO prefixo, de propósito: conexão/modelos/envio num
+  // arquivo e caixa de entrada no outro. Ver o cabeçalho de
+  // whatsappCaixa.routes.ts — a divisão é por tamanho de arquivo, e os
+  // caminhos não colidem.
   app.use('/api/whatsapp', whatsappRouter);
+  app.use('/api/whatsapp', whatsappCaixaRouter);
 
   // Upload de imagem da biblioteca do site: o browser manda o File CRU como
   // corpo, com o Content-Type do arquivo. Fica antes do router para que o

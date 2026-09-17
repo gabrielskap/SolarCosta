@@ -50,3 +50,26 @@ export function telefoneDoChatid(chatid: string | undefined | null): string | nu
 export function chatidDeTelefone(telefone: string): string {
   return `${telefone}@s.whatsapp.net`;
 }
+
+/**
+ * Chave de comparação entre um telefone do WhatsApp e um telefone de cadastro:
+ * DDD + os 8 últimos dígitos. `5531986588456` -> `3186588456`.
+ *
+ * O NONO DÍGITO FICA DE FORA DE PROPÓSITO. Cadastro antigo tem
+ * "(31) 8658-8456" e o WhatsApp sempre devolve "5531986588456" — comparar os
+ * dois inteiros nunca casaria, e o lead ficaria sem vínculo justamente nos
+ * registros mais velhos, que são os que mais precisam de histórico.
+ *
+ * O preço é uma colisão teórica entre um fixo e um celular que terminem nos
+ * mesmos 8 dígitos no mesmo DDD. Na prática isso quase não existe, e o vínculo
+ * é corrigível à mão na tela — o que um lead sem histórico não é.
+ *
+ * Devolve `null` quando não dá para confiar no valor, pelo mesmo critério do
+ * `telefoneInternacional` acima.
+ */
+export function chaveTelefone(telefone: string | undefined | null): string | null {
+  let d = somenteDigitos(telefone);
+  if ((d.length === 12 || d.length === 13) && d.startsWith(DDI_BR)) d = d.slice(2);
+  if (d.length !== 10 && d.length !== 11) return null;
+  return d.slice(0, 2) + d.slice(-8);
+}

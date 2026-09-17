@@ -19,8 +19,23 @@ inteiro (`Alt+X`). Todos abrem com `BEGIN` e fecham com `COMMIT`.
 | 4 | `migrations/V004__views.sql` | 16 views de leitura (dashboard, notificações, painéis) | Sim |
 | 5 | `migrations/V005__geolocalizacao.sql` | Coordenada e layout de telhado na proposta (Solar API) | Sim |
 | 6 | `migrations/V006__cep_proposta.sql` | CEP e número do imóvel na proposta + coordenada na view de leads | Sim |
-| 7 | `seeds/S001__configuracao_base.sql` | Empresa, parâmetros, domínios, admin de bootstrap | Sim |
-| 8 | `seeds/S002__dados_demo.sql` | Migração dos dados mockados de `storage.ts` | Só em dev/homolog |
+| 7 | `migrations/V007__layout_manual.sql` | Layout de placas desenhado à mão na proposta | Sim |
+| 8 | `migrations/V008__site_cms.sql` | CMS do site institucional: páginas, blocos, menus, biblioteca de mídia | Sim |
+| 9 | `migrations/V009__whatsapp.sql` | WhatsApp pela uazapi (instância, conversas, mensagens, mídia, modelos) + links públicos de documento | Sim |
+| 10 | `seeds/S001__configuracao_base.sql` | Empresa, parâmetros, domínios, admin de bootstrap | Sim |
+| 11 | `seeds/S002__dados_demo.sql` | Migração dos dados mockados de `storage.ts` | Só em dev/homolog |
+
+> **Em produção ninguém roda isto à mão.** O `Dockerfile` executa
+> `npm run migrate && npm start`, e o runner
+> ([server/src/migrate.ts](../server/src/migrate.ts)) aplica em ordem
+> alfabética o que ainda não está em `SolarCosta_SchemaMigrations`. Esta tabela
+> aqui serve para quem precisa aplicar pelo cliente SQL. **Os seeds nunca são
+> rodados pelo deploy** — S001 continua sendo passo manual, uma vez só.
+
+> **V008 e V009 têm `ALTER TYPE … ADD VALUE` FORA da transação**, nas primeiras
+> linhas. O Postgres não deixa usar um valor de ENUM na mesma transação em que
+> ele é adicionado, e por isso esses dois arquivos não podem ser envelopados num
+> `BEGIN` externo pelo cliente SQL. Execute o script inteiro como ele está.
 
 > **V005 e V006 em banco que já está rodando.** São aditivas (`ADD COLUMN IF NOT EXISTS`)
 > e podem ser aplicadas com o sistema no ar — nenhuma coluna existente muda de

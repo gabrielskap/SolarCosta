@@ -420,3 +420,268 @@ export async function numeroExiste(token: string, numero: string): Promise<boole
   if (!Array.isArray(r) || r.length === 0) return true;
   return r[0]?.isInWhatsapp !== false;
 }
+
+/* ============================================================= MÍDIA == */
+
+/**
+ * Teto do arquivo recebido: 16 MB.
+ *
+ * O WhatsApp já limita anexo comum a 16 MB, então este teto recusa pouca coisa
+ * legítima. Ele existe porque os bytes vão para uma coluna `bytea` e passam
+ * inteiros pela memória do processo — sem limite, um vídeo grande derruba a API
+ * para todo mundo.
+ */
+export const TETO_MIDIA_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Mais folgado que o TIMEOUT_MS das outras chamadas.
+ *
+ * As demais falam com a uazapi e voltam; esta transfere um arquivo, e 15 s
+ * cortariam um áudio de celular em rede ruim.
+ */
+const TIMEOUT_MIDIA_MS = 30_000;
+
+export interface MidiaBaixada {
+  bytes: Buffer;
+  mimeType: string;
+  nomeArquivo: string;
+}
+
+/**
+ * Falha ao trazer um anexo.
+ *
+ * Classe própria, e não AppError, porque isto NÃO é erro de requisição: o
+ * download roda depois de o webhook já ter respondido 200. O destino desta
+ * mensagem é a coluna `erro` da mensagem, para a thread explicar por que o
+ * arquivo não abriu.
+ */
+export class FalhaMidia extends Error {}
+
+/**
+ * ===================== POR QUE EXISTE UMA LISTA DE HOSTS =====================
+ *
+ * A URL do anexo vem DENTRO do corpo do webhook, ou seja, de um POST anônimo da
+ * internet. Buscar cegamente o que chega ali transformaria a nossa API num
+ * proxy: `http://169.254.169.254/latest/meta-data/` (credencial da nuvem),
+ * `http://postgres:5432` na rede interna do Easypanel, `http://localhost:4000`
+ * — e o resultado ainda seria GRAVADO no banco e servido de volta pela rota de
+ * mídia. É SSRF com exfiltração, e o fato de exigir o segredo do webhook não
+ * muda o desenho: defesa em profundidade é o que sobra quando o segredo vaza.
+ *
+ * Então só três origens são aceitas: o host da própria UAZAPI_URL, `*.uazapi.com`
+ * e `*.whatsapp.net` (o CDN de mídia do WhatsApp).
+ */
+function hostPermitido(url: URL): boolean {
+  if (url.protocol !== 'https:') return false;
+
+  const host = url.hostname.toLowerCase();
+
+  // IP literal nunca: é a forma mais direta de alcançar a rede interna, e
+  // nenhum dos hosts legítimos é numérico.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return false;
+
+  let hostUazapi = '';
+  try {
+    hostUazapi = new URL(baseUrl()).hostname.toLowerCase();
+  } catch {
+    /* UAZAPI_URL inválida: sobram os dois domínios fixos abaixo */
+  }
+
+  return (
+    (hostUazapi !== '' && host === hostUazapi) ||
+    host === 'uazapi.com' || host.endsWith('.uazapi.com') ||
+    host === 'whatsapp.net' || host.endsWith('.whatsapp.net')
+  );
+}
+
+/** A URL, validada, ou `null` quando não serve. */
+function urlDeMidia(bruta: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(bruta);
+  } catch {
+    return null;
+  }
+  return hostPermitido(url) ? url : null;
+}
+
+/**
+ * Lê o corpo cortando no teto, em vez de carregar tudo e medir depois.
+ *
+ * `content-length` é conferido antes por ser barato, mas não dá para confiar
+ * nele: é cabeçalho opcional, e um servidor que o omita (ou minta) passaria
+ * direto. O corte no fluxo é o que realmente segura.
+ *
+ * `redirect: 'manual'` porque seguir redirecionamento automaticamente anularia
+ * a lista de hosts: bastaria a uazapi (ou quem falsificasse o webhook) apontar
+ * para um 302 em direção à rede interna. O Location é revalidado e seguido no
+ * máximo uma vez.
+ *
+ * O header `token` só vai quando o host é o da própria uazapi. Mandá-lo para o
+ * CDN do WhatsApp entregaria a credencial que envia mensagem no nome da
+ * empresa a um terceiro que não precisa dela.
+ */
+async function baixarBytes(url: URL, token: string, saltos = 1): Promise<MidiaBaixada> {
+  const cabecalhos: Record<string, string> = {};
+  let hostUazapi = '';
+  try {
+    hostUazapi = new URL(baseUrl()).hostname.toLowerCase();
+  } catch {
+    /* sem UAZAPI_URL válida não há a quem mandar o token */
+  }
+  if (hostUazapi && url.hostname.toLowerCase() === hostUazapi) cabecalhos.token = token;
+
+  let resposta: Response;
+  try {
+    resposta = await fetch(url, {
+      headers: cabecalhos,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(TIMEOUT_MIDIA_MS),
+    });
+  } catch (erro) {
+    throw new FalhaMidia(
+      `não foi possível baixar o arquivo (${erro instanceof Error ? erro.message : String(erro)})`,
+    );
+  }
+
+  if (resposta.status >= 300 && resposta.status < 400) {
+    const destino = resposta.headers.get('location');
+    if (!destino || saltos <= 0) throw new FalhaMidia('o arquivo redirecionou para lugar nenhum');
+
+    const proxima = urlDeMidia(new URL(destino, url).toString());
+    if (!proxima) throw new FalhaMidia('o arquivo redirecionou para um endereço não permitido');
+
+    return baixarBytes(proxima, token, saltos - 1);
+  }
+
+  if (!resposta.ok) throw new FalhaMidia(`o servidor devolveu ${resposta.status} para o arquivo`);
+
+  const anunciado = Number(resposta.headers.get('content-length'));
+  if (Number.isFinite(anunciado) && anunciado > TETO_MIDIA_BYTES) {
+    throw new FalhaMidia('arquivo acima do limite de 16 MB');
+  }
+
+  const pedacos: Uint8Array[] = [];
+  let total = 0;
+
+  if (resposta.body) {
+    const leitor = resposta.body.getReader();
+    for (;;) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > TETO_MIDIA_BYTES) {
+        // Cancelar fecha a conexão em vez de continuar recebendo bytes que já
+        // decidimos jogar fora.
+        await leitor.cancel().catch(() => {});
+        throw new FalhaMidia('arquivo acima do limite de 16 MB');
+      }
+      pedacos.push(value);
+    }
+  }
+
+  if (total === 0) throw new FalhaMidia('o arquivo veio vazio');
+
+  return {
+    bytes: Buffer.concat(pedacos),
+    mimeType: resposta.headers.get('content-type') ?? 'application/octet-stream',
+    nomeArquivo: '',
+  };
+}
+
+interface RespostaDownload {
+  fileURL?: string;
+  fileUrl?: string;
+  file?: string;
+  url?: string;
+  mimetype?: string;
+  mimeType?: string;
+  fileName?: string;
+}
+
+/**
+ * Traz os bytes de um anexo recebido.
+ *
+ * POR QUE COPIAR EM VEZ DE LINKAR: a uazapi apaga mídia depois de 2 dias e o
+ * endereço que ela devolve morre junto. A foto do padrão do telhado que o
+ * cliente mandou em março precisa abrir em dezembro.
+ *
+ * DOIS CAMINHOS, e o primeiro que servir vence:
+ *   1. a URL que veio no próprio evento, quando veio e quando passa pela lista
+ *      de hosts;
+ *   2. `POST /message/download` com o id da mensagem, que devolve o endereço —
+ *      e esse endereço passa pela MESMA validação.
+ *
+ * PRECISA CONFIRMAÇÃO EMPÍRICA: nem o nome do campo de URL no evento nem o
+ * formato da resposta do /message/download estão publicados. O corpo manda
+ * `id` e `messageid` juntos porque campo a mais é inofensivo e dobra a chance
+ * de acertar de primeira. O primeiro anexo real que chegar diz qual caminho
+ * funciona, e aí isto pode encolher.
+ */
+export async function baixarMidia(
+  token: string,
+  alvo: {
+    url: string | null;
+    mensagemId: string;
+    mimeType: string | null;
+    nomeArquivo: string | null;
+  },
+): Promise<MidiaBaixada> {
+  let url = alvo.url ? urlDeMidia(alvo.url) : null;
+  let mimeDaApi = alvo.mimeType;
+  let nomeDaApi = alvo.nomeArquivo;
+
+  if (alvo.url && !url) {
+    console.warn(`[uazapi] URL de mídia recusada pela lista de hosts: ${alvo.url.slice(0, 200)}`);
+  }
+
+  if (!url) {
+    let r: RespostaDownload;
+    try {
+      r = await chamar<RespostaDownload>('/message/download', {
+        auth: { tipo: 'instancia', token },
+        corpo: { id: alvo.mensagemId, messageid: alvo.mensagemId },
+      });
+    } catch (erro) {
+      // AppError daqui não pode subir como erro de rota: mídia que não baixa é
+      // um aviso na thread, não uma falha de requisição.
+      throw new FalhaMidia(erro instanceof Error ? erro.message : String(erro));
+    }
+
+    const bruta = r.fileURL ?? r.fileUrl ?? r.url ?? r.file ?? null;
+    mimeDaApi = mimeDaApi ?? r.mimetype ?? r.mimeType ?? null;
+    nomeDaApi = nomeDaApi ?? r.fileName ?? null;
+
+    url = bruta ? urlDeMidia(bruta) : null;
+    if (!url) {
+      console.error('[uazapi] /message/download sem URL utilizável', JSON.stringify(r).slice(0, 300));
+      throw new FalhaMidia('o servidor de WhatsApp não informou onde baixar o arquivo');
+    }
+  }
+
+  const baixado = await baixarBytes(url, token);
+
+  // O mime que a uazapi informou vence o `content-type`: um CDN devolvendo
+  // `application/octet-stream` transformaria a foto em download em vez de
+  // imagem na tela.
+  const mimeType = mimeDaApi ?? baixado.mimeType;
+
+  return {
+    bytes: baixado.bytes,
+    mimeType,
+    nomeArquivo: nomeDaApi ?? nomeProvavel(mimeType),
+  };
+}
+
+/**
+ * Nome para quando a uazapi não mandar nenhum.
+ *
+ * Foto e áudio de WhatsApp normalmente chegam sem nome — o aparelho não dá um.
+ * "arquivo" puro, sem extensão, faria o navegador do vendedor não saber com o
+ * que abrir depois de salvar.
+ */
+function nomeProvavel(mime: string): string {
+  const extensao = mime.split('/')[1]?.split(';')[0]?.replace(/[^a-z0-9]/gi, '') || 'bin';
+  return `arquivo.${extensao}`;
+}
+

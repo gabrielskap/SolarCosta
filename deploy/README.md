@@ -3,6 +3,23 @@
 Guia para deixar o sistema em produção com backup, rotina diária e TLS.
 Todos os comandos assumem Ubuntu/Debian na VPS.
 
+> ## ⚠️ O deploy da aplicação hoje é o [EASYPANEL.md](../EASYPANEL.md)
+>
+> O caminho descrito aqui — build do front com `VITE_API_URL`, `rsync` do
+> `dist/` para `/var/www/solarcosta`, Nginx servindo estático e um systemd
+> separado para a API — é o arranjo **anterior**, de quando front e API eram
+> dois deploys. Hoje é um container só, com front e API na mesma origem, e o
+> `VITE_API_URL` **não existe mais em produção**.
+>
+> O que continua valendo neste arquivo, e é por isso que ele não foi apagado:
+> **fechar a porta do Postgres** (§1), **backup e restauração** (`deploy/backup/`)
+> e a **rotina diária pelo pg_cron** (`deploy/postgres/`). Essas três coisas são
+> do servidor de banco, não do container da aplicação.
+>
+> A seção de Nginx serve de referência para o CSP, que precisa continuar
+> espelhando o do Helmet em `server/src/app.ts` — dois CSP na mesma resposta se
+> intersectam, então liberar só de um lado não libera nada.
+
 ---
 
 ## 1. Fechar a porta do Postgres

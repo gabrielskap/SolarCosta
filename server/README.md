@@ -147,8 +147,17 @@ SQLSTATE em [`errors.ts`](src/errors.ts):
 
 ## Superfície completa
 
-80 rotas em 13 grupos. Todas exigem `Authorization: Bearer <accessToken>`,
-exceto `/health` e `/api/auth/login|refresh`.
+118 rotas em 17 grupos. A maioria exige `Authorization: Bearer <accessToken>`.
+
+**O que NÃO exige login** — é uma lista curta de propósito, e vale conhecê-la
+inteira antes de mexer em autenticação:
+
+| Caminho | Como se protege |
+|---|---|
+| `/health` | Nada. Só diz se o banco responde. |
+| `/api/auth/login` e `/refresh` | São a porta de entrada. Rate limit. |
+| `/api/publico/*` | Serve o site institucional e o documento por link. O token do link é a única credencial; as rotas devolvem lista fechada de colunas, nunca `SELECT *`. |
+| `/api/webhooks/whatsapp/:segredo` | Segredo de 32 bytes na URL + token da instância conferido no corpo em tempo constante + rate limit antes do parse. A uazapi **não assina** o corpo. |
 
 | Grupo | Rotas | Permissão exigida |
 |---|---|---|
@@ -165,6 +174,17 @@ exceto `/health` e `/api/auth/login|refresh`.
 | `/api/notificacoes` | 2 | logado |
 | `/api/config` | 4 | leitura liberada; escrita exige `gerenciar_usuarios` |
 | `/api/auditoria` | 1 | `ver_auditoria` |
+| `/api/solar` | 3 | logado; desligado sem `GOOGLE_MAPS_SERVER_KEY` |
+| `/api/site` | 16 | `gerenciar_site` |
+| `/api/publico` | 6 | **sem login** — site institucional e documento por token |
+| `/api/whatsapp` | 13 | `usar_whatsapp`; conectar/desconectar exigem `gerenciar_usuarios` |
+| `/api/webhooks/whatsapp` | 1 | **sem login** — ver a tabela acima |
+
+> **`/api/whatsapp` são dois routers no mesmo prefixo.**
+> [whatsapp.routes.ts](src/routes/whatsapp.routes.ts) tem conexão, modelos e
+> envio de documento; [whatsappCaixa.routes.ts](src/routes/whatsappCaixa.routes.ts)
+> tem conversas, thread, mídia e resposta. A divisão é por tamanho de arquivo, e
+> os caminhos não colidem.
 
 ### Regras que a API impõe além do banco
 
@@ -178,12 +198,25 @@ exceto `/health` e `/api/auth/login|refresh`.
 
 ### O que ainda não existe
 
-Upload de arquivo (documentos do lead e anexos de obra). O banco guarda
+**Upload de arquivo** (documentos do lead e anexos de obra). O banco guarda
 `storage_path` e os metadados, mas falta decidir onde o binário mora: volume na
 VPS, MinIO ou S3. É o que trava a aba de documentos do `LeadDetailView`.
+(A mídia do site e a do WhatsApp já resolveram isso por outro caminho — `bytea`
+no Postgres, porque o container não tem volume e disco some no redeploy.)
 
-Emissão real de boleto (integração bancária ou Asaas) também está fora — as
-rotas gravam os dados, mas quem gera a linha digitável hoje é o usuário.
+**Emissão real de boleto** (integração bancária ou Asaas) — as rotas gravam os
+dados, mas quem gera a linha digitável hoje é o usuário.
+
+No WhatsApp, três pontas menores ficaram de fora e são conscientes:
+
+- **CRUD de modelos de mensagem.** Só existe `GET /modelos`; editar o texto dos
+  quatro modelos semeados pelo V009 exige SQL à mão.
+- **Revogação de link público.** `SolarCosta_LinksPublicos.revogado_em` é lido
+  em toda consulta, mas nenhuma rota o escreve.
+- **Responder em grupo.** `POST /conversas/:id/responder` devolve 409 para
+  conversa de grupo: mandar para um `@g.us` pelo campo `number` do `/send/text`
+  não foi verificado com a uazapi, e uma tela que diz "enviado" sem ter enviado
+  é pior que um aviso claro.
 
 ---
 

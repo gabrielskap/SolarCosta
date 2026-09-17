@@ -54,6 +54,43 @@ consegue abrir a porta 80 (privilegiada, <1024) sem precisar rodar como root.
 | `GOOGLE_MAPS_SERVER_KEY` | — (vazio) | Liga a busca de telhado por satélite na proposta. Chave de **servidor**, restrita por **IP da VPS**, com **Solar API + Geocoding API + Maps Static API** liberadas. Vazia, a busca some da tela e o resto do sistema funciona igual. |
 | `GOOGLE_MAPS_BROWSER_KEY` | — (vazio) | Liga o editor de telhado em tela cheia. Chave **separada** da de cima — esta roda no navegador, então precisa ser restrita por **referrer HTTP** (`https://SEU-DOMINIO/*`) e ter só a **Maps JavaScript API** liberada. Vazia, o card do telhado continua igual, só não abre em tela cheia. |
 
+### WhatsApp (uazapi) — tudo ou nada
+
+Vazias, a API sobe normalmente e só o WhatsApp fica desligado: a tela
+`/sistema/whatsapp` mostra "Integração desligada no servidor" e o botão de
+conectar fica inerte. O resto do sistema funciona igual.
+
+> **CUIDADO: preencher só uma delas IMPEDE A API DE SUBIR.** O `superRefine` de
+> [server/src/config.ts](server/src/config.ts) torna as outras três obrigatórias
+> assim que `UAZAPI_ADMIN_TOKEN` existe, e configuração inválida derruba o
+> processo na inicialização — de propósito. Ligar a integração pela metade daria
+> erro no meio de um envio, que é o pior lugar possível para descobrir uma
+> variável faltando. **Grave as quatro na mesma gravação.**
+
+| Variável | Exemplo | Observação |
+|---|---|---|
+| `UAZAPI_ADMIN_TOKEN` | — | Token de **administrador do container** uazapi (header `admintoken`). É a variável que liga a integração. **É raiz**: `GET /instance/all` devolve o token de todas as instâncias do container em texto puro. Ele nunca sai de `server/src/services/uazapi.ts`. |
+| `UAZAPI_URL` | `https://SEU-CONTAINER.uazapi.com` | Host do **seu** container uazapi, **sem barra final**. O `free.uazapi.com` serve para testar o fluxo do QR e nada mais — ele apaga a instância depois de 1 hora. |
+| `APP_URL` | `https://crm.solarcosta.com.br` | URL pública, com protocolo e **sem barra final**. Duas coisas dependem dela e nenhuma consegue adivinhá-la a partir de um request: o endereço do webhook que registramos na uazapi, e o link público da proposta que vai para o cliente. |
+| `WHATSAPP_CRIPTO_KEY` | — | Chave AES-256-GCM que cifra o token da instância no banco. Gere com `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
+
+> **Guarde a `WHATSAPP_CRIPTO_KEY` no mesmo lugar onde guarda as senhas do
+> banco.** O token da instância nasce do `POST /instance/create` — disparado pelo
+> clique em "Conectar número" — e vive cifrado com esta chave. Perder a chave
+> torna o token indecifrável, e a única saída é reconectar o número pelo QR.
+>
+> Ela é separada do `JWT_SECRET` de propósito: rotacionar o segredo do JWT é
+> operação de rotina e só derruba as sessões. Se ele também cifrasse este token,
+> a mesma troca desconectaria o WhatsApp da empresa sem aviso.
+
+Depois de ligar, ainda falta **dar a permissão**: a coluna `usar_whatsapp` nasce
+`false`, então ligue o toggle "Usar WhatsApp" em **Usuários** para quem vai
+atender. O cargo Administrador recebe por definição.
+
+O webhook é registrado automaticamente no `POST /instancia/conectar`, apontando
+para `{APP_URL}/api/webhooks/whatsapp/{segredo}` — o segredo é sorteado por
+instalação e vive no banco, não em variável de ambiente.
+
 > **Sobre as duas chaves do Google.** São duas porque as restrições são
 > incompatíveis: a de servidor é travada por IP (e morreria no navegador), a de
 > browser é travada por referrer (e é pública por natureza — quem abre o mapa
@@ -110,3 +147,13 @@ primeiro deploy bem-sucedido:
 - [ ] `S001__configuracao_base.sql` rodado manualmente (uma vez)
 - [ ] Login testado com o admin criado pelo `S001` e senha trocada (ver [deploy/trocar-senha-admin.sh](deploy/trocar-senha-admin.sh) para o caminho via VPS, ou troque direto pela API depois do primeiro login)
 - [ ] `curl -I https://SEU_DOMINIO/health` retornando 200
+
+### Se for usar o WhatsApp
+
+- [ ] `UAZAPI_ADMIN_TOKEN`, `UAZAPI_URL`, `APP_URL` e `WHATSAPP_CRIPTO_KEY` gravadas **juntas** (só uma delas derruba a API na subida)
+- [ ] `WHATSAPP_CRIPTO_KEY` guardada em backup — sem ela o número precisa ser reconectado
+- [ ] Toggle "Usar WhatsApp" ligado em **Usuários** para quem vai atender
+- [ ] `/sistema/whatsapp` sem o aviso âmbar e com "Conectar número" clicável
+- [ ] QR escaneado e o card mostrando "Conectado" com número e nome de perfil
+- [ ] Webhook conferido do lado da uazapi, apontando para `{APP_URL}/api/webhooks/whatsapp/…`
+- [ ] Proposta de teste enviada: mensagem chega com o link, o link abre o documento

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AlertTriangle, CheckCircle2, Inbox, Loader2, MessageCircle, Plug, PlugZap, WifiOff,
+  AlertTriangle, CheckCircle2, Loader2, MessageCircle, Plug, PlugZap, WifiOff,
 } from 'lucide-react';
 import { ErroApi } from '../../services/http';
 import { formatarTelefoneInternacional } from '../../utils/contato';
 import { WhatsApp, type EstadoWhatsApp, type InstanciaWhatsApp } from '../../services/whatsapp';
-import type { User } from '../../types';
+import type { Lead, User } from '../../types';
+import { CaixaEntrada } from './CaixaEntrada';
 import { ConexaoInstancia } from './ConexaoInstancia';
 
 /*
@@ -16,13 +17,26 @@ import { ConexaoInstancia } from './ConexaoInstancia';
  * carregar dados de uma tela que a maioria não abre; e o App.tsx já passa das
  * 900 linhas.
  *
- * Esta versão cobre a conexão. A caixa de entrada — lista de conversas e
- * thread — entra na fase seguinte, no espaço reservado no fim do arquivo.
+ * A conexão vive aqui; a caixa de entrada é a CaixaEntrada, que cuida do
+ * próprio polling. O que esta tela faz por ela é dizer se o número está
+ * conectado — sem isso a caixa não sabe se pode habilitar a resposta.
  */
+
+/**
+ * O status é revalidado a cada 30 s.
+ *
+ * Sem isso, um número que caísse às 3h continuaria mostrando "Conectado" para
+ * quem tivesse deixado a tela aberta, e o vendedor só descobriria no erro do
+ * primeiro envio. O custo é baixo de propósito: GET /instancia lê uma linha do
+ * banco e NÃO bate na uazapi.
+ */
+const INTERVALO_STATUS_MS = 30_000;
 
 interface Props {
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
+  /** Vem do App, que já os tem em memória desde o login. Usados no seletor de lead. */
+  leads: Lead[];
 }
 
 const RÓTULO_STATUS: Record<InstanciaWhatsApp['status'], string> = {
@@ -32,7 +46,7 @@ const RÓTULO_STATUS: Record<InstanciaWhatsApp['status'], string> = {
   hibernada: 'Em espera',
 };
 
-export const WhatsAppView: React.FC<Props> = ({ currentUser, showToast }) => {
+export const WhatsAppView: React.FC<Props> = ({ currentUser, showToast, leads }) => {
   const [estado, setEstado] = useState<EstadoWhatsApp | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -57,6 +71,38 @@ export const WhatsAppView: React.FC<Props> = ({ currentUser, showToast }) => {
   useEffect(() => {
     void carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Revalida o status em laço, sem tocar no estado de carregamento — um
+   * spinner a cada 30 s piscaria a tela inteira.
+   *
+   * Parado quando a aba está escondida, e sincronizado na hora ao voltar: aba
+   * esquecida aberta a noite toda não deve gerar milhares de requisições, e 30 s
+   * de espera depois de trocar de janela é exatamente quando alguém está
+   * olhando.
+   */
+  useEffect(() => {
+    const atualizar = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        setEstado(await WhatsApp.estado());
+      } catch {
+        /* silencioso: é um tique de fundo, não uma ação do usuário */
+      }
+    };
+
+    // A MESMA referência no add e no remove: uma arrow nova em cada chamada
+    // registraria o ouvinte e não removeria nada.
+    const aoTicar = () => void atualizar();
+
+    const timer = setInterval(aoTicar, INTERVALO_STATUS_MS);
+    document.addEventListener('visibilitychange', aoTicar);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', aoTicar);
+    };
   }, []);
 
   const desconectar = async () => {
@@ -209,14 +255,13 @@ export const WhatsAppView: React.FC<Props> = ({ currentUser, showToast }) => {
       </section>
 
       {/* --------------------------------------------- caixa de entrada -- */}
-      <section className="bg-white border border-dashed border-slate-300 rounded-2xl p-8 text-center">
-        <Inbox className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-        <p className="font-bold text-slate-700 text-sm">Caixa de entrada</p>
-        <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-          As conversas aparecem aqui na próxima etapa da integração. O número já pode ser conectado
-          agora — a partir da conexão, as mensagens passam a ser registradas.
-        </p>
-      </section>
+      {/*
+        Aparece mesmo com o número desconectado: o histórico do que já passou
+        continua valendo, e esconder a caixa faria parecer que as conversas
+        foram perdidas. O que a desconexão desabilita é a resposta — a própria
+        CaixaEntrada diz o motivo na caixa de texto.
+      */}
+      <CaixaEntrada conectada={conectada} leads={leads} showToast={showToast} />
 
       {conectando && (
         <ConexaoInstancia
