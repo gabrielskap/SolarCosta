@@ -94,6 +94,25 @@ const schema = z.object({
   // token, a mesma troca desconectaria o WhatsApp da empresa sem aviso.
   WHATSAPP_CRIPTO_KEY: z.string().min(32, 'WHATSAPP_CRIPTO_KEY precisa de pelo menos 32 caracteres').optional(),
 
+  // Executável do Chromium que vira a proposta em PDF (ver services/
+  // pdfDocumento.ts).
+  //
+  // SEM PADRÃO FIXO de propósito: `/usr/bin/chromium-browser` está certo no
+  // container Alpine e errado em toda máquina de desenvolvimento, e o sintoma
+  // ("Confira CHROMIUM_PATH") chegava tarde, no meio de um envio. Vazia, o
+  // serviço procura o navegador nos caminhos usuais do sistema — inclusive os
+  // do Windows e do macOS. Preencha só para forçar um binário específico.
+  CHROMIUM_PATH: z.string().min(1).optional(),
+
+  // Onde o Chromium busca a página do documento.
+  //
+  // Loopback e não APP_URL: em produção o mesmo Express serve a API e o SPA,
+  // então a página está a um salto de distância — sair até o DNS público e
+  // voltar só acrescentaria latência, TLS e um ponto de falha. Em
+  // desenvolvimento o SPA vive no Vite, e aí isto precisa apontar para ele
+  // (http://127.0.0.1:3000).
+  PDF_BASE_URL: z.string().url().optional(),
+
   // Rotina diária (boletos vencidos, obras atrasadas). Desligue se estiver
   // rodando a mesma função pelo pg_cron.
   SCHEDULER_ATIVO: z
@@ -151,5 +170,10 @@ export const config = {
    * APP_URL também estão preenchidas — o resto do código conta com isso.
    */
   whatsappAtivo: Boolean(parsed.data.UAZAPI_ADMIN_TOKEN),
+  /** Endereço de onde o Chromium lê /p/<token> para imprimir o PDF. */
+  pdfBaseUrl: (parsed.data.PDF_BASE_URL ?? `http://127.0.0.1:${parsed.data.PORT}`).replace(
+    /\/+$/,
+    '',
+  ),
   isProd: parsed.data.NODE_ENV === 'production',
 };

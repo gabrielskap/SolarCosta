@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AlertTriangle, CheckCircle2, Loader2, MessageCircle, Plug, PlugZap, WifiOff,
+  AlertTriangle, CheckCircle2, FileText, History, Loader2, MessageCircle, Plug, PlugZap,
+  Send, WifiOff,
 } from 'lucide-react';
 import { ErroApi } from '../../services/http';
 import { formatarTelefoneInternacional } from '../../utils/contato';
 import { WhatsApp, type EstadoWhatsApp, type InstanciaWhatsApp } from '../../services/whatsapp';
-import type { Lead, User } from '../../types';
-import { CaixaEntrada } from './CaixaEntrada';
+import type { Contrato, Lead, Proposta, User } from '../../types';
+import { AbaEnviar } from './AbaEnviar';
+import { AbaHistorico } from './AbaHistorico';
+import { AbaModelos } from './AbaModelos';
 import { ConexaoInstancia } from './ConexaoInstancia';
 
 /*
@@ -17,9 +20,16 @@ import { ConexaoInstancia } from './ConexaoInstancia';
  * carregar dados de uma tela que a maioria não abre; e o App.tsx já passa das
  * 900 linhas.
  *
- * A conexão vive aqui; a caixa de entrada é a CaixaEntrada, que cuida do
- * próprio polling. O que esta tela faz por ela é dizer se o número está
- * conectado — sem isso a caixa não sabe se pode habilitar a resposta.
+ * A conexão vive aqui e o resto são abas: compor e mandar (AbaEnviar), os
+ * modelos de mensagem (AbaModelos) e o que já saiu (AbaHistorico). O que esta
+ * tela faz por elas é dizer se o número está conectado — sem isso a aba Enviar
+ * não sabe se pode habilitar o botão.
+ *
+ * A CAIXA DE ENTRADA SAIU DA TELA, não do repositório. CaixaEntrada,
+ * ListaConversas, ThreadConversa e MidiaMensagem continuam aqui e as rotas
+ * /api/whatsapp/conversas* continuam de pé — o webhook precisa delas para
+ * gravar o que chega, e o envio precisa da linha de conversa. Voltar a exibir
+ * o chat é uma linha nesta tela.
  */
 
 /**
@@ -35,9 +45,24 @@ const INTERVALO_STATUS_MS = 30_000;
 interface Props {
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
-  /** Vem do App, que já os tem em memória desde o login. Usados no seletor de lead. */
+  /** Vêm do App, que já os tem em memória desde o login (carregarTudo). */
   leads: Lead[];
+  /**
+   * Alimentam o seletor de anexo da aba Enviar. Vêm inteiros — inclusive com o
+   * telefone, que a listagem da API não devolve —, então o seletor não precisa
+   * de rota nova.
+   */
+  propostas: Proposta[];
+  contratos: Contrato[];
 }
+
+type Aba = 'enviar' | 'modelos' | 'historico';
+
+const ABAS: { id: Aba; rotulo: string; Icone: typeof Send }[] = [
+  { id: 'enviar', rotulo: 'Enviar', Icone: Send },
+  { id: 'modelos', rotulo: 'Modelos', Icone: FileText },
+  { id: 'historico', rotulo: 'Histórico', Icone: History },
+];
 
 const RÓTULO_STATUS: Record<InstanciaWhatsApp['status'], string> = {
   conectada: 'Conectado',
@@ -46,12 +71,26 @@ const RÓTULO_STATUS: Record<InstanciaWhatsApp['status'], string> = {
   hibernada: 'Em espera',
 };
 
-export const WhatsAppView: React.FC<Props> = ({ currentUser, showToast, leads }) => {
+export const WhatsAppView: React.FC<Props> = ({
+  currentUser,
+  showToast,
+  leads,
+  propostas,
+  contratos,
+}) => {
   const [estado, setEstado] = useState<EstadoWhatsApp | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [conectando, setConectando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
+
+  const [aba, setAba] = useState<Aba>('enviar');
+  /**
+   * Contador, não booleano: o Histórico recarrega a cada incremento. Um
+   * booleano precisaria ser desligado depois, e a aba pode nem estar montada
+   * no momento do envio para fazer isso.
+   */
+  const [recarregarHistorico, setRecarregarHistorico] = useState(0);
 
   const podeAdministrar =
     currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.gerenciarUsuarios;
@@ -254,14 +293,39 @@ export const WhatsAppView: React.FC<Props> = ({ currentUser, showToast, leads })
         )}
       </section>
 
-      {/* --------------------------------------------- caixa de entrada -- */}
-      {/*
-        Aparece mesmo com o número desconectado: o histórico do que já passou
-        continua valendo, e esconder a caixa faria parecer que as conversas
-        foram perdidas. O que a desconexão desabilita é a resposta — a própria
-        CaixaEntrada diz o motivo na caixa de texto.
-      */}
-      <CaixaEntrada conectada={conectada} leads={leads} showToast={showToast} />
+      {/* ---------------------------------------------------------- abas -- */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200">
+        {ABAS.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => setAba(a.id)}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold rounded-t-xl border-b-2 transition ${
+              aba === a.id
+                ? 'border-[#FFD100] text-[#004276] bg-white'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <a.Icone className="w-4 h-4" />
+            {a.rotulo}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'enviar' && (
+        <AbaEnviar
+          conectada={conectada}
+          leads={leads}
+          propostas={propostas}
+          contratos={contratos}
+          showToast={showToast}
+          onEnviado={() => setRecarregarHistorico((n) => n + 1)}
+        />
+      )}
+      {aba === 'modelos' && <AbaModelos showToast={showToast} />}
+      {aba === 'historico' && (
+        <AbaHistorico showToast={showToast} recarregarEm={recarregarHistorico} />
+      )}
 
       {conectando && (
         <ConexaoInstancia

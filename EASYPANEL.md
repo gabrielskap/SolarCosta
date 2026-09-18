@@ -83,6 +83,38 @@ conectar fica inerte. O resto do sistema funciona igual.
 > operação de rotina e só derruba as sessões. Se ele também cifrasse este token,
 > a mesma troca desconectaria o WhatsApp da empresa sem aviso.
 
+### PDF da proposta — Chromium no container
+
+Desde o V010 o cliente recebe a proposta e o contrato como **PDF anexado** no
+WhatsApp, não como link. O PDF não é redesenhado numa biblioteca: a API abre a
+própria página pública do documento (`/p/<token>`) num Chromium headless e manda
+imprimir — ver [server/src/services/pdfDocumento.ts](server/src/services/pdfDocumento.ts).
+É o que garante que o arquivo saia idêntico ao que já se via na tela.
+
+**O que isso custa, para você dimensionar a VPS:**
+
+- a imagem cresce ~300 MB (pacote `chromium` do Alpine e as fontes, instalados
+  pelo `Dockerfile`);
+- cada impressão segura ~200–300 MB de RAM por alguns segundos.
+
+As defesas já estão no código: **uma impressão por vez**, navegador **desligado
+após 2 minutos ociosos** e **cache de 5 minutos** por documento — mandar a mesma
+proposta para três pessoas imprime uma vez só. Ainda assim, **não rode isto num
+plano com menos de 1 GB de RAM**: o primeiro envio acorda o Chromium ao lado do
+Node e do pool do Postgres.
+
+| Variável | Exemplo | Observação |
+|---|---|---|
+| `CHROMIUM_PATH` | `/usr/bin/chromium-browser` | **Já vem definida pelo Dockerfile** — só mexa se trocar a base da imagem. Em desenvolvimento local, aponte para o Chrome da sua máquina. |
+| `PDF_BASE_URL` | — (vazio) | Vazio usa `http://127.0.0.1:<PORT>`, que é o certo em produção: o mesmo Express serve a API e o SPA. Só precisa ser preenchida em desenvolvimento, quando o front está no Vite. |
+
+> **Se o envio de proposta voltar `pdf_sem_navegador`**, o Chromium não subiu:
+> confira se o `apk add chromium` do `Dockerfile` sobreviveu a alguma edição da
+> imagem e se `CHROMIUM_PATH` aponta para o binário certo. O log da API traz o
+> caminho tentado e a mensagem crua do sistema.
+
+---
+
 Depois de ligar, ainda falta **dar a permissão**: a coluna `usar_whatsapp` nasce
 `false`, então ligue o toggle "Usar WhatsApp" em **Usuários** para quem vai
 atender. O cargo Administrador recebe por definição.
@@ -102,6 +134,71 @@ instalação e vive no banco, não em variável de ambiente.
 **Não** existe mais `VITE_API_URL` em produção — o front usa caminho relativo
 porque agora está na mesma origem da API. (Só é usado em desenvolvimento
 local, quando front e API sobem em processos/portas separadas.)
+
+### Bloco pronto para colar
+
+O painel do Easypanel aceita o conjunto inteiro de uma vez. Substitua os valores
+em CAIXA ALTA e **não** acrescente `NODE_ENV` nem `PORT` — o Dockerfile já os
+fixa em `production` e `80`.
+
+```
+# ------------------------------------------------------------------ banco --
+DATABASE_URL=postgres://solarcosta_app:SENHA_APP@database_postgres:5432/SolarCosta
+MIGRATION_DATABASE_URL=postgres://solarcosta_migrator:SENHA_MIGRATOR@database_postgres:5432/SolarCosta
+DATABASE_SSL=false
+DATABASE_POOL_MAX=10
+
+# ----------------------------------------------------------------- sessão --
+JWT_SECRET=GERE_UM_NOVO
+JWT_REFRESH_SECRET=GERE_OUTRO_DIFERENTE
+ACCESS_TOKEN_TTL=15m
+REFRESH_TOKEN_TTL_DIAS=30
+
+# ------------------------------------------------------------------- rede --
+CORS_ORIGINS=https://SEU-DOMINIO,https://SEU-APP.easypanel.host
+APP_URL=https://SEU-DOMINIO
+
+# ----------------------------------------------------------- google maps --
+GOOGLE_MAPS_SERVER_KEY=CHAVE_DE_SERVIDOR_RESTRITA_POR_IP
+GOOGLE_MAPS_BROWSER_KEY=CHAVE_DE_BROWSER_RESTRITA_POR_REFERRER
+
+# --------------------------------------------------------------- whatsapp --
+UAZAPI_URL=https://SEU-CONTAINER.uazapi.com
+UAZAPI_ADMIN_TOKEN=ADMINTOKEN_DO_CONTAINER
+WHATSAPP_CRIPTO_KEY=CHAVE_AES_DE_32_BYTES
+```
+
+Gerando os segredos:
+
+```bash
+node -e "console.log('JWT_SECRET='+require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+```bash
+node -e "console.log('JWT_REFRESH_SECRET='+require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+> **`APP_URL` PRECISA DO `https://`.** É `z.string().url()` no schema, e
+> `solarcosta.com.br` sem protocolo não é URL — a API imprime
+> `APP_URL precisa ser uma URL completa.` e sai com código 1, deixando o
+> container em laço de reinício. Não é frescura de validação: é dessa variável
+> que saem o endereço do webhook e o link público da proposta, e nenhum dos dois
+> funciona sem protocolo.
+
+> **As senhas dos papéis do banco vão DENTRO de uma URL de conexão.** Gere em
+> `base64url` (comando acima, com 24 bytes): o `base64` comum produz `+`, `/` e
+> `=`, e uma senha com `/` no meio quebra a string de conexão de um jeito que o
+> erro não denuncia — o driver reclama do *host*, não da senha. Caractere
+> especial que sobrar precisa ser percent-encoded (`@` vira `%40`).
+
+> **A ordem importa.** Colar este bloco antes de criar os papéis derruba o
+> deploy em `permission denied for schema public`. Rode `02_papeis.sql` e depois
+> `03_papel_migracao.sql` (passo 4 abaixo) **antes** de salvar as variáveis.
+
+> **O toggle "Create env file" do Easypanel é redundante.** O painel já injeta
+> as variáveis no processo, e o `dotenv` não sobrescreve o que já está em
+> `process.env`. Ligá-lo só escreve os mesmos segredos num arquivo dentro do
+> container, sem ganho.
 
 ## 4. Banco de dados
 

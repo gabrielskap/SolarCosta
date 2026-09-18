@@ -38,6 +38,46 @@ export interface ModeloMensagem {
   contexto: 'proposta' | 'contrato' | 'lead' | 'livre';
   texto: string;
   ordem: number;
+  /** Modelo inativo some do seletor de envio, mas continua na aba Modelos. */
+  ativo: boolean;
+}
+
+/** O que o formulário da aba Modelos manda — o mesmo corpo no criar e no editar. */
+export interface DadosModelo {
+  nome: string;
+  contexto: ModeloMensagem['contexto'];
+  texto: string;
+  ordem: number;
+  ativo: boolean;
+}
+
+/* ============================================================ HISTÓRICO == */
+
+/**
+ * Uma mensagem que SAIU daqui, do jeito que a aba Histórico precisa: já com o
+ * destinatário, o lead e o número do documento resolvidos, sem obrigar a tela a
+ * abrir a conversa para descobrir para quem foi.
+ */
+export interface EnvioRegistrado {
+  id: string;
+  ocorridoEm: string;
+  texto: string | null;
+  status: StatusMensagem;
+  erro: string | null;
+  referenciaTipo: 'proposta' | 'contrato' | null;
+  referenciaId: string | null;
+  /** Número do documento (2026-0184), quando a mensagem entregou um. */
+  referenciaNumero: string | null;
+  conversaId: string;
+  telefone: string | null;
+  nomeExibicao: string | null;
+  lead: { id: string; numero: string; nome: string } | null;
+  enviadaPorNome: string | null;
+}
+
+export interface PaginaEnviadas {
+  enviadas: EnvioRegistrado[];
+  proximoCursor: string | null;
 }
 
 /* ====================================================== CAIXA DE ENTRADA == */
@@ -138,6 +178,24 @@ function paraMensagem(b: any): Mensagem {
   };
 }
 
+function paraEnviada(b: any): EnvioRegistrado {
+  return {
+    id: b.id,
+    ocorridoEm: b.ocorrido_em,
+    texto: b.texto ?? null,
+    status: b.status,
+    erro: b.erro ?? null,
+    referenciaTipo: b.referencia_tipo ?? null,
+    referenciaId: b.referencia_id ?? null,
+    referenciaNumero: b.referencia_numero ?? null,
+    conversaId: b.conversa_id,
+    telefone: b.telefone ?? null,
+    nomeExibicao: b.nome_exibicao ?? null,
+    lead: b.lead ? { id: b.lead.id, numero: b.lead.numero, nome: b.lead.nome } : null,
+    enviadaPorNome: b.enviada_por_nome ?? null,
+  };
+}
+
 /** snake_case da API → camelCase, como o resto do front espera. */
 function paraInstancia(bruta: any): InstanciaWhatsApp {
   return {
@@ -179,9 +237,12 @@ export const WhatsApp = {
   },
 
   /**
-   * Manda a mensagem. Quando há `referencia`, o servidor gera (ou reaproveita)
-   * o link público do documento e o injeta no {{link}} do modelo — o front
-   * nunca monta esse endereço, porque quem sabe o domínio público é a API.
+   * Manda a mensagem.
+   *
+   * Com `referencia`, o servidor IMPRIME o documento em PDF e o manda como
+   * anexo, usando a mensagem como legenda do arquivo. Pode levar alguns
+   * segundos na primeira vez — é o Chromium do servidor acordando —, e é por
+   * isso que a tela mostra progresso em vez de travar sem explicação.
    */
   async enviar(dados: {
     telefone?: string;
@@ -189,7 +250,11 @@ export const WhatsApp = {
     modeloId?: string;
     referencia?: { tipo: 'proposta' | 'contrato'; id: string };
     leadId?: string;
-  }): Promise<{ conversaId: string; link: string | null; texto: string }> {
+  }): Promise<{
+    conversaId: string;
+    texto: string;
+    documento: { nome: string; tamanhoBytes: number } | null;
+  }> {
     const r = await http.post<any>('/api/whatsapp/enviar', {
       telefone: dados.telefone,
       texto: dados.texto,
@@ -197,13 +262,80 @@ export const WhatsApp = {
       referencia: dados.referencia,
       lead_id: dados.leadId,
     });
-    return { conversaId: r.conversa_id, link: r.link ?? null, texto: r.texto };
+    return {
+      conversaId: r.conversa_id,
+      texto: r.texto,
+      documento: r.documento
+        ? { nome: r.documento.nome, tamanhoBytes: r.documento.tamanho_bytes ?? 0 }
+        : null,
+    };
   },
 
-  async modelos(contexto?: ModeloMensagem['contexto']): Promise<ModeloMensagem[]> {
-    const q = contexto ? `?contexto=${contexto}` : '';
-    const r = await http.get<any>(`/api/whatsapp/modelos${q}`);
+  /**
+   * Modelos de mensagem.
+   *
+   * `incluirInativos` só é usado pela aba Modelos, que precisa poder reativar o
+   * que foi desligado. O seletor de envio chama sem o parâmetro e recebe só os
+   * ativos — é o comportamento que o EnviarPorWhatsApp sempre teve.
+   */
+  async modelos(
+    contexto?: ModeloMensagem['contexto'],
+    incluirInativos = false,
+  ): Promise<ModeloMensagem[]> {
+    const q = new URLSearchParams();
+    if (contexto) q.set('contexto', contexto);
+    if (incluirInativos) q.set('incluir_inativos', '1');
+    const busca = q.toString();
+    const r = await http.get<any>(`/api/whatsapp/modelos${busca ? `?${busca}` : ''}`);
     return r.modelos ?? [];
+  },
+
+  async criarModelo(dados: DadosModelo): Promise<ModeloMensagem> {
+    const r = await http.post<any>('/api/whatsapp/modelos', dados);
+    return r.modelo;
+  },
+
+  async atualizarModelo(id: string, dados: DadosModelo): Promise<ModeloMensagem> {
+    const r = await http.put<any>(`/api/whatsapp/modelos/${id}`, dados);
+    return r.modelo;
+  },
+
+  /** Liga-desliga do card, sem mexer no resto do modelo. */
+  async alternarModelo(id: string, ativo: boolean): Promise<ModeloMensagem> {
+    const r = await http.patch<any>(`/api/whatsapp/modelos/${id}`, { ativo });
+    return r.modelo;
+  },
+
+  async excluirModelo(id: string): Promise<void> {
+    await http.delete<void>(`/api/whatsapp/modelos/${id}`);
+  },
+
+  /**
+   * Histórico do que saiu, mais recentes primeiro.
+   *
+   * `antesDe` é cursor de timestamp, como em `conversas()`: a lista cresce pelo
+   * topo, e paginar por número repetiria linhas conforme mensagens novas
+   * entrassem.
+   */
+  async enviadas(
+    opcoes: {
+      limite?: number;
+      antesDe?: string;
+      status?: StatusMensagem;
+      referenciaTipo?: 'proposta' | 'contrato';
+    } = {},
+  ): Promise<PaginaEnviadas> {
+    const q = new URLSearchParams();
+    if (opcoes.limite) q.set('limite', String(opcoes.limite));
+    if (opcoes.antesDe) q.set('antes_de', opcoes.antesDe);
+    if (opcoes.status) q.set('status', opcoes.status);
+    if (opcoes.referenciaTipo) q.set('referencia_tipo', opcoes.referenciaTipo);
+
+    const r = await http.get<any>(`/api/whatsapp/enviadas?${q.toString()}`);
+    return {
+      enviadas: (r.enviadas ?? []).map(paraEnviada),
+      proximoCursor: r.proximo_cursor ?? null,
+    };
   },
 
   /* -------------------------------------------------- caixa de entrada -- */

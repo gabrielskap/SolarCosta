@@ -968,7 +968,13 @@ export default function App() {
                   path="whatsapp"
                   element={
                     currentUser.cargo === 'Administrador' || currentUser.permissoes?.usarWhatsapp ? (
-                      <WhatsAppView currentUser={currentUser} showToast={showToast} leads={leads} />
+                      <WhatsAppView
+                        currentUser={currentUser}
+                        showToast={showToast}
+                        leads={leads}
+                        propostas={propostas}
+                        contratos={contratos}
+                      />
                     ) : (
                       <Navigate to="/sistema/dashboard" replace />
                     )

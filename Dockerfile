@@ -37,7 +37,29 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Dependências de produção da API (pg, express, jwt, etc.)
+# Chromium, para transformar a proposta em PDF.
+#
+# A API abre a página pública do documento (/p/<token>) num navegador headless
+# e manda imprimir — ver server/src/services/pdfDocumento.ts. É o único jeito de
+# ter o PDF sem desenhar o documento uma segunda vez numa biblioteca de PDF, o
+# que garantiria divergência no primeiro ajuste de layout.
+#
+# Custa ~300 MB na imagem. Os pacotes ao lado do chromium não são opcionais:
+# sem nss o navegador não sobe, e sem as fontes o texto sai em caixas vazias.
+#
+# `puppeteer-core` (e não `puppeteer`) é dependência de propósito: o pacote
+# completo baixa o próprio Chromium no npm install, o que somaria um segundo
+# navegador de ~170 MB ao lado deste.
+RUN apk add --no-cache \
+      chromium \
+      nss \
+      freetype \
+      harfbuzz \
+      ca-certificates \
+      ttf-freefont
+ENV CHROMIUM_PATH=/usr/bin/chromium-browser
+
+# Dependências de produção da API (pg, express, jwt, puppeteer-core, etc.)
 COPY server/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 

@@ -5,6 +5,7 @@ import { criarApp } from './app.js';
 import { config } from './config.js';
 import { fecharPool, verificarConexao } from './db.js';
 import { iniciarAgendador } from './scheduler.js';
+import { fecharNavegador } from './services/pdfDocumento.js';
 
 async function main(): Promise<void> {
   await verificarConexao();
@@ -46,6 +47,9 @@ async function main(): Promise<void> {
   const encerrar = (sinal: string) => {
     console.log(`[api] ${sinal} recebido, encerrando...`);
     pararAgendador();
+    // O Chromium é um processo FILHO: sem isto ele sobrevive ao encerramento e
+    // o container fica com um navegador órfão comendo memória a cada redeploy.
+    void fecharNavegador();
     servidor.close(() => {
       fecharPool()
         .then(() => process.exit(0))

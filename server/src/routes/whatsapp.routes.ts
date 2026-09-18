@@ -24,7 +24,8 @@ import { consultar, consultarUm, emTransacao, type Cliente } from '../db.js';
 import { asyncHandler, AppError, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
 import { cifrar, decifrar } from '../services/segredos.js';
-import { obterOuCriarLink, urlPublica } from '../services/linksPublicos.js';
+import { obterOuCriarLink } from '../services/linksPublicos.js';
+import { gerarPdfDocumento } from '../services/pdfDocumento.js';
 import { telefoneInternacional } from '../utils/telefone.js';
 import * as uazapi from '../services/uazapi.js';
 import { enviarERegistrar } from '../services/envioWhatsapp.js';
@@ -227,30 +228,197 @@ whatsappRouter.post(
 
 /* ============================================================ MODELOS == */
 
+const CONTEXTOS = ['proposta', 'contrato', 'lead', 'livre'] as const;
+
+/** Colunas devolvidas em toda rota de modelo — a tela espera sempre as mesmas. */
+const COLUNAS_MODELO = 'id, nome, contexto, texto, ordem, ativo';
+
+interface LinhaModelo {
+  id: string;
+  nome: string;
+  contexto: string;
+  texto: string;
+  ordem: number;
+  ativo: boolean;
+}
+
+/**
+ * `ordem` e `ativo` têm default aqui e não são opcionais na saída: o formulário
+ * da tela sempre manda os dois, e um PUT que omitisse um deles apagaria o valor
+ * guardado — o schema é o mesmo do POST de propósito, para que editar não seja
+ * um caminho com regras próprias.
+ */
+const modeloSchema = z.object({
+  nome: z.string().trim().min(1, 'Informe o nome do modelo.').max(80),
+  contexto: z.enum(CONTEXTOS).default('livre'),
+  texto: z.string().trim().min(1, 'A mensagem não pode ficar vazia.').max(4000),
+  ordem: z.coerce.number().int().min(0).max(999).default(0),
+  ativo: z.boolean().default(true),
+});
+
 whatsappRouter.get(
   '/modelos',
   exigirPermissao('usar_whatsapp'),
   asyncHandler(async (req, res) => {
-    const { contexto } = z
-      .object({ contexto: z.enum(['proposta', 'contrato', 'lead', 'livre']).optional() })
+    const f = z
+      .object({
+        contexto: z.enum(CONTEXTOS).optional(),
+        /**
+         * A aba de gestão precisa enxergar o que está desativado — senão não
+         * há como reativar. Quem não manda o parâmetro (o seletor de envio e o
+         * EnviarPorWhatsApp) continua recebendo só os ativos, como sempre.
+         *
+         * Lido como string em vez de z.coerce.boolean(): aquele converte por
+         * Boolean(), e Boolean('0') é true — "?incluir_inativos=0" passaria a
+         * significar o contrário do que está escrito.
+         */
+        incluir_inativos: z.string().max(5).optional(),
+      })
       .parse(req.query);
 
+    const incluirInativos = f.incluir_inativos === '1' || f.incluir_inativos === 'true';
+
     const params: unknown[] = [];
-    let filtro = '';
-    if (contexto) {
-      params.push(contexto);
-      filtro = `AND contexto = $${params.length}`;
+    const condicoes: string[] = [];
+    if (!incluirInativos) condicoes.push('ativo');
+    if (f.contexto) {
+      params.push(f.contexto);
+      condicoes.push(`contexto = $${params.length}`);
     }
 
-    const modelos = await consultar(
-      `SELECT id, nome, contexto, texto, ordem
+    const modelos = await consultar<LinhaModelo>(
+      `SELECT ${COLUNAS_MODELO}
          FROM "SolarCosta_WhatsAppModelos"
-        WHERE ativo ${filtro}
+        ${condicoes.length ? `WHERE ${condicoes.join(' AND ')}` : ''}
         ORDER BY contexto, ordem, nome`,
       params,
     );
 
     res.json({ modelos });
+  }),
+);
+
+/*
+ * Criar, editar e excluir modelo ficam em `usar_whatsapp`, não em
+ * `gerenciar_usuarios`: quem já pode escrever um texto livre para o cliente não
+ * fica mais perigoso por poder salvar esse texto como modelo. O V009 argumenta
+ * explicitamente contra inflar a matriz de permissões, e `gerenciar_usuarios`
+ * continua valendo só para trocar o número da empresa.
+ *
+ * Nome repetido não é conferido à mão: a UNIQUE da tabela levanta 23505 e o
+ * tratarErros() já o traduz em 409. Conferir antes só criaria uma corrida entre
+ * o SELECT e o INSERT.
+ */
+whatsappRouter.post(
+  '/modelos',
+  exigirPermissao('usar_whatsapp'),
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const d = modeloSchema.parse(req.body);
+
+    const modelo = await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query<LinhaModelo>(
+        `INSERT INTO "SolarCosta_WhatsAppModelos" (nome, contexto, texto, ordem, ativo)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING ${COLUNAS_MODELO}`,
+        [d.nome, d.contexto, d.texto, d.ordem, d.ativo],
+      );
+      const linha = rows[0]!;
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('criar','WhatsApp',$1,$2,$3)`,
+        [`Modelo de mensagem ${linha.nome}`, linha.id, `Contexto ${linha.contexto}`],
+      );
+      return linha;
+    }, ator(req));
+
+    res.status(201).json({ modelo });
+  }),
+);
+
+whatsappRouter.put(
+  '/modelos/:id',
+  exigirPermissao('usar_whatsapp'),
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const d = modeloSchema.parse(req.body);
+
+    const modelo = await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query<LinhaModelo>(
+        `UPDATE "SolarCosta_WhatsAppModelos"
+            SET nome = $2, contexto = $3, texto = $4, ordem = $5, ativo = $6
+          WHERE id = $1
+      RETURNING ${COLUNAS_MODELO}`,
+        [id, d.nome, d.contexto, d.texto, d.ordem, d.ativo],
+      );
+      const linha = rows[0];
+      if (!linha) throw naoEncontrado('Modelo de mensagem');
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('editar','WhatsApp',$1,$2,$3)`,
+        [`Modelo de mensagem ${linha.nome}`, linha.id, `Contexto ${linha.contexto}`],
+      );
+      return linha;
+    }, ator(req));
+
+    res.json({ modelo });
+  }),
+);
+
+/** Só o liga-desliga do card. Editar o resto é o PUT. */
+whatsappRouter.patch(
+  '/modelos/:id',
+  exigirPermissao('usar_whatsapp'),
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const { ativo } = z.object({ ativo: z.boolean() }).parse(req.body);
+
+    const modelo = await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query<LinhaModelo>(
+        `UPDATE "SolarCosta_WhatsAppModelos" SET ativo = $2 WHERE id = $1
+      RETURNING ${COLUNAS_MODELO}`,
+        [id, ativo],
+      );
+      const linha = rows[0];
+      if (!linha) throw naoEncontrado('Modelo de mensagem');
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('editar','WhatsApp',$1,$2,$3)`,
+        [
+          `Modelo de mensagem ${linha.nome}`,
+          linha.id,
+          ativo ? 'Modelo reativado' : 'Modelo desativado',
+        ],
+      );
+      return linha;
+    }, ator(req));
+
+    res.json({ modelo });
+  }),
+);
+
+/*
+ * DELETE de verdade, não soft delete: nenhuma tabela aponta para modelos por FK
+ * — SolarCosta_WhatsAppMensagens guarda o TEXTO já interpolado, não o modelo —,
+ * então apagar não deixa mensagem órfã nem muda histórico nenhum. Quem só quer
+ * tirar o modelo de circulação usa o PATCH.
+ */
+whatsappRouter.delete(
+  '/modelos/:id',
+  exigirPermissao('usar_whatsapp'),
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+
+    await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query<{ nome: string }>(
+        `DELETE FROM "SolarCosta_WhatsAppModelos" WHERE id = $1 RETURNING nome`,
+        [id],
+      );
+      const linha = rows[0];
+      if (!linha) throw naoEncontrado('Modelo de mensagem');
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('excluir','WhatsApp',$1,$2,$3)`,
+        [`Modelo de mensagem ${linha.nome}`, id, null],
+      );
+    }, ator(req));
+
+    res.status(204).end();
   }),
 );
 
@@ -419,21 +587,37 @@ whatsappRouter.post(
 
     const leadId = d.lead_id ?? doc?.leadId ?? null;
 
-    // Tudo o que escreve acontece numa transação só: se o INSERT da mensagem
-    // falhar, o link recém-criado não fica órfão na tabela.
+    /*
+     * O PDF é gerado ANTES e FORA da transação de envio.
+     *
+     * Imprimir leva alguns segundos — abrir a página num Chromium, esperar as
+     * fontes, montar o arquivo. Fazer isso com uma transação aberta seguraria
+     * uma conexão do pool por todo esse tempo, e três vendedores enviando ao
+     * mesmo tempo esgotariam o pool enquanto ninguém escreve nada.
+     *
+     * O token do link continua sendo criado: ele não vai mais para o cliente,
+     * mas é por ele que o renderizador alcança o documento sem login. Se o
+     * envio falhar depois, a linha em SolarCosta_LinksPublicos fica — e não é
+     * problema: obterOuCriarLink reaproveita link vivo, então a próxima
+     * tentativa usa o mesmo.
+     */
+    let pdf: { bytes: Buffer; nomeArquivo: string } | null = null;
+    if (d.referencia) {
+      const tk = await emTransacao(
+        (cliente) =>
+          obterOuCriarLink(cliente, d.referencia!.tipo, d.referencia!.id, req.usuario.id),
+        ator(req),
+      );
+      pdf = await gerarPdfDocumento(
+        d.referencia.tipo,
+        d.referencia.id,
+        doc?.valores.numero ?? '',
+        tk,
+      );
+    }
+
     const resultado = await comRegistroDeErro(async () =>
       emTransacao(async (cliente) => {
-        let link = '';
-        if (d.referencia) {
-          const tk = await obterOuCriarLink(
-            cliente,
-            d.referencia.tipo,
-            d.referencia.id,
-            req.usuario.id,
-          );
-          link = urlPublica(tk);
-        }
-
         let texto = d.texto ?? '';
         if (d.modelo_id) {
           const { rows } = await cliente.query<{ texto: string }>(
@@ -444,9 +628,11 @@ whatsappRouter.post(
           texto = rows[0]!.texto;
         }
 
+        // `link` não entra mais: o documento vai como ANEXO, e o marcador
+        // {{link}} — que sobrou em modelos antigos — cai na regra do
+        // interpolar() e some, em vez de deixar uma URL quebrada na mensagem.
         texto = interpolar(texto, {
           ...(doc?.valores ?? {}),
-          link,
           consultor: req.usuario.nome,
         }).trim();
 
@@ -461,6 +647,8 @@ whatsappRouter.post(
           descricaoAuditoria: d.referencia
             ? `${d.referencia.tipo} ${doc?.valores.numero ?? ''}`.trim()
             : null,
+          documentoBase64: pdf ? pdf.bytes.toString('base64') : null,
+          documentoNome: pdf ? pdf.nomeArquivo : null,
         });
 
         // A timeline do lead é onde o vendedor olha antes de ligar. Sem esta
@@ -496,16 +684,141 @@ whatsappRouter.post(
           }
         }
 
-        return { conversaId: gravada.conversaId, link, texto };
+        return { conversaId: gravada.conversaId, texto };
       }, ator(req)),
     );
 
     res.status(201).json({
       conversa_id: resultado.conversaId,
-      link: resultado.link || null,
       texto: resultado.texto,
+      // Nome e tamanho do anexo, para a tela poder dizer o que saiu. Os bytes
+      // não voltam: o cliente já os recebeu, e devolvê-los só engordaria a
+      // resposta em um terço a mais (base64) sem ninguém usar.
+      documento: pdf
+        ? { nome: pdf.nomeArquivo, tamanho_bytes: pdf.bytes.length }
+        : null,
     });
   }),
 );
 
+/* ========================================================== HISTÓRICO == */
 
+/*
+ * O que saiu, na ordem em que saiu.
+ *
+ * Não há tabela de "fila de notificações" e não precisa haver: toda mensagem
+ * enviada já grava uma linha em SolarCosta_WhatsAppMensagens com de_mim = true,
+ * o status traduzido da uazapi, o erro quando falhou, quem clicou em enviar e
+ * qual documento aquele envio entregou. Esta rota só lê isso de lado, sem
+ * passar pela conversa — o vendedor quer ver "o que eu mandei hoje", não abrir
+ * dez threads para descobrir.
+ *
+ * As recebidas ficam de fora (`m.de_mim`): elas têm a caixa de entrada.
+ */
+
+const STATUS_MENSAGEM = ['fila', 'enviada', 'entregue', 'lida', 'falhou', 'cancelada'] as const;
+
+const enviadasSchema = z.object({
+  limite: z.coerce.number().int().min(1).max(200).default(50),
+  /** Cursor de timestamp, igual ao de /conversas: pega o que for mais antigo. */
+  antes_de: z.string().datetime({ offset: true }).optional(),
+  status: z.enum(STATUS_MENSAGEM).optional(),
+  referencia_tipo: z.enum(['proposta', 'contrato']).optional(),
+});
+
+interface LinhaEnviada {
+  id: string;
+  ocorrido_em: string;
+  texto: string | null;
+  status: string;
+  erro: string | null;
+  referencia_tipo: string | null;
+  referencia_id: string | null;
+  referencia_numero: string | null;
+  conversa_id: string;
+  telefone: string | null;
+  nome_exibicao: string | null;
+  lead_id: string | null;
+  lead_numero: string | null;
+  lead_nome: string | null;
+  enviada_por_nome: string | null;
+}
+
+whatsappRouter.get(
+  '/enviadas',
+  exigirPermissao('usar_whatsapp'),
+  asyncHandler(async (req, res) => {
+    const f = enviadasSchema.parse(req.query);
+
+    const params: unknown[] = [];
+    const condicoes = ['m.de_mim'];
+
+    if (f.antes_de) {
+      params.push(f.antes_de);
+      condicoes.push(`m.ocorrido_em < $${params.length}`);
+    }
+    if (f.status) {
+      params.push(f.status);
+      condicoes.push(`m.status = $${params.length}`);
+    }
+    if (f.referencia_tipo) {
+      params.push(f.referencia_tipo);
+      condicoes.push(`m.referencia_tipo = $${params.length}`);
+    }
+
+    // Uma a mais do que o pedido, só para saber se existe próxima página sem
+    // pagar um COUNT(*) na tabela inteira a cada abertura da aba.
+    params.push(f.limite + 1);
+
+    const linhas = await consultar<LinhaEnviada>(
+      // Lista fechada de colunas, nunca SELECT *: a regra do V009 sobre o bytea
+      // de SolarCosta_WhatsAppMidia vale em qualquer consulta que um dia possa
+      // ganhar um JOIN com ela.
+      //
+      // Os dois LEFT JOIN de documento são condicionados pelo referencia_tipo
+      // porque referencia_id aponta para duas tabelas diferentes e não tem FK.
+      // O COALESCE devolve o número de qualquer um dos dois.
+      `SELECT m.id, m.ocorrido_em, m.texto, m.status, m.erro,
+              m.referencia_tipo, m.referencia_id,
+              COALESCE(p.numero, ct.numero) AS referencia_numero,
+              c.id AS conversa_id, c.telefone, c.nome_exibicao,
+              l.id AS lead_id, l.numero AS lead_numero, l.nome AS lead_nome,
+              u.nome AS enviada_por_nome
+         FROM "SolarCosta_WhatsAppMensagens" m
+         JOIN "SolarCosta_WhatsAppConversas" c ON c.id = m.conversa_id
+         LEFT JOIN "SolarCosta_Leads" l
+                ON l.id = c.lead_id AND l.excluido_em IS NULL
+         LEFT JOIN "SolarCosta_Usuarios" u ON u.id = m.enviada_por_id
+         LEFT JOIN "SolarCosta_Propostas" p
+                ON m.referencia_tipo = 'proposta' AND p.id = m.referencia_id
+         LEFT JOIN "SolarCosta_Contratos" ct
+                ON m.referencia_tipo = 'contrato' AND ct.id = m.referencia_id
+        WHERE ${condicoes.join(' AND ')}
+        ORDER BY m.ocorrido_em DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+
+    const temMais = linhas.length > f.limite;
+    const pagina = temMais ? linhas.slice(0, f.limite) : linhas;
+
+    res.json({
+      enviadas: pagina.map((m) => ({
+        id: m.id,
+        ocorrido_em: m.ocorrido_em,
+        texto: m.texto,
+        status: m.status,
+        erro: m.erro,
+        referencia_tipo: m.referencia_tipo,
+        referencia_id: m.referencia_id,
+        referencia_numero: m.referencia_numero,
+        conversa_id: m.conversa_id,
+        telefone: m.telefone,
+        nome_exibicao: m.nome_exibicao,
+        lead: m.lead_id ? { id: m.lead_id, numero: m.lead_numero, nome: m.lead_nome } : null,
+        enviada_por_nome: m.enviada_por_nome,
+      })),
+      proximo_cursor: temMais ? (pagina[pagina.length - 1]?.ocorrido_em ?? null) : null,
+    });
+  }),
+);

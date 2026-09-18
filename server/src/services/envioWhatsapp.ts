@@ -37,6 +37,17 @@ export interface DadosEnvio {
   referenciaId: string | null;
   /** Texto do registro de auditoria, quando há documento. */
   descricaoAuditoria: string | null;
+  /**
+   * PDF a anexar, achatado em três campos pelo mesmo motivo da referência
+   * acima: o tsconfig da raiz não tem `strict`, e um objeto opcional aninhado
+   * vira `{base64?, nome?}` na inferência e é recusado.
+   *
+   * Havendo base64, o envio vira /send/media com `type: 'document'` e o
+   * `texto` passa a ser a LEGENDA do anexo — no WhatsApp arquivo e legenda são
+   * uma mensagem só, não duas.
+   */
+  documentoBase64: string | null;
+  documentoNome: string | null;
 }
 
 export interface MensagemGravada {
@@ -58,9 +69,22 @@ export async function enviarERegistrar(
   d: DadosEnvio,
 ): Promise<MensagemGravada> {
   const texto = d.texto.trim();
-  if (!texto) throw new AppError(422, 'A mensagem ficou vazia.', 'mensagem_vazia');
+  const comAnexo = Boolean(d.documentoBase64);
 
-  const enviada = await uazapi.enviarTexto(d.token, d.telefone, texto);
+  // Com anexo o texto pode ser vazio: o PDF já é a mensagem, e obrigar uma
+  // legenda faria a tela recusar um envio que o WhatsApp aceita.
+  if (!texto && !comAnexo) throw new AppError(422, 'A mensagem ficou vazia.', 'mensagem_vazia');
+
+  const enviada = comAnexo
+    ? await uazapi.enviarDocumento(
+        d.token,
+        d.telefone,
+        d.documentoBase64!,
+        d.documentoNome ?? 'documento.pdf',
+        texto,
+      )
+    : await uazapi.enviarTexto(d.token, d.telefone, texto);
+
   const status = uazapi.traduzirStatusMensagem(enviada.status);
 
   const { rows: conversas } = await cliente.query<{ id: string }>(
@@ -77,7 +101,12 @@ export async function enviarERegistrar(
         -- corrigido à mão, e um envio avulso não pode desfazer isso.
         lead_id               = COALESCE("SolarCosta_WhatsAppConversas".lead_id, EXCLUDED.lead_id)
      RETURNING id`,
-    [chatidDeTelefone(d.telefone), d.telefone, d.leadId, previaDe('texto', texto)],
+    [
+      chatidDeTelefone(d.telefone),
+      d.telefone,
+      d.leadId,
+      previaDe(comAnexo ? 'documento' : 'texto', texto),
+    ],
   );
   const conversaId = conversas[0]!.id;
 
@@ -86,15 +115,21 @@ export async function enviarERegistrar(
   // linha na thread.
   const { rows: gravadas } = await cliente.query<{ id: string; ocorrido_em: string }>(
     `INSERT INTO "SolarCosta_WhatsAppMensagens"
-        (conversa_id, mensagem_id, de_mim, tipo, texto, status,
+        (conversa_id, mensagem_id, de_mim, tipo, texto, nome_arquivo, mime_type, status,
          enviada_por_id, referencia_tipo, referencia_id)
-     VALUES ($1, $2, true, 'texto', $3, $4, $5, $6, $7)
+     VALUES ($1, $2, true, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (mensagem_id) DO NOTHING
      RETURNING id, ocorrido_em`,
     [
       conversaId,
       enviada.messageid,
-      texto,
+      comAnexo ? 'documento' : 'texto',
+      // Texto vazio vira NULL: a CHECK `tem_conteudo` aceita, porque o tipo
+      // não é 'texto', e string vazia no banco é pior que ausência — some
+      // sozinha nas telas e engana quem lê a linha direto.
+      texto || null,
+      comAnexo ? d.documentoNome : null,
+      comAnexo ? 'application/pdf' : null,
       status,
       d.autor.id,
       d.referenciaTipo,

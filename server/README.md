@@ -207,10 +207,8 @@ no Postgres, porque o container não tem volume e disco some no redeploy.)
 **Emissão real de boleto** (integração bancária ou Asaas) — as rotas gravam os
 dados, mas quem gera a linha digitável hoje é o usuário.
 
-No WhatsApp, três pontas menores ficaram de fora e são conscientes:
+No WhatsApp, duas pontas menores ficaram de fora e são conscientes:
 
-- **CRUD de modelos de mensagem.** Só existe `GET /modelos`; editar o texto dos
-  quatro modelos semeados pelo V009 exige SQL à mão.
 - **Revogação de link público.** `SolarCosta_LinksPublicos.revogado_em` é lido
   em toda consulta, mas nenhuma rota o escreve.
 - **Responder em grupo.** `POST /conversas/:id/responder` devolve 409 para

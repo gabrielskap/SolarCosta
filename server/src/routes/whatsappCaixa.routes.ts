@@ -378,6 +378,10 @@ whatsappCaixaRouter.post(
           referenciaTipo: null,
           referenciaId: null,
           descricaoAuditoria: null,
+          // Responder na caixa é sempre texto: anexar documento é caminho da
+          // aba Enviar, que sabe qual proposta ou contrato está mandando.
+          documentoBase64: null,
+          documentoNome: null,
         });
 
         if (conversa.lead_id) {

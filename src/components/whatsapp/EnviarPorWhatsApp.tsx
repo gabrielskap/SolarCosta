@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link2, Loader2, MessageCircle, Send, X } from 'lucide-react';
+import { Loader2, MessageCircle, Paperclip, Send, X } from 'lucide-react';
 import { ErroApi } from '../../services/http';
 import { WhatsApp, type ModeloMensagem } from '../../services/whatsapp';
 import { maskPhone } from '../../utils/format';
@@ -10,12 +10,12 @@ import { maskPhone } from '../../utils/format';
  * Substitui o `wa.me` do AcoesContato neste caminho específico. A diferença
  * não é cosmética: o wa.me abre o app e o sistema perde a mensagem de vista —
  * ninguém sabe se foi enviada, o que foi escrito, nem se o cliente abriu. Aqui
- * o envio passa pela API, entra na timeline do lead e o link conta aberturas.
+ * o envio passa pela API, entra na timeline do lead e o PDF vai anexado.
  *
- * O texto final é montado no SERVIDOR, não aqui: é ele que conhece o link
- * público do documento e os valores da proposta. A prévia abaixo é só o texto
- * cru do modelo, com os marcadores à mostra — mentir sobre o resultado seria
- * pior do que mostrar o modelo como ele é.
+ * O texto final é montado no SERVIDOR, não aqui: é ele que imprime o PDF e
+ * conhece os valores da proposta. A prévia abaixo é só o texto cru do modelo,
+ * com os marcadores à mostra — mentir sobre o resultado seria pior do que
+ * mostrar o modelo como ele é.
  */
 
 interface Props {
@@ -73,11 +73,10 @@ export const EnviarPorWhatsApp: React.FC<Props> = ({
       showToast(
         'Mensagem enviada',
         'success',
-        `${clienteNome} recebeu o link no WhatsApp. O sistema avisa quando ele abrir.`,
+        r.documento
+          ? `${clienteNome} recebeu ${r.documento.nome} no WhatsApp.`
+          : `${clienteNome} recebeu a mensagem no WhatsApp.`,
       );
-      // Log de apoio: o link também aparece na conversa, mas tê-lo no console
-      // resolve o "manda de novo pra mim" sem abrir o banco.
-      if (r.link) console.info('[whatsapp] link do documento:', r.link);
       onFechar();
     } catch (e) {
       showToast(
@@ -163,15 +162,15 @@ export const EnviarPorWhatsApp: React.FC<Props> = ({
               value={textoLivre}
               onChange={(e) => setTextoLivre(e.target.value)}
               rows={5}
-              placeholder="Escreva a mensagem. Use {{link}} onde o endereço do documento deve entrar."
+              placeholder="Escreva a mensagem. Ela vai como legenda do PDF anexado."
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276] focus:ring-2 focus:ring-blue-100 transition"
             />
           )}
 
           <p className="text-[11px] text-slate-500 flex items-start gap-2">
-            <Link2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            O cliente recebe um link que abre o documento no navegador, pronto para ler ou salvar em
-            PDF. O sistema registra cada abertura.
+            <Paperclip className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            O cliente recebe o PDF como arquivo no WhatsApp, com esta mensagem de legenda. O
+            documento é impresso na hora do envio, então sai com os dados atuais.
           </p>
 
           <div className="barra-acoes flex items-center justify-end gap-2 pt-1">

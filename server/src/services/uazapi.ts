@@ -91,10 +91,12 @@ interface OpcoesChamada {
   corpo?: unknown;
   /** Header de autenticação. `admin` usa o token do container. */
   auth: { tipo: 'admin' } | { tipo: 'instancia'; token: string };
+  /** Sobrescreve o TIMEOUT_MS padrão. Só quem sobe arquivo precisa disto. */
+  timeoutMs?: number;
 }
 
 async function chamar<T>(caminho: string, opcoes: OpcoesChamada): Promise<T> {
-  const { metodo = 'POST', corpo, auth } = opcoes;
+  const { metodo = 'POST', corpo, auth, timeoutMs = TIMEOUT_MS } = opcoes;
 
   const cabecalhos: Record<string, string> = { 'Content-Type': 'application/json' };
   if (auth.tipo === 'admin') cabecalhos.admintoken = tokenAdmin();
@@ -106,7 +108,7 @@ async function chamar<T>(caminho: string, opcoes: OpcoesChamada): Promise<T> {
       method: metodo,
       headers: cabecalhos,
       body: corpo === undefined ? undefined : JSON.stringify(corpo),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (erro) {
     // TimeoutError e falha de rede caem no mesmo lugar: do lado de fora, os
@@ -170,6 +172,26 @@ function traduzirErro(resposta: Response, corpo: string): AppError {
         429,
         'O servidor de WhatsApp está limitando as chamadas. Aguarde alguns minutos antes de tentar de novo.',
         'whatsapp_limite',
+      );
+
+    // 400 e 415 ganham código próprio por um motivo prático, não estético: os
+    // dois significam que a requisição foi RECUSADA NA PORTA — nada saiu para
+    // o cliente. É isso que torna seguro o reenvio do /send/media em outro
+    // formato de arquivo (ver enviarDocumento). Confundi-los com o 502 genérico
+    // transformaria esse reenvio numa chance de mandar a mesma mensagem duas
+    // vezes.
+    case 400:
+      return new AppError(
+        422,
+        detalhe || 'O servidor de WhatsApp recusou os dados da mensagem.',
+        'whatsapp_requisicao_invalida',
+      );
+
+    case 415:
+      return new AppError(
+        422,
+        detalhe || 'O servidor de WhatsApp recusou o formato do arquivo.',
+        'whatsapp_midia_recusada',
       );
 
     case 503:
@@ -398,6 +420,88 @@ export async function enviarTexto(
   });
 
   return { messageid: r.messageid ?? r.id ?? null, status: r.status ?? null };
+}
+
+/**
+ * Manda um documento (PDF) com legenda.
+ *
+ * `/send/media` com `type: 'document'`. O arquivo vai em BASE64, e não como
+ * URL, de propósito: uma URL obrigaria a expor o PDF num endereço público que
+ * o servidor da uazapi conseguisse buscar — mais uma rota sem login servindo
+ * documento de cliente, para economizar um upload que leva menos de um segundo.
+ *
+ * `docName` é o que o cliente vê no WhatsApp; sem ele o arquivo chega com um
+ * nome gerado, do tipo `document.pdf`, e a proposta perde o número.
+ *
+ * O `text` é a LEGENDA do anexo. No WhatsApp o documento e a legenda são uma
+ * mensagem só — não são duas, e por isso o caminho de envio não manda um texto
+ * antes do arquivo.
+ *
+ * A DOCUMENTAÇÃO NÃO DIZ QUAL DOS DOIS BASE64 ELA QUER — só "URL ou base64 do
+ * arquivo". Em vez de escolher um e torcer, esta função tenta o cru e, se for
+ * recusada NA PORTA (400/415, quando nada saiu), repete uma vez com data URI.
+ * A primeira forma que funcionar fica memorizada no processo, então o custo da
+ * dúvida é uma requisição perdida por boot, e só na primeira vez.
+ *
+ * O reenvio só é seguro por causa dos códigos que o traduzirErro separa acima:
+ * 400 e 415 são recusa antes do envio. Qualquer outro erro sobe direto, porque
+ * "não sei se saiu" nunca pode virar "manda de novo".
+ */
+type FormatoArquivo = 'base64' | 'dataUri';
+let formatoQueFunciona: FormatoArquivo | null = null;
+
+export async function enviarDocumento(
+  token: string,
+  numero: string,
+  base64: string,
+  nomeArquivo: string,
+  legenda: string,
+): Promise<MensagemEnviada> {
+  const delay = 1000 + Math.floor(Math.random() * 2000);
+
+  const tentar = async (formato: FormatoArquivo): Promise<MensagemEnviada> => {
+    const r = await chamar<RespostaMensagem>('/send/media', {
+      auth: { tipo: 'instancia', token },
+      corpo: {
+        number: numero,
+        type: 'document',
+        file: formato === 'dataUri' ? `data:application/pdf;base64,${base64}` : base64,
+        docName: nomeArquivo,
+        mimetype: 'application/pdf',
+        ...(legenda ? { text: legenda } : {}),
+        delay,
+      },
+      // Sobe um arquivo, não um JSON de duas linhas: o timeout curto das outras
+      // chamadas cortaria uma proposta com imagem de satélite em rede ruim.
+      timeoutMs: TIMEOUT_MIDIA_MS,
+    });
+    return { messageid: r.messageid ?? r.id ?? null, status: r.status ?? null };
+  };
+
+  const ordem: FormatoArquivo[] = formatoQueFunciona
+    ? [formatoQueFunciona]
+    : ['base64', 'dataUri'];
+
+  let ultimoErro: unknown;
+  for (const formato of ordem) {
+    try {
+      const enviada = await tentar(formato);
+      if (formatoQueFunciona !== formato) {
+        console.log(`[uazapi] /send/media aceita o arquivo como ${formato}`);
+        formatoQueFunciona = formato;
+      }
+      return enviada;
+    } catch (e) {
+      const recusaNaPorta =
+        e instanceof AppError &&
+        (e.codigo === 'whatsapp_midia_recusada' || e.codigo === 'whatsapp_requisicao_invalida');
+      if (!recusaNaPorta) throw e;
+      console.warn(`[uazapi] /send/media recusou o arquivo como ${formato}; tentando o outro formato`);
+      ultimoErro = e;
+    }
+  }
+
+  throw ultimoErro;
 }
 
 /**

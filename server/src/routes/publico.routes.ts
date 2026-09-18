@@ -17,6 +17,7 @@ import { consultar, consultarUm, emTransacao } from '../db.js';
 import { asyncHandler } from '../errors.js';
 import { abrirLink, lerLink } from '../services/linksPublicos.js';
 import { imagemSatelite } from '../services/googleSolar.js';
+import { ehRenderInterno } from '../services/renderInterno.js';
 
 export const publicoRouter = Router();
 
@@ -324,7 +325,12 @@ publicoRouter.get(
   '/documento/:token',
   limiteDocumento,
   asyncHandler(async (req, res) => {
-    const link = await abrirLink(req.params.token ?? '');
+    // Quando quem abre é o nosso próprio Chromium gerando o PDF, a visita NÃO
+    // conta: o número de aberturas existe para dizer se o CLIENTE olhou o
+    // documento, e uma proposta enviada a três pessoas somaria três aberturas
+    // antes de sair do servidor. Ver services/renderInterno.ts.
+    const token = req.params.token ?? '';
+    const link = ehRenderInterno(req) ? await lerLink(token) : await abrirLink(token);
     if (!link) {
       documentoNaoEncontrado(res);
       return;
