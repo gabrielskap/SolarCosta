@@ -51,6 +51,12 @@ inteiro (`Alt+X`). Todos abrem com `BEGIN` e fecham com `COMMIT`.
 > `SET LOCAL solarcosta.confirmar_drop` no topo do arquivo. Use apenas em
 > desenvolvimento e sempre depois de um `pg_dump`.
 
+> **A pasta `homologacao/` também está fora da lista, e pelo mesmo motivo.**
+> O `H001__papeis_hml.sql` cria os papéis próprios do banco de homologação
+> (`SolarCosta_hml`) e transfere a propriedade dos objetos para o migrator
+> dele. É passo manual, uma vez só, e **não** pode viver em `migrations/`:
+> o runner aplica tudo que encontra ali. Ver [HOMOLOGACAO.md](../HOMOLOGACAO.md).
+
 ## Se der erro no DBeaver
 
 O DBeaver, por padrão, **continua enviando** as instruções seguintes depois de

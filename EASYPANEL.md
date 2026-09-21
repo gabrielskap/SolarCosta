@@ -7,6 +7,10 @@ o `index.html` do React para todo o resto (SPA fallback). Ver
 
 Não precisa de `docker-compose` — é um app só, uma imagem só.
 
+> **Homologação tem documento próprio:** [HOMOLOGACAO.md](HOMOLOGACAO.md).
+> Mesma imagem e mesmo repositório, com outro banco (`SolarCosta_hml`),
+> papéis próprios e segredos próprios — este arquivo aqui descreve a PRODUÇÃO.
+
 ---
 
 ## 1. Criar o app
