@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { 
-  ArrowLeft, FileText, Upload, Folder, Download, Trash2, Plus, 
-  MessageSquare, FileCheck, DollarSign, Calendar, ChevronRight, CheckCircle2, X 
+import {
+  ArrowLeft, FileText, Upload, Folder, Download, Trash2, Plus, Pencil,
+  MessageSquare, FileCheck, DollarSign, Calendar, ChevronRight, CheckCircle2, X
 } from 'lucide-react';
 import { Lead, LeadStage, DocumentoItem, Proposta, Contrato, Boleto, User } from '../types';
 import { AcoesContato } from './comuns/AcoesContato';
+import { LeadFormModal } from './leads/LeadFormModal';
 
 interface LeadDetailViewProps {
   lead: Lead;
+  users: User[];
   onBack: () => void;
   onUpdateLeadStage: (leadId: string, newStage: LeadStage) => void;
   onNavigateToProposal: (leadId: string) => void;
@@ -19,10 +21,12 @@ interface LeadDetailViewProps {
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
   onUpdateLead: (updatedLead: Lead) => void;
+  onDeleteLead: (id: string) => void;
 }
 
 export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
   lead,
+  users,
   onBack,
   onUpdateLeadStage,
   onNavigateToProposal,
@@ -33,12 +37,14 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
   boletos,
   currentUser,
   showToast,
-  onUpdateLead
+  onUpdateLead,
+  onDeleteLead
 }) => {
   const [activeTab, setActiveTab] = useState<'documentos' | 'historico' | 'propostas' | 'contratos' | 'financeiro'>('documentos');
   const [selectedFolder, setSelectedFolder] = useState<string>('Documentos pessoais');
   const [novaInteracao, setNovaInteracao] = useState('');
   const [isRegistrarContatoOpen, setIsRegistrarContatoOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   // Linked proposal details
   const linkedProposal = propostas.find(p => p.leadId === lead.id || p.id === lead.propostaVinculadaId);
@@ -120,6 +126,12 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
     }
   };
 
+  const handleDelete = () => {
+    if (!window.confirm(`Excluir o lead "${lead.nome}"? Essa ação não pode ser desfeita.`)) return;
+    onDeleteLead(lead.id);
+    showToast('Lead excluído', 'info', `${lead.nome} removido.`);
+  };
+
   const currentFolderDocs = (lead.documentos || []).filter(d => d.pasta === selectedFolder);
 
   return (
@@ -146,7 +158,21 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setIsEditOpen(true)}
+            className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-1.5"
+          >
+            <Pencil className="w-4 h-4" />
+            Editar
+          </button>
+          <button
+            onClick={handleDelete}
+            className="px-4 py-2 bg-white border border-rose-300 hover:bg-rose-50 text-rose-600 font-bold rounded-xl text-sm transition flex items-center gap-1.5"
+          >
+            <Trash2 className="w-4 h-4" />
+            Excluir
+          </button>
           <button
             onClick={() => setIsRegistrarContatoOpen(true)}
             className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition"
@@ -677,6 +703,18 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Editar Lead */}
+      {isEditOpen && (
+        <LeadFormModal
+          lead={lead}
+          users={users}
+          currentUser={currentUser}
+          onClose={() => setIsEditOpen(false)}
+          onUpdateLead={onUpdateLead}
+          showToast={showToast}
+        />
       )}
     </div>
   );

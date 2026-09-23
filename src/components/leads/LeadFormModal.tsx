@@ -13,7 +13,8 @@ interface LeadFormModalProps {
   users: UserType[];
   currentUser: UserType;
   onClose: () => void;
-  onCreateLead: (newLead: Partial<Lead>) => void;
+  /** Só é usado em modo criação — quem só edita (ex.: LeadDetailView) pode omitir. */
+  onCreateLead?: (newLead: Partial<Lead>) => void;
   /** Só é usado em modo edição — o Kanban (só cria) pode omitir. */
   onUpdateLead?: (updatedLead: Lead) => void;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
@@ -95,7 +96,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
       const estKwp = Number((consumo / 117.3).toFixed(2));
       const estValor = Math.round(estKwp * 2639);
 
-      onCreateLead({
+      onCreateLead?.({
         ...camposComuns,
         etapa: 'Novo lead',
         valor: estValor > 10000 ? estValor : 18500,

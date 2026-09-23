@@ -54,6 +54,7 @@ const PDFModal = lazy(() =>
 
 interface LeadDetailRouteProps {
   leads: Lead[];
+  users: User[];
   propostas: Proposta[];
   contratos: Contrato[];
   boletos: Boleto[];
@@ -61,6 +62,7 @@ interface LeadDetailRouteProps {
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
   onUpdateLeadStage: (leadId: string, newStage: LeadStage) => void;
   onUpdateLead: (updatedLead: Lead) => void;
+  onDeleteLead: (id: string) => void;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   onFetchDetalhe: (leadId: string) => void;
 }
@@ -808,6 +810,7 @@ export default function App() {
                   element={
                     <LeadDetailRoute
                       leads={leads}
+                      users={usuarios || []}
                       propostas={propostas}
                       contratos={contratos}
                       boletos={boletos}
@@ -815,6 +818,7 @@ export default function App() {
                       showToast={showToast}
                       onUpdateLeadStage={handleUpdateLeadStage}
                       onUpdateLead={handleUpdateLead}
+                      onDeleteLead={handleDeleteLead}
                       onOpenPDF={handleOpenPDF}
                       onFetchDetalhe={fetchLeadDetalhe}
                     />
