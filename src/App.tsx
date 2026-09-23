@@ -27,7 +27,7 @@ import { registrarServiceWorker } from './pwa/registrar';
  */
 const DashboardView = lazy(() => import('./components/DashboardView').then((m) => ({ default: m.DashboardView })));
 const InteractiveCalendar = lazy(() => import('./components/InteractiveCalendar').then((m) => ({ default: m.InteractiveCalendar })));
-const LeadsKanbanView = lazy(() => import('./components/LeadsKanbanView').then((m) => ({ default: m.LeadsKanbanView })));
+const LeadsView = lazy(() => import('./components/leads/LeadsView').then((m) => ({ default: m.LeadsView })));
 const LeadDetailView = lazy(() => import('./components/LeadDetailView').then((m) => ({ default: m.LeadDetailView })));
 const ProposalCalculatorView = lazy(() => import('./components/ProposalCalculatorView').then((m) => ({ default: m.ProposalCalculatorView })));
 const ProposalsListView = lazy(() => import('./components/ProposalsListView').then((m) => ({ default: m.ProposalsListView })));
@@ -370,6 +370,15 @@ export default function App() {
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível cadastrar o lead');
+    }
+  };
+
+  const handleDeleteLead = async (id: string) => {
+    try {
+      setLeads(await Api.deleteLead(id));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir o lead');
     }
   };
 
@@ -780,12 +789,14 @@ export default function App() {
                 <Route
                   path="leads"
                   element={
-                    <LeadsKanbanView
+                    <LeadsView
                       leads={leads || []}
                       users={usuarios || []}
                       onSelectLead={(lead) => handleSelectLeadDetail(lead.id)}
                       onUpdateLeadStage={handleUpdateLeadStage}
                       onCreateLead={handleCreateLead}
+                      onUpdateLead={handleUpdateLead}
+                      onDeleteLead={handleDeleteLead}
                       currentUser={currentUser}
                       showToast={showToast}
                     />
