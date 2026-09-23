@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
-import { Search, Plus, Filter, User, MapPin, Zap, ArrowRight, MoveRight, X, Download, FileSpreadsheet, Loader2, MapPinned } from 'lucide-react';
+import { Search, Plus, Filter, User, MapPin, Zap, ArrowRight, MoveRight, Download, FileSpreadsheet } from 'lucide-react';
 import { SeletorEtapa } from './comuns/SeletorEtapa';
 import { Lead, LeadStage, User as UserType } from '../types';
-import {
-  maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel,
-  isValidCPFCNPJ, isValidEmail, isValidPhoneBR,
-} from '../utils/format';
 import { parseBRDate, daysBetween, today } from '../utils/dates';
-import { fetchAddressByCep, buildEnderecoLine, buildCidadeUf } from '../services/cep';
 import { SEM_CONTATO_DIAS } from '../utils/notifications';
+import { LeadFormModal } from './leads/LeadFormModal';
 
 interface LeadsKanbanViewProps {
   leads?: Lead[];
@@ -20,7 +16,7 @@ interface LeadsKanbanViewProps {
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
 
-const STAGES: LeadStage[] = [
+export const STAGES: LeadStage[] = [
   'Novo lead',
   'Contato feito',
   'Visita técnica',
@@ -48,40 +44,8 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
   // Lead com a folha de mover etapa aberta; null = fechada.
   const [leadMovendo, setLeadMovendo] = useState<Lead | null>(null);
 
-  // New lead form state
-  const [novoNome, setNovoNome] = useState('');
-  const [novoCpfCnpj, setNovoCpfCnpj] = useState('');
-  const [novoTelefone, setNovoTelefone] = useState('');
-  const [novoEmail, setNovoEmail] = useState('');
-  const [novaCidade, setNovaCidade] = useState('Belo Horizonte/MG');
-  const [novoEndereco, setNovoEndereco] = useState('');
-  const [novoConsumo, setNovoConsumo] = useState(800);
-  const [novaConcessionaria, setNovaConcessionaria] = useState('CEMIG');
-  const [novoTelhado, setNovoTelhado] = useState('Colonial');
-  const [novaOrigem, setNovaOrigem] = useState('Google Ads');
-  const [novoResponsavel, setNovoResponsavel] = useState(currentUser.nome);
-  const [novoCep, setNovoCep] = useState('');
-  const [cepLoading, setCepLoading] = useState(false);
-
   // Drag and drop state
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
-
-  // Integração CEP -> endereço (ViaCEP). Preenche endereço e cidade/UF.
-  const handleCepLookup = async (cepValue: string) => {
-    if (onlyDigits(cepValue).length !== 8) return;
-    setCepLoading(true);
-    const result = await fetchAddressByCep(cepValue);
-    setCepLoading(false);
-    if (!result.ok || !result.endereco) {
-      showToast('CEP não encontrado', 'error', result.erro || 'Verifique o CEP informado.');
-      return;
-    }
-    const linha = buildEnderecoLine(result.endereco);
-    if (linha) setNovoEndereco(linha);
-    const cidadeUf = buildCidadeUf(result.endereco);
-    if (cidadeUf) setNovaCidade(cidadeUf);
-    showToast('Endereço preenchido', 'success', `${linha || cidadeUf} (via ViaCEP).`);
-  };
 
   // Dias desde a última interação registrada (para o filtro "sem contato").
   const diasSemContato = (l: Lead): number => {
@@ -144,55 +108,6 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
       onUpdateLeadStage(id, targetStage);
       setDraggedLeadId(null);
     }
-  };
-
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!novoNome) return;
-
-    // Validação dos campos preenchidos (todos opcionais exceto o nome).
-    if (novoCpfCnpj && !isValidCPFCNPJ(novoCpfCnpj)) {
-      showToast('Documento inválido', 'error', `Verifique o ${docLabel(novoCpfCnpj)} informado.`);
-      return;
-    }
-    if (novoEmail && !isValidEmail(novoEmail)) {
-      showToast('E-mail inválido', 'error', 'Informe um e-mail no formato nome@dominio.com.');
-      return;
-    }
-    if (novoTelefone && !isValidPhoneBR(novoTelefone)) {
-      showToast('Telefone inválido', 'error', 'Informe DDD + número (10 ou 11 dígitos).');
-      return;
-    }
-
-    // Estimated value: kWp calculation ~ consumo / 117 * 21000
-    const estKwp = Number((novoConsumo / 117.3).toFixed(2));
-    const estValor = Math.round(estKwp * 2639);
-
-    onCreateLead({
-      nome: novoNome,
-      cpfCnpj: novoCpfCnpj,
-      telefone: novoTelefone,
-      email: novoEmail,
-      cidade: novaCidade,
-      endereco: novoEndereco,
-      cep: novoCep || undefined,
-      consumoKwh: Number(novoConsumo),
-      concessionaria: novaConcessionaria,
-      telhado: novoTelhado,
-      origem: novaOrigem,
-      responsavel: novoResponsavel,
-      etapa: 'Novo lead',
-      valor: estValor > 10000 ? estValor : 18500,
-    });
-
-    setIsModalOpen(false);
-    // Reset form
-    setNovoNome('');
-    setNovoCpfCnpj('');
-    setNovoTelefone('');
-    setNovoEmail('');
-    setNovoCep('');
-    setNovoEndereco('');
   };
 
   const handleExportCSV = () => {
@@ -268,14 +183,6 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
 
     showToast('Exportação concluída', 'success', `${filteredLeads.length} leads exportados com sucesso.`);
   };
-
-  // Indicadores de validação em tempo real (só sinalizam quando há conteúdo).
-  const cpfInvalido = !!novoCpfCnpj && !isValidCPFCNPJ(novoCpfCnpj);
-  const emailInvalido = !!novoEmail && !isValidEmail(novoEmail);
-  const telefoneInvalido = !!novoTelefone && !isValidPhoneBR(novoTelefone);
-  const fieldBase = 'w-full p-2.5 bg-slate-50 border rounded-xl text-sm focus:outline-none';
-  const okBorder = 'border-slate-200 focus:border-[#004276]';
-  const errBorder = 'border-rose-300 focus:border-rose-500 bg-rose-50/40';
 
   return (
     <div className="space-y-6">
@@ -525,211 +432,13 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
 
       {/* Modal Cadastro de Novo Lead */}
       {isModalOpen && (
-        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in">
-            <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-center justify-between">
-              <h3 className="font-bold text-lg">Novo Lead de Energia Solar</h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-300 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleFormSubmit} className="modal-corpo p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Nome Completo / Razão Social *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    autoComplete="name"
-                    value={novoNome}
-                    onChange={(e) => setNovoNome(e.target.value)}
-                    placeholder="Ex: João da Silva / Padaria Sol"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    {docLabel(novoCpfCnpj)}
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={novoCpfCnpj}
-                    onChange={(e) => setNovoCpfCnpj(maskCPFCNPJ(e.target.value))}
-                    placeholder="000.000.000-00"
-                    className={`${fieldBase} ${cpfInvalido ? errBorder : okBorder}`}
-                  />
-                  {cpfInvalido && <p className="text-[11px] text-rose-600 font-semibold mt-1">{docLabel(novoCpfCnpj)} inválido</p>}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Telefone / WhatsApp
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="tel"
-                    value={novoTelefone}
-                    onChange={(e) => setNovoTelefone(maskPhone(e.target.value))}
-                    placeholder="(31) 99999-8888"
-                    className={`${fieldBase} ${telefoneInvalido ? errBorder : okBorder}`}
-                  />
-                  {telefoneInvalido && <p className="text-[11px] text-rose-600 font-semibold mt-1">Telefone incompleto</p>}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    E-mail
-                  </label>
-                  <input
-                    type="email"
-                    value={novoEmail}
-                    onChange={(e) => setNovoEmail(e.target.value)}
-                    placeholder="cliente@email.com"
-                    className={`${fieldBase} ${emailInvalido ? errBorder : okBorder}`}
-                  />
-                  {emailInvalido && <p className="text-[11px] text-rose-600 font-semibold mt-1">E-mail inválido</p>}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    CEP
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={novoCep}
-                      onChange={(e) => {
-                        const masked = maskCEP(e.target.value);
-                        setNovoCep(masked);
-                        if (onlyDigits(masked).length === 8) handleCepLookup(masked);
-                      }}
-                      onBlur={() => handleCepLookup(novoCep)}
-                      placeholder="00000-000"
-                      className={`${fieldBase} ${okBorder} pr-9`}
-                    />
-                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                      {cepLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPinned className="w-4 h-4" />}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1">Preenche endereço automaticamente (ViaCEP)</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Cidade / UF
-                  </label>
-                  <input
-                    type="text"
-                    value={novaCidade}
-                    onChange={(e) => setNovaCidade(e.target.value)}
-                    placeholder="Belo Horizonte/MG"
-                    className={`${fieldBase} ${okBorder}`}
-                  />
-                </div>
-
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Endereço Completo
-                  </label>
-                  <input
-                    type="text"
-                    value={novoEndereco}
-                    onChange={(e) => setNovoEndereco(e.target.value)}
-                    placeholder="Rua, número, bairro..."
-                    className={`${fieldBase} ${okBorder}`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Consumo Médio (kWh/mês)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    value={novoConsumo}
-                    onChange={(e) => setNovoConsumo(Number(e.target.value))}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Tipo de Telhado
-                  </label>
-                  <select
-                    value={novoTelhado}
-                    onChange={(e) => setNovoTelhado(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
-                  >
-                    <option value="Colonial">Colonial</option>
-                    <option value="Laje">Laje</option>
-                    <option value="Metálico">Metálico</option>
-                    <option value="Fibrocimento">Fibrocimento</option>
-                    <option value="Solo/Estrutura">Solo/Estrutura</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Origem do Lead
-                  </label>
-                  <select
-                    value={novaOrigem}
-                    onChange={(e) => setNovaOrigem(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
-                  >
-                    <option value="Google Ads">Google Ads</option>
-                    <option value="Indicação">Indicação</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="Prospecção Ativa">Prospecção Ativa</option>
-                    <option value="Site Solar Costa">Site Solar Costa</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Vendedor Responsável
-                  </label>
-                  <select
-                    value={novoResponsavel}
-                    onChange={(e) => setNovoResponsavel(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
-                  >
-                    {users.map(u => (
-                      <option key={u.id} value={u.nome}>{u.nome}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="barra-acoes bg-white pt-4 border-t flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-xl text-sm hover:bg-slate-100"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow"
-                >
-                  Cadastrar Lead
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <LeadFormModal
+          users={users}
+          currentUser={currentUser}
+          onClose={() => setIsModalOpen(false)}
+          onCreateLead={onCreateLead}
+          showToast={showToast}
+        />
       )}
 
       {/* Folha de "mover etapa" — o caminho de toque que substitui o arrastar. */}
