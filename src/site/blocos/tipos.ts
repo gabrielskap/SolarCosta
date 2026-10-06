@@ -22,6 +22,7 @@ export const TIPOS_BLOCO = [
   'simulador',
   'texto_rico',
   'galeria',
+  'video_youtube',
 ] as const;
 
 export type TipoBloco = (typeof TIPOS_BLOCO)[number];
@@ -182,6 +183,20 @@ export interface ConteudoGaleria {
   imagens: { midia_id: string; legenda: string }[];
 }
 
+export type TamanhoVideo = 'pequena' | 'media' | 'grande' | 'completa';
+export type AlinhamentoVideo = 'esquerda' | 'centro' | 'direita';
+
+export interface ConteudoVideoYoutube {
+  rotulo: string;
+  titulo: string;
+  descricao: string;
+  claro: boolean;
+  url: string;
+  legenda: string;
+  tamanho: TamanhoVideo;
+  alinhamento: AlinhamentoVideo;
+}
+
 /* -------------------------------------------------------- agregadores --- */
 
 export interface BlocoSite {
@@ -228,4 +243,18 @@ export interface MidiaSite {
 /** URL pública dos bytes de uma imagem da biblioteca. */
 export function urlMidia(id: string | null | undefined): string | null {
   return id ? `/api/publico/midia/${id}` : null;
+}
+
+/**
+ * Extrai o ID de 11 caracteres de um link de vídeo do YouTube em qualquer
+ * formato comum (watch?v=, youtu.be/, embed/, shorts/). Devolve `null` para
+ * link vazio ou que não é reconhecido como YouTube — é o que faz o bloco
+ * não renderizar nada em vez de montar um iframe com `src` inválido.
+ */
+export function idVideoYoutube(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+  );
+  return m ? m[1] : null;
 }

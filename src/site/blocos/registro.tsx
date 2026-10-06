@@ -29,6 +29,7 @@ import {
   Megaphone,
   ShieldCheck,
   Type,
+  Youtube,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -46,6 +47,7 @@ import { ContatoCanais } from './ContatoCanais';
 import { BlocoSimulador } from './BlocoSimulador';
 import { TextoRico } from './TextoRico';
 import { Galeria } from './Galeria';
+import { VideoYoutube } from './VideoYoutube';
 import type { TipoBloco } from './tipos';
 
 export interface DefinicaoBloco {
@@ -314,6 +316,23 @@ export const REGISTRO_BLOCOS: Record<TipoBloco, DefinicaoBloco> = {
       descricao: '',
       claro: false,
       imagens: [],
+    }),
+  },
+
+  video_youtube: {
+    rotulo: 'Vídeo do YouTube',
+    descricao: 'Incorpora um vídeo do YouTube, com tamanho e posição ajustáveis. Ótimo para tutoriais.',
+    Icone: Youtube,
+    Componente: VideoYoutube,
+    padrao: () => ({
+      rotulo: 'Tutorial',
+      titulo: 'Veja como funciona a instalação',
+      descricao: '',
+      claro: true,
+      url: '',
+      legenda: '',
+      tamanho: 'grande',
+      alinhamento: 'centro',
     }),
   },
 };

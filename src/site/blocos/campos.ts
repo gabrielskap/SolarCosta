@@ -381,6 +381,42 @@ export const CAMPOS_BLOCO: Record<TipoBloco, CampoEditor[]> = {
       novoItem: () => ({ midia_id: '', legenda: '' }),
     },
   ],
+
+  video_youtube: [
+    ROTULO,
+    TITULO,
+    DESCRICAO,
+    FUNDO_CLARO,
+    {
+      chave: 'url',
+      rotulo: 'Link do vídeo',
+      tipo: 'texto',
+      ajuda: 'Cole o link do YouTube (ex.: https://www.youtube.com/watch?v=... ou https://youtu.be/...).',
+    },
+    { chave: 'legenda', rotulo: 'Legenda abaixo do vídeo', tipo: 'texto' },
+    {
+      chave: 'tamanho',
+      rotulo: 'Tamanho da caixa de vídeo',
+      tipo: 'selecao',
+      opcoes: [
+        { valor: 'pequena', rotulo: 'Pequena' },
+        { valor: 'media', rotulo: 'Média' },
+        { valor: 'grande', rotulo: 'Grande' },
+        { valor: 'completa', rotulo: 'Largura total' },
+      ],
+    },
+    {
+      chave: 'alinhamento',
+      rotulo: 'Posição na página',
+      tipo: 'selecao',
+      ajuda: 'Só importa quando o tamanho não é "Largura total".',
+      opcoes: [
+        { valor: 'esquerda', rotulo: 'Esquerda' },
+        { valor: 'centro', rotulo: 'Centro' },
+        { valor: 'direita', rotulo: 'Direita' },
+      ],
+    },
+  ],
 };
 
 export function camposDe(tipo: string): CampoEditor[] {

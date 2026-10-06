@@ -45,6 +45,7 @@ const TIPOS_BLOCO = [
   'simulador',
   'texto_rico',
   'galeria',
+  'video_youtube',
 ] as const;
 
 const link = z.object({ rotulo: z.string().max(120), destino: z.string().max(400) });
