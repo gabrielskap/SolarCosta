@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, MessageCircle, Plus } from 'lucide-react';
+import { FileText, MessageCircle, PencilLine, Plus } from 'lucide-react';
 import { Proposta, User } from '../types';
 import { TabelaResponsiva, type ColunaTabela } from './comuns/TabelaResponsiva';
 import { EnviarPorWhatsApp } from './whatsapp/EnviarPorWhatsApp';
@@ -7,6 +7,8 @@ import { EnviarPorWhatsApp } from './whatsapp/EnviarPorWhatsApp';
 interface ProposalsListViewProps {
   propostas: Proposta[];
   onNovaProposta: () => void;
+  /** Reabre a proposta na calculadora, com tudo que já foi preenchido. */
+  onContinuarProposta: (propostaId: string) => void;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
@@ -27,6 +29,7 @@ const STATUS_CLASS: Record<Proposta['status'], string> = {
 export const ProposalsListView: React.FC<ProposalsListViewProps> = ({
   propostas,
   onNovaProposta,
+  onContinuarProposta,
   onOpenPDF,
   currentUser,
   showToast,
@@ -97,7 +100,19 @@ export const ProposalsListView: React.FC<ProposalsListViewProps> = ({
       titulo: 'Ações',
       alinhamento: 'direita',
       celula: (p) => (
-        <div className="inline-flex items-center gap-3">
+        <div className="inline-flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+          {/* Rascunho é proposta inacabada: a ação principal dele é voltar ao
+              formulário, não imprimir. Por isso vem primeiro — e só nele, que
+              proposta enviada ou aceita se altera por outro caminho. */}
+          {p.status === 'rascunho' && (
+            <button
+              onClick={() => onContinuarProposta(p.id)}
+              className="text-[#004276] hover:underline inline-flex items-center gap-1 font-bold"
+            >
+              <PencilLine className="w-3.5 h-3.5" />
+              Continuar preenchendo
+            </button>
+          )}
           <button
             onClick={() => onOpenPDF('proposta', p)}
             className="text-blue-600 hover:underline inline-flex items-center gap-1 font-bold"

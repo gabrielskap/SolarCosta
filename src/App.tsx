@@ -120,6 +120,50 @@ const NovaPropostaRoute: React.FC<NovaPropostaRouteProps> = (props) => {
   );
 };
 
+/**
+ * Casca de rota: resolve `:propostaId` e devolve o rascunho ao formulário.
+ *
+ * A lista já vem completa (getPropostas busca o detalhe de cada proposta), então
+ * não há segunda requisição aqui — o que o formulário precisa já está em memória.
+ */
+const EditarPropostaRoute: React.FC<NovaPropostaRouteProps> = (props) => {
+  const { propostaId = '' } = useParams<{ propostaId: string }>();
+  const navigate = useNavigate();
+  const proposta = props.propostas.find((p) => p.id === propostaId);
+
+  /*
+   * Link direto para proposta inexistente, ou para uma já aceita — que o
+   * servidor recusa alterar (409, "proposta_fechada"). Melhor barrar aqui do
+   * que deixar o consultor preencher a tela inteira para levar o erro no fim.
+   *
+   * O `propostas.length > 0` é a espera da carga inicial: no F5 a lista chega
+   * depois da rota, e sem isso todo deep link cairia na listagem.
+   */
+  const editavel = proposta && proposta.status !== 'aceita';
+  useEffect(() => {
+    if (editavel || props.propostas.length === 0) return;
+    if (proposta) {
+      props.showToast('Proposta já aceita', 'info', 'Uma proposta aceita não pode mais ser alterada.');
+    }
+    navigate('/sistema/propostas', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editavel, props.propostas.length]);
+
+  if (!proposta || !editavel) return null;
+
+  return (
+    <ProposalCalculatorView
+      {...props}
+      // Amarra o estado do formulário à proposta: ele lê `propostaExistente`
+      // só na montagem, então trocar de rascunho sem remontar deixaria os
+      // campos do anterior na tela. Salvar não remonta — o id não muda.
+      key={proposta.id}
+      propostaExistente={proposta}
+      onBack={() => navigate('/sistema/propostas')}
+    />
+  );
+};
+
 export default function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -580,6 +624,11 @@ export default function App() {
     navigate('/sistema/propostas/nova');
   };
 
+  /** "Continuar preenchendo": reabre o rascunho no mesmo formulário. */
+  const handleContinuarProposta = (propostaId: string) => {
+    navigate(`/sistema/propostas/${propostaId}/editar`);
+  };
+
   const handleNavigateToContract = (_leadId: string) => {
     navigate('/sistema/contratos');
   };
@@ -815,6 +864,7 @@ export default function App() {
                     <ProposalsListView
                       propostas={propostas}
                       onNovaProposta={handleOpenNewProposal}
+                      onContinuarProposta={handleContinuarProposta}
                       onOpenPDF={handleOpenPDF}
                       currentUser={currentUser}
                       showToast={showToast}
@@ -826,6 +876,22 @@ export default function App() {
                   path="propostas/nova"
                   element={
                     <NovaPropostaRoute
+                      propostas={propostas}
+                      produtos={produtos}
+                      leads={leads}
+                      config={config}
+                      onSaveProposal={handleSaveProposal}
+                      onOpenPDF={handleOpenPDF}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
+
+                <Route
+                  path="propostas/:propostaId/editar"
+                  element={
+                    <EditarPropostaRoute
                       propostas={propostas}
                       produtos={produtos}
                       leads={leads}

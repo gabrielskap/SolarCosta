@@ -22,6 +22,14 @@ interface ProposalCalculatorViewProps {
   produtos: Produto[];
   leads: Lead[];
   currentLeadId?: string;
+  /**
+   * Rascunho sendo retomado ("continuar preenchendo").
+   *
+   * Presente, muda duas coisas: o formulário nasce com o que já foi gravado em
+   * vez dos padrões, e o salvamento ATUALIZA a proposta (PUT) em vez de criar
+   * outra — é o id carregado aqui que o Api.saveProposta usa para decidir.
+   */
+  propostaExistente?: Proposta;
   /** Parâmetros e domínios vindos do banco (substituem os antigos literais). */
   config: ConfigApp | null;
   onSaveProposal: (proposta: Proposta) => void;
@@ -35,11 +43,40 @@ interface ProposalCalculatorViewProps {
 /** Rótulos dos passos do formulário no celular; a ordem espelha os selos 1-5 das seções. */
 const PASSOS = ['Cliente', 'Sistema', 'Kit', 'Pagamento', 'Observações'] as const;
 
+/**
+ * Remonta o bloco do telhado a partir da proposta gravada.
+ *
+ * Sem isto, retomar um rascunho e salvar de novo APAGARIA o layout: o
+ * PainelTelhado só emite resultado depois de uma busca, e o
+ * `...(dadosTelhado ?? {})` do montarProposta iria vazio para o banco.
+ *
+ * Os `??` cobrem proposta antiga, gravada antes de alguma das colunas existir
+ * — o que importa é latitude/longitude, sem elas não há telhado nenhum.
+ */
+function telhadoDaProposta(p?: Proposta): DadosTelhadoProposta | null {
+  if (!p || p.latitude == null || p.longitude == null) return null;
+  return {
+    latitude: p.latitude,
+    longitude: p.longitude,
+    placeId: p.placeId ?? '',
+    enderecoFormatado: p.enderecoFormatado ?? '',
+    edificacaoId: p.edificacaoId ?? '',
+    mapaZoom: p.mapaZoom ?? 0,
+    telhadoImagemData: p.telhadoImagemData,
+    telhadoAreaM2: p.telhadoAreaM2 ?? 0,
+    layoutModulos: p.layoutModulos ?? [],
+    layoutSegmentos: p.layoutSegmentos ?? [],
+    layoutAjusteManual: p.layoutAjusteManual ?? false,
+    layoutModulo: p.layoutModulo,
+  };
+}
+
 export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   propostas,
   produtos,
   leads,
   currentLeadId,
+  propostaExistente,
   config,
   onSaveProposal,
   onOpenPDF,
@@ -47,21 +84,39 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   showToast,
   onBack
 }) => {
+  /*
+   * Retomando um rascunho.
+   *
+   * Vale para a montagem inteira: a casca de rota troca de `key` quando a
+   * proposta muda, então isto nunca vira de false para true com o formulário
+   * já preenchido.
+   */
+  const editando = !!propostaExistente;
+
   // Lead vinculado. Sem lead selecionado o formulário nasce em branco — antes
   // ele caía num lead fixo de demonstração ("Cristiano Duarte Almeida").
-  const [leadIdSelecionado, setLeadIdSelecionado] = useState(currentLeadId || '');
+  const [leadIdSelecionado, setLeadIdSelecionado] = useState(
+    propostaExistente?.leadId || currentLeadId || '',
+  );
   const linkedLead = leads.find(l => l.id === leadIdSelecionado);
 
-  // Form states
-  const [clienteNome, setClienteNome] = useState(linkedLead?.nome || '');
-  const [cpfCnpj, setCpfCnpj] = useState(linkedLead?.cpfCnpj || '');
-  const [telefone, setTelefone] = useState(linkedLead?.telefone || '');
-  const [email, setEmail] = useState(linkedLead?.email || '');
-  const [endereco, setEndereco] = useState(linkedLead?.endereco || '');
-  const [cidade, setCidade] = useState(linkedLead?.cidade || '');
-  const [concessionaria, setConcessionaria] = useState(linkedLead?.concessionaria || '');
-  const [telhado, setTelhado] = useState(linkedLead?.telhado || '');
-  const [cep, setCep] = useState(linkedLead?.cep || '');
+  /*
+   * Form states.
+   *
+   * A ordem do `??` é a regra toda: o que foi GRAVADO na proposta ganha do
+   * lead. O consultor pode ter corrigido o telefone ou o endereço depois de
+   * copiá-los do cadastro, e reabrir o rascunho não pode desfazer isso —
+   * inclusive quando o valor gravado é vazio de propósito.
+   */
+  const [clienteNome, setClienteNome] = useState(propostaExistente?.clienteNome ?? linkedLead?.nome ?? '');
+  const [cpfCnpj, setCpfCnpj] = useState(propostaExistente?.cpfCnpj ?? linkedLead?.cpfCnpj ?? '');
+  const [telefone, setTelefone] = useState(propostaExistente?.telefone ?? linkedLead?.telefone ?? '');
+  const [email, setEmail] = useState(propostaExistente?.email ?? linkedLead?.email ?? '');
+  const [endereco, setEndereco] = useState(propostaExistente?.endereco ?? linkedLead?.endereco ?? '');
+  const [cidade, setCidade] = useState(propostaExistente?.cidade ?? linkedLead?.cidade ?? '');
+  const [concessionaria, setConcessionaria] = useState(propostaExistente?.concessionaria ?? linkedLead?.concessionaria ?? '');
+  const [telhado, setTelhado] = useState(propostaExistente?.telhado ?? linkedLead?.telhado ?? '');
+  const [cep, setCep] = useState(propostaExistente?.cep ?? linkedLead?.cep ?? '');
 
   const [cepLoading, setCepLoading] = useState(false);
 
@@ -73,7 +128,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * string já formatada com "–".
    */
   const [enderecoViaCep, setEnderecoViaCep] = useState<EnderecoViaCEP | null>(null);
-  const [numeroEndereco, setNumeroEndereco] = useState('');
+  const [numeroEndereco, setNumeroEndereco] = useState(propostaExistente?.numeroEndereco ?? '');
 
   /**
    * O consultor mexeu na linha do endereço: a partir daí nem o CEP nem o
@@ -158,34 +213,39 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // Parâmetros de dimensionamento — vêm de SolarCosta_Parametros.
   // Os números abaixo do `??` são só rede de segurança para o caso de a
   // configuração ainda não ter chegado; a fonte da verdade é o banco.
-  const [consumoKwh, setConsumoKwh] = useState(linkedLead?.consumoKwh || 0);
-  const [tarifaKwh, setTarifaKwh] = useState(() => paramNum(config, 'proposta.tarifa_kwh_padrao', 1.19));
-  const [hsp, setHsp] = useState(() => paramNum(config, 'proposta.hsp_padrao', 5.2));
-  const [perdasPct, setPerdasPct] = useState(() => paramNum(config, 'proposta.perdas_pct_padrao', 24.5));
-  const [moduloWp, setModuloWp] = useState(() => paramNum(config, 'proposta.modulo_wp_padrao', 710));
+  const [consumoKwh, setConsumoKwh] = useState(propostaExistente?.consumoKwh ?? linkedLead?.consumoKwh ?? 0);
+  const [tarifaKwh, setTarifaKwh] = useState(() => propostaExistente?.tarifaKwh ?? paramNum(config, 'proposta.tarifa_kwh_padrao', 1.19));
+  const [hsp, setHsp] = useState(() => propostaExistente?.hsp ?? paramNum(config, 'proposta.hsp_padrao', 5.2));
+  const [perdasPct, setPerdasPct] = useState(() => propostaExistente?.perdasPct ?? paramNum(config, 'proposta.perdas_pct_padrao', 24.5));
+  const [moduloWp, setModuloWp] = useState(() => propostaExistente?.moduloWp ?? paramNum(config, 'proposta.modulo_wp_padrao', 710));
 
-  // Kit vazio: o consultor monta a partir do catálogo real.
-  const [kitItens, setKitItens] = useState<PropostaItem[]>([]);
+  // Kit vazio: o consultor monta a partir do catálogo real. Retomando um
+  // rascunho, vem o kit que já estava montado.
+  const [kitItens, setKitItens] = useState<PropostaItem[]>(propostaExistente?.kitItens ?? []);
 
   // Payment Options
-  const [formaPagamento, setFormaPagamento] = useState<'avista' | 'cartao' | 'financiamento'>('avista');
-  const [descontoAvistaPct, setDescontoAvistaPct] = useState(() => paramNum(config, 'proposta.desconto_avista_pct', 7));
-  const [parcelasCartao, setParcelasCartao] = useState(() => paramNum(config, 'proposta.parcelas_cartao_padrao', 12));
-  const [taxaCartaoPct, setTaxaCartaoPct] = useState(() => paramNum(config, 'proposta.taxa_cartao_pct', 4.5));
+  const [formaPagamento, setFormaPagamento] = useState<'avista' | 'cartao' | 'financiamento'>(propostaExistente?.formaPagamento ?? 'avista');
+  const [descontoAvistaPct, setDescontoAvistaPct] = useState(() => propostaExistente?.descontoAvistaPct ?? paramNum(config, 'proposta.desconto_avista_pct', 7));
+  const [parcelasCartao, setParcelasCartao] = useState(() => propostaExistente?.parcelasCartao ?? paramNum(config, 'proposta.parcelas_cartao_padrao', 12));
+  const [taxaCartaoPct, setTaxaCartaoPct] = useState(() => propostaExistente?.taxaCartaoPct ?? paramNum(config, 'proposta.taxa_cartao_pct', 4.5));
 
-  const [entradaFinanciamentoPct, setEntradaFinanciamentoPct] = useState(() => paramNum(config, 'financiamento.entrada_pct_padrao', 10));
-  const [parcelasFinanciamento, setParcelasFinanciamento] = useState(() => paramNum(config, 'financiamento.parcelas_padrao', 60));
-  const [jurosFinanciamentoMesPct, setJurosFinanciamentoMesPct] = useState(() => paramNum(config, 'financiamento.juros_mes_pct', 1.45));
-  const [bancoFinanciamento, setBancoFinanciamento] = useState('');
+  const [entradaFinanciamentoPct, setEntradaFinanciamentoPct] = useState(() => propostaExistente?.entradaFinanciamentoPct ?? paramNum(config, 'financiamento.entrada_pct_padrao', 10));
+  const [parcelasFinanciamento, setParcelasFinanciamento] = useState(() => propostaExistente?.parcelasFinanciamento ?? paramNum(config, 'financiamento.parcelas_padrao', 60));
+  const [jurosFinanciamentoMesPct, setJurosFinanciamentoMesPct] = useState(() => propostaExistente?.jurosFinanciamentoMesPct ?? paramNum(config, 'financiamento.juros_mes_pct', 1.45));
+  const [bancoFinanciamento, setBancoFinanciamento] = useState(propostaExistente?.bancoFinanciamento ?? '');
 
   // Observações da proposta: em branco. Os textos prontos ficam em
   // SolarCosta_ObservacaoPresets e são inseridos com um clique.
-  const [observacoes, setObservacoes] = useState<string>('');
+  const [observacoes, setObservacoes] = useState<string>(propostaExistente?.observacoes ?? '');
 
   // A configuração chega uma vez, depois da carga inicial. Quando chega, os
   // defaults numéricos se ajustam ao que está cadastrado no banco.
+  //
+  // Retomando um rascunho isto não roda: os valores da proposta já foram
+  // negociados com o cliente, e um parâmetro global alterado no meio do
+  // caminho não pode reescrever o desconto que ele viu.
   useEffect(() => {
-    if (!config) return;
+    if (!config || editando) return;
     setTarifaKwh(paramNum(config, 'proposta.tarifa_kwh_padrao', 1.19));
     setHsp(paramNum(config, 'proposta.hsp_padrao', 5.2));
     setPerdasPct(paramNum(config, 'proposta.perdas_pct_padrao', 24.5));
@@ -197,7 +257,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setParcelasFinanciamento(paramNum(config, 'financiamento.parcelas_padrao', 60));
     setJurosFinanciamentoMesPct(paramNum(config, 'financiamento.juros_mes_pct', 1.45));
     if (config.bancos.length > 0) setBancoFinanciamento(config.bancos[0].nome);
-  }, [config]);
+  }, [config, editando]);
 
   /**
    * Só reaplica quando o LEAD muda de fato.
@@ -206,8 +266,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * getLeads(). Sem esta trava o formulário voltava sozinho para os dados do
    * lead logo depois de salvar, e agora ainda reinjetaria a coordenada,
    * disparando chamadas pagas do Google a cada save.
+   *
+   * Nasce com o lead da proposta retomada justamente para isso: sem ele, abrir
+   * um rascunho sobrescreveria na hora os dados gravados com os do cadastro.
    */
-  const leadAplicado = useRef<string | null>(null);
+  const leadAplicado = useRef<string | null>(propostaExistente?.leadId || null);
 
   // Ao trocar de lead, o formulário reflete o cliente escolhido.
   useEffect(() => {
@@ -246,11 +309,21 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     );
   }, [leadIdSelecionado, leads]);
 
-  const [customLogoUrl, setCustomLogoUrl] = useState<string>('');
+  const [customLogoUrl, setCustomLogoUrl] = useState<string>(propostaExistente?.customLogoUrl ?? '');
 
-  // Telhado por satélite. Fica nulo enquanto o consultor não buscar — a
-  // proposta é válida sem isso, só não ganha a página do layout no PDF.
-  const [dadosTelhado, setDadosTelhado] = useState<DadosTelhadoProposta | null>(null);
+  /*
+   * Telhado por satélite. Fica nulo enquanto o consultor não buscar — a
+   * proposta é válida sem isso, só não ganha a página do layout no PDF.
+   *
+   * Num rascunho retomado começa com o layout JÁ GRAVADO, e não com a
+   * coordenada jogada no painel para ele buscar de novo: refazer a busca
+   * gastaria as três chamadas do Google a cada reabertura e, pior, trocaria um
+   * layout ajustado à mão pelo empacotamento automático. Quem quiser refazer
+   * usa o botão de busca do painel.
+   */
+  const [dadosTelhado, setDadosTelhado] = useState<DadosTelhadoProposta | null>(
+    () => telhadoDaProposta(propostaExistente),
+  );
 
   // Modal to add catalog item
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
@@ -300,8 +373,21 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     ? (valorFinanciado * (i * Math.pow(1 + i, n))) / (Math.pow(1 + i, n) - 1)
     : valorFinanciado / n;
 
-  // Sync kit item 1 (modulos) with sizing if modulosQtd changes
+  /*
+   * Sync kit item 1 (modulos) with sizing if modulosQtd changes.
+   *
+   * O primeiro disparo é sempre na montagem, e num rascunho retomado ele
+   * reescreveria a quantidade do primeiro item do kit — que nem sempre é o
+   * módulo — com a contagem de placas. Como na proposta nova o kit começa
+   * vazio, pular a montagem não muda nada por lá.
+   */
+  const montagemDoKit = useRef(editando);
+
   useEffect(() => {
+    if (montagemDoKit.current) {
+      montagemDoKit.current = false;
+      return;
+    }
     setKitItens(prev => prev.map((item, idx) => {
       if (idx === 0) {
         return {
@@ -388,8 +474,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * dois lugares, e esquecer um dava um bug que só aparecia num dos caminhos.
    */
   const montarProposta = (status: Proposta['status']): Proposta => ({
-    id: `prop-${Date.now()}`,
-    numero: '', // gerado pelo banco ao salvar
+    // Retomando um rascunho, é este id que faz o Api.saveProposta mandar um PUT
+    // em vez de um POST — ou seja, é o que impede cada salvamento de virar mais
+    // uma proposta na lista.
+    id: propostaExistente?.id ?? `prop-${Date.now()}`,
+    numero: propostaExistente?.numero ?? '', // gerado pelo banco ao salvar
     leadId: linkedLead?.id || '',
     clienteNome,
     cpfCnpj,
@@ -424,7 +513,9 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     parcelasFinanciamento,
     jurosFinanciamentoMesPct,
     bancoFinanciamento,
-    dataCriacao: new Date().toLocaleDateString('pt-BR'),
+    // A data de criação é do banco; aqui ela só não pode ser reinventada a
+    // cada edição do rascunho.
+    dataCriacao: propostaExistente?.dataCriacao ?? new Date().toLocaleDateString('pt-BR'),
     status,
     observacoes,
     customLogoUrl,
@@ -440,8 +531,14 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
   const handleSaveDraft = () => {
     if (!validarProposta()) return;
-    onSaveProposal(montarProposta('rascunho'));
-    showToast('Rascunho salvo', 'success', 'Proposta de orçamento gravada com sucesso.');
+    // Salvar não rebaixa o status: uma proposta já enviada que voltou para
+    // ajuste continua enviada.
+    onSaveProposal(montarProposta(propostaExistente?.status ?? 'rascunho'));
+    showToast(
+      editando ? 'Alterações salvas' : 'Rascunho salvo',
+      'success',
+      'Proposta de orçamento gravada com sucesso.',
+    );
   };
 
   const handleGeneratePDF = () => {
@@ -465,10 +562,16 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               Voltar para propostas
             </button>
           )}
-          <h1 className="text-2xl font-extrabold text-[#004276]">Proposta de orçamento</h1>
+          <h1 className="text-2xl font-extrabold text-[#004276]">
+            {editando ? 'Continuar proposta' : 'Proposta de orçamento'}
+          </h1>
           <p className="text-xs text-slate-500 font-semibold mt-0.5">
             {/* O número é gerado pelo banco ao salvar; a validade vem dos parâmetros. */}
-            Nova proposta · nº gerado ao salvar · válida por {paramNum(config, 'proposta.validade_dias', 10)} dias
+            {editando
+              ? `Nº ${propostaExistente!.numero || '—'} · criada em ${propostaExistente!.dataCriacao}`
+              : 'Nova proposta · nº gerado ao salvar'}
+            {' · '}
+            válida por {paramNum(config, 'proposta.validade_dias', 10)} dias
           </p>
         </div>
 
@@ -477,7 +580,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             onClick={handleSaveDraft}
             className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition"
           >
-            Salvar rascunho
+            {editando ? 'Salvar alterações' : 'Salvar rascunho'}
           </button>
           <button
             onClick={handleGeneratePDF}
@@ -797,6 +900,14 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           {/* Telhado por satélite — depois do dimensionamento porque precisa
               da quantidade de módulos já calculada. */}
           <div className={secaoVisivel === 2 ? '' : 'hidden md:block'}>
+          {/* O painel abre vazio mesmo com layout gravado — ver o comentário de
+              `dadosTelhado`. Sem este aviso, o consultor acharia que perdeu. */}
+          {editando && dadosTelhado && (
+            <div className="mb-3 bg-blue-50/70 border border-blue-100 rounded-xl p-3 text-[11px] font-semibold text-[#004276]">
+              O layout de telhado gravado nesta proposta foi mantido e sai no PDF.
+              Buscar de novo aqui embaixo substitui o que está guardado.
+            </div>
+          )}
           <PainelTelhado
             endereco={endereco}
             cidade={cidade}

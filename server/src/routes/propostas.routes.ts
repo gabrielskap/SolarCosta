@@ -346,7 +346,11 @@ propostasRouter.put(
             telhado_imagem_data = $44::date, telhado_area_m2 = $45,
             layout_modulos = $46::jsonb, layout_segmentos = $47::jsonb,
             cep = $48, numero_endereco = $49,
-            layout_ajuste_manual = COALESCE($50, false), layout_modulo = $51::jsonb
+            layout_ajuste_manual = COALESCE($50, false), layout_modulo = $51::jsonb,
+            -- O vínculo com o lead também é editável: a tela de "continuar
+            -- preenchendo" mostra o seletor de lead, e sem esta coluna trocá-lo
+            -- lá não teria efeito nenhum — o pior tipo de falha, a silenciosa.
+            lead_id = $52::uuid
           WHERE id = $1`,
         [
           id, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null, d.email ?? null,
@@ -370,6 +374,7 @@ propostasRouter.put(
           paraJsonb(d.layout_modulos), paraJsonb(d.layout_segmentos),
           d.cep ?? null, d.numero_endereco ?? null,
           d.layout_ajuste_manual ?? false, paraJsonb(d.layout_modulo),
+          d.lead_id ?? null,
         ],
       );
 
