@@ -18,6 +18,7 @@ import { Loader2 } from 'lucide-react';
 import './index.css';
 
 import { useSeo } from './site/seo';
+import { AvisoNovaVersao } from './pwa/AvisoNovaVersao';
 
 // O CRM carrega recharts, motion e ~15 telas. Nada disso deve pesar na home.
 const Crm = lazy(() => import('./App'));
@@ -66,6 +67,10 @@ const Sistema = () => {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    {/* Fora do BrowserRouter de propósito: o service worker cobre o domínio
+        inteiro (site público + /sistema), então o aviso de atualização não
+        pode depender de qual árvore de rota está montada no momento. */}
+    <AvisoNovaVersao />
     <BrowserRouter>
       <Suspense fallback={<Carregando />}>
         <Routes>

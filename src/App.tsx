@@ -10,7 +10,6 @@ import { Sidebar } from './components/Sidebar';
 import { LoginView } from './components/LoginView';
 import { NotificationCenter } from './components/NotificationCenter';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { registrarServiceWorker } from './pwa/registrar';
 
 /*
  * ------------------------------------------------------------------ rotas ---
@@ -169,39 +168,6 @@ export default function App() {
   );
 
   const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
-
-  /* --------------------------------------------------- service worker -- */
-
-  /*
-   * Registra o SW e trata a chegada de uma versão nova.
-   *
-   * O aviso é persistente e tem botão porque a troca recarrega a página: fazer
-   * isso sozinho poderia descartar uma proposta meio preenchida. `CHAVE_SW`
-   * fixa o id do toast para que uma segunda notificação (o SW consulta de
-   * tempos em tempos) não empilhe um segundo aviso idêntico na tela.
-   */
-  useEffect(() => {
-    const CHAVE_SW = 'sw-nova-versao';
-    registrarServiceWorker({
-      aoTerNovaVersao: (atualizar) => {
-        setToasts((prev) =>
-          prev.some((t) => t.id === CHAVE_SW)
-            ? prev
-            : [
-                ...prev,
-                {
-                  id: CHAVE_SW,
-                  type: 'info',
-                  title: 'Nova versão disponível',
-                  description: 'Atualize para receber as últimas correções.',
-                  persistente: true,
-                  action: { label: 'Atualizar agora', onClick: atualizar },
-                },
-              ],
-        );
-      },
-    });
-  }, []);
 
   /** Traduz a falha da API num toast legível e devolve `false` para o chamador. */
   const tratarErro = useCallback(
