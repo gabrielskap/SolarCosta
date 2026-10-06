@@ -287,6 +287,19 @@ export const Api = {
     return Api.getBoletos();
   },
 
+  /**
+   * Cria o boleto e, em seguida, emite de verdade na API de Cobranças do BB —
+   * ao contrário de saveBoleto, devolve o boleto recém-emitido (com linha
+   * digitável e Pix, se pedido) além da lista atualizada, porque o modal
+   * "Emitir Boleto Banco do Brasil" precisa mostrar esse retorno na hora.
+   */
+  emitirBoletoBB: async (b: Boleto, aceitarPix: boolean): Promise<{ boletos: Boleto[]; emitido: Boleto }> => {
+    const criado = await http.post<any>('/api/financeiro/boletos', deBoleto(b));
+    const id = criado.boleto.id as string;
+    const emitido = await http.post<any>(`/api/financeiro/boletos/${id}/emitir-bb`, { aceitarPix });
+    return { boletos: await Api.getBoletos(), emitido: paraBoleto(emitido.boleto) };
+  },
+
   deleteBoleto: async (id: string): Promise<Boleto[]> => {
     await http.delete(`/api/financeiro/boletos/${id}`);
     return Api.getBoletos();

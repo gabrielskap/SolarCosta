@@ -432,6 +432,23 @@ export default function App() {
     }
   };
 
+  // Ao contrário dos outros handlers de financeiro, devolve o boleto emitido
+  // (ou null no erro): o modal "Emitir Boleto Banco do Brasil" precisa mostrar
+  // a linha digitável/Pix retornados antes de fechar, em vez de fechar na hora
+  // como o resto das telas faz.
+  const handleEmitirBoletoBB = async (boleto: Boleto, aceitarPix: boolean): Promise<Boleto | null> => {
+    try {
+      const { boletos: lista, emitido } = await Api.emitirBoletoBB(boleto, aceitarPix);
+      setBoletos(lista);
+      void atualizarAuditoria();
+      showToast('Boleto emitido', 'success', `Boleto Banco do Brasil gerado para ${boleto.clienteNome}.`);
+      return emitido;
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível emitir o boleto pelo Banco do Brasil');
+      return null;
+    }
+  };
+
   const handleAddLancamento = async (lancamento: LancamentoFinanceiro) => {
     try {
       setLancamentos(await Api.saveLancamento(lancamento));
@@ -876,9 +893,11 @@ export default function App() {
                     <FinancialView
                       boletos={boletos}
                       lancamentos={lancamentos}
+                      contratos={contratos}
                       onSaveBoleto={handleSaveBoleto}
                       onDeleteBoleto={handleDeleteBoleto}
                       onAddLancamento={handleAddLancamento}
+                      onEmitirBoletoBB={handleEmitirBoletoBB}
                       onOpenPDF={handleOpenPDF}
                       currentUser={currentUser}
                       showToast={showToast}

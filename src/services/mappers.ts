@@ -492,6 +492,7 @@ export function paraContrato(linha: any): Contrato {
     clausulas: (linha.clausulas ?? []).map((c: any) => c.titulo),
     status: linha.status === 'cancelado' ? 'aguardando' : linha.status,
     dataEmissao: paraDataBR(linha.data_emissao),
+    situacaoPagamento: linha.situacao_pagamento ?? null,
   };
 }
 
@@ -536,6 +537,9 @@ export function paraBoleto(linha: any): Boleto {
     id: linha.id,
     numeroDocumento: txt(linha.numero_documento),
     linhaDigitavel: txt(linha.linha_digitavel),
+    nossoNumero: linha.nosso_numero ?? undefined,
+    pixQrcode: linha.pix_qrcode ?? undefined,
+    codigoBarraNumerico: linha.codigo_barra_numerico ?? undefined,
     clienteNome: linha.cliente_nome,
     cpfCnpj: linha.cpf_cnpj ?? undefined,
     valor: num(linha.valor),
@@ -546,6 +550,7 @@ export function paraBoleto(linha: any): Boleto {
     categoria: txt(linha.categoria),
     obraRef: linha.obra_ref ?? undefined,
     dataPagamento: linha.data_pagamento ? paraDataBR(linha.data_pagamento) : undefined,
+    contratoId: linha.contrato_id ?? undefined,
   };
 }
 
@@ -560,6 +565,7 @@ export function deBoleto(b: Boleto): Record<string, unknown> {
     vencimento: paraDataISO(b.vencimento),
     tipo: b.tipo === 'A receber' ? 'a_receber' : 'a_pagar',
     categoria: b.categoria || null,
+    contrato_id: b.contratoId || null,
   };
 }
 

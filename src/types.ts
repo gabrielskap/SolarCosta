@@ -297,12 +297,20 @@ export interface Contrato {
   clausulas: string[];
   status: 'aguardando' | 'assinado';
   dataEmissao: string;
+  /** Agregado a partir dos boletos a_receber vinculados. Null = nenhuma cobrança gerada ainda. */
+  situacaoPagamento?: 'pago' | 'aguardando' | 'vencido' | null;
 }
 
 export interface Boleto {
   id: string;
   numeroDocumento: string;
   linhaDigitavel: string;
+  /** "Nosso número" no Banco do Brasil. Vazio até a emissão pela API (ver onEmitirBoletoBB). */
+  nossoNumero?: string;
+  /** Copia-e-cola (EMV) do QR Pix vinculado ao boleto (bolepix), quando emitido com Pix. */
+  pixQrcode?: string;
+  /** Código de barras FEBRABAN (44 dígitos), p/ desenhar o barcode no PDF. Só existe após emissão pela API. */
+  codigoBarraNumerico?: string;
   clienteNome: string;
   cpfCnpj?: string;
   valor: number;
@@ -313,6 +321,8 @@ export interface Boleto {
   categoria: string;
   obraRef?: string;
   dataPagamento?: string;
+  /** Contrato de origem, quando emitida pela aba "Cobranças". Ausente = boleto avulso. */
+  contratoId?: string;
 }
 
 export interface LancamentoFinanceiro {

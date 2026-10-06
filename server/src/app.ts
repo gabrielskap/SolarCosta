@@ -30,6 +30,7 @@ import { usuariosRouter } from './routes/usuarios.routes.js';
 import { whatsappRouter } from './routes/whatsapp.routes.js';
 import { whatsappCaixaRouter } from './routes/whatsappCaixa.routes.js';
 import { whatsappWebhookRouter, limiteWebhookWhatsapp } from './routes/whatsappWebhook.routes.js';
+import { bbWebhookRouter, limiteWebhookBB } from './routes/bbWebhook.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // dist/app.js -> ../public, onde o Dockerfile copia o build do frontend.
@@ -118,6 +119,11 @@ export function criarApp(): express.Express {
   // O parser marca `req._body`, então o express.json global não reparseia.
   app.use('/api/webhooks/whatsapp', limiteWebhookWhatsapp, express.json({ limit: '6mb' }));
 
+  // Webhook de Cobrança do BB: mesmo motivo de vir antes do parser global — o
+  // limitador precisa rodar antes do corpo ser lido. Payload pequeno (lote de
+  // baixas operacionais), então o limite de 2mb do parser geral já sobra.
+  app.use('/api/webhooks/bb', limiteWebhookBB, express.json({ limit: '2mb' }));
+
   app.use(express.json({ limit: '2mb' }));
 
   // Sonda para o Docker/Nginx: confirma que o banco responde.
@@ -137,6 +143,10 @@ export function criarApp(): express.Express {
   // sessão. Fica junto do outro router aberto para que "o que não exige login"
   // seja uma lista curta e visível num lugar só.
   app.use('/api/webhooks/whatsapp', whatsappWebhookRouter);
+
+  // Webhook do BB: aberto como o de cima, mas autenticado por mTLS no Nginx em
+  // vez de segredo na URL — ver o cabeçalho de bbWebhook.routes.ts.
+  app.use('/api/webhooks/bb', bbWebhookRouter);
 
   app.use('/api/auth', authRouter);
   app.use('/api/leads', leadsRouter);

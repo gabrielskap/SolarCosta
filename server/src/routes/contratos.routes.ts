@@ -58,11 +58,23 @@ const contratoSchema = z.object({
 
 async function carregarContrato(id: string) {
   const contrato = await consultarUm(
-    `SELECT c.*, l.numero AS lead_numero, p.numero AS proposta_numero, o.numero AS obra_numero
+    `SELECT c.*, l.numero AS lead_numero, p.numero AS proposta_numero, o.numero AS obra_numero,
+            pag.situacao_pagamento
        FROM "SolarCosta_Contratos" c
        LEFT JOIN "SolarCosta_Leads"     l ON l.id = c.lead_id
        LEFT JOIN "SolarCosta_Propostas" p ON p.id = c.proposta_id
        LEFT JOIN "SolarCosta_Obras"     o ON o.contrato_id = c.id
+       LEFT JOIN LATERAL (
+         -- Mesma regra da listagem (GET /) — ver comentário lá.
+         SELECT CASE
+           WHEN count(*) FILTER (WHERE b.situacao = 'vencido') > 0 THEN 'vencido'
+           WHEN count(*) FILTER (WHERE b.situacao <> 'cancelado') = 0 THEN NULL
+           WHEN count(*) FILTER (WHERE b.situacao NOT IN ('cancelado', 'pago')) = 0 THEN 'pago'
+           ELSE 'aguardando'
+         END AS situacao_pagamento
+         FROM "SolarCosta_Boletos" b
+        WHERE b.contrato_id = c.id AND b.excluido_em IS NULL AND b.tipo = 'a_receber'
+       ) pag ON true
       WHERE c.id = $1 AND c.excluido_em IS NULL`,
     [id],
   );
@@ -95,8 +107,22 @@ contratosRouter.get(
     const contratos = await consultar(
       `SELECT c.id, c.numero, c.lead_id, c.proposta_id, c.cliente_nome, c.cpf_cnpj,
               c.potencia_kwp, c.modulos_qtd, c.valor_total, c.status::text AS status,
-              c.data_emissao, c.data_assinatura, c.responsavel_tecnico
+              c.data_emissao, c.data_assinatura, c.responsavel_tecnico,
+              pag.situacao_pagamento
          FROM "SolarCosta_Contratos" c
+         LEFT JOIN LATERAL (
+           -- 'vencido' tem prioridade sobre os demais estados (é o que precisa
+           -- de ação); NULL quando não há nenhum boleto a_receber ativo ainda
+           -- (contrato recém-emitido, cobrança nem foi gerada).
+           SELECT CASE
+             WHEN count(*) FILTER (WHERE b.situacao = 'vencido') > 0 THEN 'vencido'
+             WHEN count(*) FILTER (WHERE b.situacao <> 'cancelado') = 0 THEN NULL
+             WHEN count(*) FILTER (WHERE b.situacao NOT IN ('cancelado', 'pago')) = 0 THEN 'pago'
+             ELSE 'aguardando'
+           END AS situacao_pagamento
+           FROM "SolarCosta_Boletos" b
+          WHERE b.contrato_id = c.id AND b.excluido_em IS NULL AND b.tipo = 'a_receber'
+         ) pag ON true
         WHERE ${cond.join(' AND ')}
         ORDER BY c.data_emissao DESC, c.criado_em DESC`,
       params,

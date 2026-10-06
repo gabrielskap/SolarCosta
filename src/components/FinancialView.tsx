@@ -1,37 +1,121 @@
 import React, { useState } from 'react';
-import { 
-  DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, Download, Plus, Copy, CheckCircle2, Printer, Trash2, X, FileSpreadsheet, ChevronDown
+import {
+  DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, Download, Plus, Copy, CheckCircle2, Printer, Trash2, X, FileSpreadsheet, ChevronDown,
+  LayoutGrid, Landmark, Receipt
 } from 'lucide-react';
-import { Boleto, LancamentoFinanceiro, User } from '../types';
+import { Boleto, Contrato, LancamentoFinanceiro, User } from '../types';
 import { maskCPFCNPJ, docLabel } from '../utils/format';
 
 interface FinancialViewProps {
   boletos: Boleto[];
   lancamentos: LancamentoFinanceiro[];
+  contratos: Contrato[];
   onSaveBoleto: (boleto: Boleto) => void;
   onDeleteBoleto: (id: string) => void;
   onAddLancamento: (l: LancamentoFinanceiro) => void;
+  onEmitirBoletoBB: (boleto: Boleto, aceitarPix: boolean) => Promise<Boleto | null>;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
 
+type FinanceiroTab = 'visao_geral' | 'boletos' | 'cobrancas';
+
+const ABAS_FINANCEIRO: { key: FinanceiroTab; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: 'visao_geral', label: 'Visão Geral', Icon: LayoutGrid },
+  { key: 'boletos', label: 'Boletos', Icon: Landmark },
+  { key: 'cobrancas', label: 'Cobranças', Icon: Receipt },
+];
+
+/**
+ * Resultado da emissão pela API do BB (linha digitável + Pix, se pedido).
+ * Compartilhado entre o modal de boleto avulso e o de cobrança a partir de
+ * contrato — é a mesma cópia exata em dois lugares, não abstração especulativa.
+ */
+const ResultadoEmissaoBB: React.FC<{
+  boleto: Boleto;
+  onCopyLinha: (linha: string) => void;
+  onCopyPix: (codigo: string) => void;
+  onConcluir: () => void;
+}> = ({ boleto, onCopyLinha, onCopyPix, onConcluir }) => (
+  <div className="modal-corpo p-5 space-y-4 text-xs">
+    <div className="flex items-center gap-2 text-emerald-700 font-bold">
+      <CheckCircle2 className="w-5 h-5" />
+      Boleto emitido no Banco do Brasil
+    </div>
+
+    <div>
+      <label className="block font-bold text-slate-600 mb-1 uppercase">Linha digitável</label>
+      <div className="flex gap-2">
+        <input
+          readOnly
+          value={boleto.linhaDigitavel}
+          className="w-full p-2.5 bg-slate-50 border rounded-xl font-mono"
+        />
+        <button
+          type="button"
+          onClick={() => onCopyLinha(boleto.linhaDigitavel)}
+          className="px-3 bg-slate-100 hover:bg-slate-200 rounded-xl"
+          title="Copiar linha digitável"
+        >
+          <Copy className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+
+    {boleto.pixQrcode && (
+      <div>
+        <label className="block font-bold text-slate-600 mb-1 uppercase">Pix copia e cola</label>
+        <div className="flex gap-2">
+          <input
+            readOnly
+            value={boleto.pixQrcode}
+            className="w-full p-2.5 bg-slate-50 border rounded-xl font-mono truncate"
+          />
+          <button
+            type="button"
+            onClick={() => onCopyPix(boleto.pixQrcode!)}
+            className="px-3 bg-slate-100 hover:bg-slate-200 rounded-xl"
+            title="Copiar código Pix"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    )}
+
+    <div className="flex justify-end pt-2">
+      <button
+        type="button"
+        onClick={onConcluir}
+        className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow"
+      >
+        Concluir
+      </button>
+    </div>
+  </div>
+);
+
 export const FinancialView: React.FC<FinancialViewProps> = ({
   boletos,
   lancamentos,
+  contratos,
   onSaveBoleto,
   onDeleteBoleto,
   onAddLancamento,
+  onEmitirBoletoBB,
   onOpenPDF,
   currentUser,
   showToast
 }) => {
+  const [tab, setTab] = useState<FinanceiroTab>('visao_geral');
   const [filterLancamentos, setFilterLancamentos] = useState<'todos' | 'receita' | 'despesa'>('todos');
   const [filterBoletos, setFilterBoletos] = useState<'todos' | 'A receber' | 'A pagar' | 'em_aberto' | 'pago'>('todos');
-  
+
   // Modals and Menus state
   const [isNovoLancamentoOpen, setIsNovoLancamentoOpen] = useState(false);
   const [isEmitirBoletoOpen, setIsEmitirBoletoOpen] = useState(false);
+  const [isEmitirCobrancaOpen, setIsEmitirCobrancaOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
   // CSV Export Utilities
@@ -181,6 +265,21 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
   const [boletoTipo, setBoletoTipo] = useState<'A receber' | 'A pagar'>('A receber');
   const [boletoCategoria, setBoletoCategoria] = useState('Venda de sistema');
   const [boletoObraRef, setBoletoObraRef] = useState('');
+  const [boletoAceitarPix, setBoletoAceitarPix] = useState(true);
+  const [emitindoBoleto, setEmitindoBoleto] = useState(false);
+  // Preenchido só depois da API do BB responder — é o que a tela mostra em
+  // vez de fechar o modal na hora, porque é aqui que aparecem linha
+  // digitável e Pix que o vendedor precisa copiar para o cliente.
+  const [boletoEmitido, setBoletoEmitido] = useState<Boleto | null>(null);
+
+  // Emitir Cobrança (a partir de um contrato assinado)
+  const [contratoSelecionadoId, setContratoSelecionadoId] = useState('');
+  const [cobrancaValor, setCobrancaValor] = useState(0);
+  const [cobrancaParcela, setCobrancaParcela] = useState('');
+  const [cobrancaVencimento, setCobrancaVencimento] = useState('');
+  const [cobrancaFormaPagamento, setCobrancaFormaPagamento] = useState<'boleto' | 'bolepix'>('bolepix');
+  const [emitindoCobranca, setEmitindoCobranca] = useState(false);
+  const [cobrancaEmitida, setCobrancaEmitida] = useState<Boleto | null>(null);
 
   // Índice do mês (1-12) a partir de "DD/MM" ou "DD/MM/AAAA".
   const monthFromStr = (value?: string): number => {
@@ -199,6 +298,24 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
   const boletosAtraso = boletos.filter(b => b.tipo === 'A receber' && b.situacao === 'vencido');
   const totalAtraso = boletosAtraso.reduce((a, b) => a + (b.valor || 0), 0);
+
+  // Vencem nos próximos 15 dias (título "Boletos", hoje até hoje+15).
+  const paraData = (br: string): Date | null => {
+    const [d, m, a] = (br || '').split('/').map(Number);
+    return d && m && a ? new Date(a, m - 1, d) : null;
+  };
+  const boletosProximos15Dias = boletos.filter((b) => {
+    if (b.situacao === 'pago') return false;
+    const venc = paraData(b.vencimento);
+    if (!venc) return false;
+    const dias = (venc.getTime() - Date.now()) / 86_400_000;
+    return dias >= 0 && dias <= 15;
+  });
+
+  // Cobranças (aba "Cobranças"): contratos já assinados, e boletos emitidos a partir de um contrato.
+  const contratosAssinados = contratos.filter((c) => c.status === 'assinado');
+  const cobrancasEmitidas = boletos.filter((b) => !!b.contratoId);
+  const contratoSelecionado = contratos.find((c) => c.id === contratoSelecionadoId) || null;
 
   // Evolução mensal (R$ mil): realizado (lançamentos) + contas a vencer (boletos em aberto).
   const monthlyStats = (() => {
@@ -271,15 +388,11 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
     showToast('Lançamento registrado', 'success', `${tipoLancamento === 'receita' ? 'Entrada' : 'Saída'} adicionada com sucesso.`);
   };
 
-  const handleFormEmitirBoletoSubmit = (e: React.FormEvent) => {
+  const handleFormEmitirBoletoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!boletoCliente || !boletoValor) return;
+    if (!boletoCliente || !boletoValor || emitindoBoleto) return;
 
-    // A linha digitável NÃO é inventada aqui. Antes o sistema gerava um número
-    // com cara de boleto real, que poderia ser enviado ao cliente e nunca
-    // compensar. O campo fica vazio até alguém colar a linha emitida pelo banco
-    // (ou até a integração bancária ser implementada).
-    const newBoleto: Boleto = {
+    const novoBoleto: Boleto = {
       id: '',
       numeroDocumento: '',
       linhaDigitavel: '',
@@ -294,9 +407,78 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
       obraRef: boletoObraRef
     };
 
-    onSaveBoleto(newBoleto);
+    setEmitindoBoleto(true);
+    const emitido = await onEmitirBoletoBB(novoBoleto, boletoAceitarPix);
+    setEmitindoBoleto(false);
+
+    // Em erro, o toast já saiu de onEmitirBoletoBB — o modal fica aberto para
+    // o vendedor corrigir e tentar de novo, em vez de fechar sobre uma falha.
+    if (emitido) setBoletoEmitido(emitido);
+  };
+
+  const handleFecharModalEmitirBoleto = () => {
     setIsEmitirBoletoOpen(false);
-    showToast('Boleto emitido', 'success', `Boleto Banco do Brasil gerado para ${boletoCliente}.`);
+    setBoletoEmitido(null);
+    setBoletoCliente('');
+    setBoletoCpf('');
+    setBoletoValor(0);
+    setBoletoParcela('');
+    setBoletoVencimento('');
+    setBoletoObraRef('');
+    setBoletoAceitarPix(true);
+  };
+
+  const handleCopyPix = (codigo: string) => {
+    navigator.clipboard.writeText(codigo);
+    showToast('Código Pix copiado', 'success', 'Copia e cola copiado para a área de transferência.');
+  };
+
+  const handleSelecionarContrato = (id: string) => {
+    setContratoSelecionadoId(id);
+    const c = contratos.find((x) => x.id === id);
+    if (c) setCobrancaValor(c.valorTotal);
+  };
+
+  const handleAbrirCobrancaParaContrato = (c: Contrato) => {
+    setContratoSelecionadoId(c.id);
+    setCobrancaValor(c.valorTotal);
+    setIsEmitirCobrancaOpen(true);
+  };
+
+  const handleFormEmitirCobrancaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contratoSelecionado || !cobrancaValor || !cobrancaVencimento || emitindoCobranca) return;
+
+    const novaCobranca: Boleto = {
+      id: '',
+      numeroDocumento: '',
+      linhaDigitavel: '',
+      clienteNome: contratoSelecionado.clienteNome,
+      cpfCnpj: contratoSelecionado.cpfCnpj,
+      valor: Number(cobrancaValor),
+      parcela: cobrancaParcela,
+      vencimento: cobrancaVencimento,
+      situacao: 'em_aberto',
+      tipo: 'A receber',
+      categoria: 'Venda de sistema',
+      contratoId: contratoSelecionado.id,
+    };
+
+    setEmitindoCobranca(true);
+    const emitido = await onEmitirBoletoBB(novaCobranca, cobrancaFormaPagamento === 'bolepix');
+    setEmitindoCobranca(false);
+
+    if (emitido) setCobrancaEmitida(emitido);
+  };
+
+  const handleFecharModalCobranca = () => {
+    setIsEmitirCobrancaOpen(false);
+    setCobrancaEmitida(null);
+    setContratoSelecionadoId('');
+    setCobrancaValor(0);
+    setCobrancaParcela('');
+    setCobrancaVencimento('');
+    setCobrancaFormaPagamento('bolepix');
   };
 
   const filteredLancamentos = lancamentos.filter(l => {
@@ -390,6 +572,24 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
         </div>
       </div>
 
+      {/* Abas */}
+      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+        {ABAS_FINANCEIRO.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition ${
+              tab === key ? 'bg-[#004276] text-white shadow' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'visao_geral' && (
+      <>
       {/* Top KPIs Grid (4 Cards) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Entradas */}
@@ -608,13 +808,21 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
           </div>
         </div>
       </div>
+      </>
+      )}
 
+      {tab === 'boletos' && (
+      <>
       {/* BOTTOM SECTION: Contas a pagar e a receber (Boletos Banco do Brasil) */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="font-bold text-slate-900 text-base">Contas a pagar e a receber (Boletos Banco do Brasil)</h3>
-            <p className="text-xs text-slate-500">3 títulos vencem nos próximos 15 dias</p>
+            <p className="text-xs text-slate-500">
+              {boletosProximos15Dias.length === 0
+                ? 'Nenhum título vence nos próximos 15 dias'
+                : `${boletosProximos15Dias.length} ${boletosProximos15Dias.length === 1 ? 'título vence' : 'títulos vencem'} nos próximos 15 dias`}
+            </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -627,7 +835,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
               <span>Exportar CSV</span>
             </button>
 
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl flex-wrap">
               <button
                 onClick={() => setFilterBoletos('todos')}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
@@ -635,6 +843,22 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                 }`}
               >
                 Todos
+              </button>
+              <button
+                onClick={() => setFilterBoletos('em_aberto')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                  filterBoletos === 'em_aberto' ? 'bg-[#004276] text-white' : 'text-slate-600'
+                }`}
+              >
+                Em aberto
+              </button>
+              <button
+                onClick={() => setFilterBoletos('pago')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                  filterBoletos === 'pago' ? 'bg-[#004276] text-white' : 'text-slate-600'
+                }`}
+              >
+                Pago
               </button>
               <button
                 onClick={() => setFilterBoletos('A receber')}
@@ -733,6 +957,158 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
           </table>
         </div>
       </div>
+      </>
+      )}
+
+      {tab === 'cobrancas' && (
+      <>
+      {/* Contratos assinados — ponto de partida para emitir uma cobrança */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-y-3">
+          <div>
+            <h3 className="font-bold text-slate-900 text-base">Contratos assinados</h3>
+            <p className="text-xs text-slate-500">Emita uma cobrança (boleto ou boleto + Pix) a partir de um contrato já assinado.</p>
+          </div>
+          <button
+            onClick={() => { setContratoSelecionadoId(''); setIsEmitirCobrancaOpen(true); }}
+            className="bg-[#004276] hover:bg-[#003159] text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow"
+          >
+            + Nova cobrança
+          </button>
+        </div>
+
+        <div className="border border-slate-200 rounded-xl overflow-hidden">
+          <table className="tabela-mobile w-full text-left text-xs">
+            <thead>
+              <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
+                <th className="p-3">Contrato</th>
+                <th className="p-3">Cliente</th>
+                <th className="p-3 text-right">Valor</th>
+                <th className="p-3">Pagamento</th>
+                <th className="p-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {contratosAssinados.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-slate-400 italic">
+                    Nenhum contrato assinado ainda.
+                  </td>
+                </tr>
+              )}
+              {contratosAssinados.map((c) => (
+                <tr key={c.id} className="hover:bg-slate-50">
+                  <td data-label="Contrato" className="p-3 font-bold text-[#004276]">Nº {c.numero}</td>
+                  <td data-label="Cliente" className="p-3 font-semibold text-slate-900">{c.clienteNome}</td>
+                  <td data-label="Valor" className="p-3 text-right font-bold text-slate-900">
+                    R$ {c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td data-label="Pagamento" className="p-3">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      c.situacaoPagamento === 'pago'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : c.situacaoPagamento === 'vencido'
+                        ? 'bg-red-100 text-red-800'
+                        : c.situacaoPagamento === 'aguardando'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {c.situacaoPagamento === 'pago'
+                        ? 'Pago'
+                        : c.situacaoPagamento === 'vencido'
+                        ? 'Pagamento vencido'
+                        : c.situacaoPagamento === 'aguardando'
+                        ? 'Aguardando pagamento'
+                        : 'Sem cobrança'}
+                    </span>
+                  </td>
+                  <td data-label="Ações" className="p-3 text-right">
+                    <button
+                      onClick={() => handleAbrirCobrancaParaContrato(c)}
+                      className="text-blue-600 hover:underline font-bold"
+                    >
+                      Emitir cobrança
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Cobranças já emitidas (boletos vinculados a um contrato) */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 className="font-bold text-slate-900 text-base">Cobranças emitidas</h3>
+
+        <div className="border border-slate-200 rounded-xl overflow-hidden">
+          <table className="tabela-mobile w-full text-left text-xs">
+            <thead>
+              <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
+                <th className="p-3">Vencimento</th>
+                <th className="p-3">Contrato</th>
+                <th className="p-3">Cliente</th>
+                <th className="p-3 text-right">Valor</th>
+                <th className="p-3">Situação</th>
+                <th className="p-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {cobrancasEmitidas.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-slate-400 italic">
+                    Nenhuma cobrança emitida ainda.
+                  </td>
+                </tr>
+              )}
+              {cobrancasEmitidas.map((bol) => {
+                const contrato = contratos.find((c) => c.id === bol.contratoId);
+                return (
+                  <tr key={bol.id} className="hover:bg-slate-50">
+                    <td data-label="Vencimento" className="p-3 font-mono font-semibold text-slate-800">{bol.vencimento}</td>
+                    <td data-label="Contrato" className="p-3 font-bold text-[#004276]">
+                      {contrato ? `Nº ${contrato.numero}` : '—'}
+                    </td>
+                    <td data-label="Cliente" className="p-3 font-semibold text-slate-900">{bol.clienteNome}</td>
+                    <td data-label="Valor" className="p-3 text-right font-bold text-slate-900">
+                      R$ {bol.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td data-label="Situação" className="p-3">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                        bol.situacao === 'pago'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : bol.situacao === 'vencido'
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {bol.situacao === 'pago' ? 'Pago' : bol.situacao === 'vencido' ? 'Vencido' : 'Em aberto'}
+                      </span>
+                    </td>
+                    <td data-label="Ações" className="p-3 text-right space-x-2 font-bold">
+                      <button
+                        onClick={() => handleCopyLinhaDigitavel(bol.linhaDigitavel)}
+                        className="text-slate-600 hover:text-[#004276]"
+                      >
+                        Copiar código
+                      </button>
+                      {bol.situacao !== 'pago' && (
+                        <button onClick={() => handleDarBaixa(bol)} className="text-emerald-600 hover:underline">
+                          Dar baixa
+                        </button>
+                      )}
+                      <button onClick={() => onOpenPDF('boleto', bol)} className="text-blue-600 hover:underline">
+                        Baixar PDF
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      </>
+      )}
 
       {/* Modal Novo Lançamento */}
       {isNovoLancamentoOpen && (
@@ -835,85 +1211,240 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
           <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
             <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-base">Emitir Boleto Banco do Brasil</h3>
-              <button onClick={() => setIsEmitirBoletoOpen(false)} className="text-slate-300 hover:text-white">
+              <button onClick={handleFecharModalEmitirBoleto} className="text-slate-300 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleFormEmitirBoletoSubmit} className="modal-corpo p-5 space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Cliente / Sacado</label>
-                  <input
-                    type="text"
+
+            {boletoEmitido ? (
+              <ResultadoEmissaoBB
+                boleto={boletoEmitido}
+                onCopyLinha={handleCopyLinhaDigitavel}
+                onCopyPix={handleCopyPix}
+                onConcluir={handleFecharModalEmitirBoleto}
+              />
+            ) : (
+              <form onSubmit={handleFormEmitirBoletoSubmit} className="modal-corpo p-5 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="col-span-1 sm:col-span-2">
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">Cliente / Sacado</label>
+                    <input
+                      type="text"
+                      required
+                      value={boletoCliente}
+                      onChange={(e) => setBoletoCliente(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">{docLabel(boletoCpf)}</label>
+                    <input
+                      type="text"
+                      required
+                      inputMode="numeric"
+                      value={boletoCpf}
+                      onChange={(e) => setBoletoCpf(maskCPFCNPJ(e.target.value))}
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">Valor (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={boletoValor}
+                      onChange={(e) => setBoletoValor(Number(e.target.value))}
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">Parcela</label>
+                    <input
+                      type="text"
+                      value={boletoParcela}
+                      onChange={(e) => setBoletoParcela(e.target.value)}
+                      placeholder="1/60"
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">Vencimento</label>
+                    <input
+                      type="text"
+                      required
+                      value={boletoVencimento}
+                      onChange={(e) => setBoletoVencimento(e.target.value)}
+                      placeholder="10/08/2026"
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
+                    />
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-2 flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="boleto-aceitar-pix"
+                      checked={boletoAceitarPix}
+                      onChange={(e) => setBoletoAceitarPix(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <label htmlFor="boleto-aceitar-pix" className="font-semibold text-slate-600">
+                      Aceitar pagamento via Pix (bolepix)
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleFecharModalEmitirBoleto}
+                    disabled={emitindoBoleto}
+                    className="px-4 py-2 border rounded-xl font-bold disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={emitindoBoleto}
+                    className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow disabled:opacity-50"
+                  >
+                    {emitindoBoleto ? 'Emitindo...' : 'Gerar Boleto Banco do Brasil'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Emitir Cobrança (a partir de um contrato assinado) */}
+      {isEmitirCobrancaOpen && (
+        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
+              <h3 className="font-bold text-base">Emitir Cobrança</h3>
+              <button onClick={handleFecharModalCobranca} className="text-slate-300 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {cobrancaEmitida ? (
+              <ResultadoEmissaoBB
+                boleto={cobrancaEmitida}
+                onCopyLinha={handleCopyLinhaDigitavel}
+                onCopyPix={handleCopyPix}
+                onConcluir={handleFecharModalCobranca}
+              />
+            ) : (
+              <form onSubmit={handleFormEmitirCobrancaSubmit} className="modal-corpo p-5 space-y-4 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1 uppercase">Contrato</label>
+                  <select
                     required
-                    value={boletoCliente}
-                    onChange={(e) => setBoletoCliente(e.target.value)}
+                    value={contratoSelecionadoId}
+                    onChange={(e) => handleSelecionarContrato(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
-                  />
+                  >
+                    <option value="" disabled>Selecione um contrato assinado</option>
+                    {contratosAssinados.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        Nº {c.numero} — {c.clienteNome} — R$ {c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {contratoSelecionado && (
+                  <p className="text-slate-500 bg-slate-50 border rounded-xl p-2.5">
+                    <strong className="text-slate-800">{contratoSelecionado.clienteNome}</strong>
+                    {contratoSelecionado.cpfCnpj && ` — ${docLabel(contratoSelecionado.cpfCnpj)}: ${contratoSelecionado.cpfCnpj}`}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">Valor (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={cobrancaValor}
+                      onChange={(e) => setCobrancaValor(Number(e.target.value))}
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">Parcela</label>
+                    <input
+                      type="text"
+                      value={cobrancaParcela}
+                      onChange={(e) => setCobrancaParcela(e.target.value)}
+                      placeholder="1/60"
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
+                    />
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-2">
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">Vencimento</label>
+                    <input
+                      type="text"
+                      required
+                      value={cobrancaVencimento}
+                      onChange={(e) => setCobrancaVencimento(e.target.value)}
+                      placeholder="10/08/2026"
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">{docLabel(boletoCpf)}</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={boletoCpf}
-                    onChange={(e) => setBoletoCpf(maskCPFCNPJ(e.target.value))}
-                    className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
-                  />
+                  <label className="block font-bold text-slate-600 mb-1 uppercase">Forma de pagamento</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCobrancaFormaPagamento('boleto')}
+                      className={`flex-1 py-2 font-bold rounded-xl border ${
+                        cobrancaFormaPagamento === 'boleto' ? 'bg-[#004276] text-white border-[#004276]' : 'bg-slate-50'
+                      }`}
+                    >
+                      Boleto simples
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCobrancaFormaPagamento('bolepix')}
+                      className={`flex-1 py-2 font-bold rounded-xl border ${
+                        cobrancaFormaPagamento === 'bolepix' ? 'bg-[#004276] text-white border-[#004276]' : 'bg-slate-50'
+                      }`}
+                    >
+                      Boleto + Pix
+                    </button>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Valor (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={boletoValor}
-                    onChange={(e) => setBoletoValor(Number(e.target.value))}
-                    className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold"
-                  />
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleFecharModalCobranca}
+                    disabled={emitindoCobranca}
+                    className="px-4 py-2 border rounded-xl font-bold disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={emitindoCobranca || !contratoSelecionadoId}
+                    className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow disabled:opacity-50"
+                  >
+                    {emitindoCobranca ? 'Emitindo...' : 'Emitir cobrança'}
+                  </button>
                 </div>
-
-                <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Parcela</label>
-                  <input
-                    type="text"
-                    value={boletoParcela}
-                    onChange={(e) => setBoletoParcela(e.target.value)}
-                    placeholder="1/60"
-                    className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Vencimento</label>
-                  <input
-                    type="text"
-                    value={boletoVencimento}
-                    onChange={(e) => setBoletoVencimento(e.target.value)}
-                    placeholder="10/08/2026"
-                    className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEmitirBoletoOpen(false)}
-                  className="px-4 py-2 border rounded-xl font-bold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow"
-                >
-                  Gerar Boleto Banco do Brasil
-                </button>
-              </div>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       )}

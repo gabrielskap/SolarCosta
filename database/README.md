@@ -22,8 +22,10 @@ inteiro (`Alt+X`). Todos abrem com `BEGIN` e fecham com `COMMIT`.
 | 7 | `migrations/V007__layout_manual.sql` | Layout de placas desenhado à mão na proposta | Sim |
 | 8 | `migrations/V008__site_cms.sql` | CMS do site institucional: páginas, blocos, menus, biblioteca de mídia | Sim |
 | 9 | `migrations/V009__whatsapp.sql` | WhatsApp pela uazapi (instância, conversas, mensagens, mídia, modelos) + links públicos de documento | Sim |
-| 10 | `seeds/S001__configuracao_base.sql` | Empresa, parâmetros, domínios, admin de bootstrap | Sim |
-| 11 | `seeds/S002__dados_demo.sql` | Migração dos dados mockados de `storage.ts` | Só em dev/homolog |
+| 10 | `migrations/V010__pdf_anexo.sql` | Ajusta o texto dos modelos de WhatsApp para o PDF ir como anexo, não como link | Sim |
+| 11 | `migrations/V011__integracao_bb.sql` | Integração com a API de Cobranças do BB: campos de nosso número/Pix no boleto, tabela de eventos de webhook | Sim |
+| 12 | `seeds/S001__configuracao_base.sql` | Empresa, parâmetros, domínios, admin de bootstrap | Sim |
+| 13 | `seeds/S002__dados_demo.sql` | Migração dos dados mockados de `storage.ts` | Só em dev/homolog |
 
 > **Em produção ninguém roda isto à mão.** O `Dockerfile` executa
 > `npm run migrate && npm start`, e o runner

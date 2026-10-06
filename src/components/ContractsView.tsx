@@ -733,6 +733,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                   <th className="p-3">Valor</th>
                   <th className="p-3">Data</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3">Pagamento</th>
                   <th className="p-3 text-right">Ações</th>
                 </tr>
               </thead>
@@ -755,6 +756,27 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                       >
                         {c.status === 'assinado' ? 'Assinado' : 'Aguardando assinatura'}
                       </button>
+                    </td>
+                    <td data-label="Pagamento" className="p-3">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          c.situacaoPagamento === 'pago'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : c.situacaoPagamento === 'vencido'
+                            ? 'bg-red-100 text-red-800'
+                            : c.situacaoPagamento === 'aguardando'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {c.situacaoPagamento === 'pago'
+                          ? 'Pago'
+                          : c.situacaoPagamento === 'vencido'
+                          ? 'Pagamento vencido'
+                          : c.situacaoPagamento === 'aguardando'
+                          ? 'Aguardando pagamento'
+                          : 'Sem cobrança'}
+                      </span>
                     </td>
                     <td data-label="Ações" className="p-3 text-right font-bold space-x-3">
                       <button

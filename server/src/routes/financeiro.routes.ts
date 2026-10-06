@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { consultar, consultarUm, emTransacao } from '../db.js';
 import { asyncHandler, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
+import { darBaixaBoleto, emitirBoletoNoBB } from '../services/boletos.js';
 
 export const financeiroRouter = Router();
 financeiroRouter.use(exigirLogin, exigirPermissao('ver_lancamentos_financeiro'));
@@ -146,17 +147,36 @@ financeiroRouter.patch(
       .parse(req.body ?? {});
 
     const boleto = await emTransacao(async (cliente) => {
+      const baixado = await darBaixaBoleto(cliente, id, d);
+      if (!baixado) throw naoEncontrado('Boleto em aberto');
+
+      const { rows: view } = await cliente.query(
+        `SELECT * FROM "SolarCosta_vw_Boletos" WHERE id = $1`, [id]);
+      return view[0];
+    }, ator(req));
+
+    res.json({ boleto });
+  }),
+);
+
+// Emite o boleto de verdade na API de Cobranças do BB (linha digitável, nosso
+// número e, opcionalmente, o QR Pix vinculado) e grava o retorno no boleto já
+// cadastrado. Ver server/src/services/boletos.ts::emitirBoletoNoBB.
+financeiroRouter.post(
+  '/boletos/:id/emitir-bb',
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const { aceitarPix } = z.object({ aceitarPix: z.boolean().default(false) }).parse(req.body ?? {});
+
+    const boleto = await emTransacao(async (cliente) => {
       const { rows } = await cliente.query(
-        `UPDATE "SolarCosta_Boletos" SET
-            situacao       = 'pago',
-            data_pagamento = COALESCE($2::date, CURRENT_DATE),
-            valor_pago     = COALESCE($3, valor),
-            juros_multa    = COALESCE($4, juros_multa)
-          WHERE id = $1 AND excluido_em IS NULL AND situacao <> 'pago'
-          RETURNING id`,
-        [id, d.data_pagamento ?? null, d.valor_pago ?? null, d.juros_multa ?? null],
+        `SELECT id, cliente_nome, cpf_cnpj, valor, vencimento::text
+           FROM "SolarCosta_Boletos" WHERE id = $1 AND excluido_em IS NULL`,
+        [id],
       );
-      if (rows.length === 0) throw naoEncontrado('Boleto em aberto');
+      if (rows.length === 0) throw naoEncontrado('Boleto');
+
+      await emitirBoletoNoBB(cliente, rows[0], { aceitarPix });
 
       const { rows: view } = await cliente.query(
         `SELECT * FROM "SolarCosta_vw_Boletos" WHERE id = $1`, [id]);

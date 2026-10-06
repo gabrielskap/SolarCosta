@@ -94,6 +94,40 @@ const schema = z.object({
   // token, a mesma troca desconectaria o WhatsApp da empresa sem aviso.
   WHATSAPP_CRIPTO_KEY: z.string().min(32, 'WHATSAPP_CRIPTO_KEY precisa de pelo menos 32 caracteres').optional(),
 
+  // ------------------------------------------------------- Banco do Brasil --
+  // Integração com a API de Cobranças do BB (registro/baixa de boletos).
+  // Opcional pelo mesmo motivo das outras integrações: sem BB_CLIENT_ID a API
+  // sobe igual e só a emissão de boleto pelo banco fica desligada — o boleto
+  // continua podendo ser cadastrado manualmente, como hoje.
+  //
+  // 'sandbox' aponta para api.hm.bb.com.br (homologação, aceita CPF/CNPJ
+  // fictícios); 'producao' para api.bb.com.br, só depois do convênio de
+  // cobrança contratado no BB Digital PJ.
+  BB_AMBIENTE: z.enum(['sandbox', 'producao']).default('sandbox'),
+
+  // client_id / client_secret da aplicação no Portal Developers BB — usados só
+  // no fluxo OAuth2 client_credentials (services/bb/auth.ts). Ao contrário do
+  // token da uazapi, não precisam de cifragem no banco: são credenciais
+  // estáticas da aplicação, não algo gerado em runtime por instância, e vivem
+  // só aqui, como UAZAPI_ADMIN_TOKEN.
+  BB_CLIENT_ID: z.string().min(1).optional(),
+  BB_CLIENT_SECRET: z.string().min(1).optional(),
+
+  // Header `gw-dev-app-key`, obrigatório em toda chamada às APIs do BB (mesmo
+  // com o Bearer token já identificando a aplicação).
+  BB_APP_KEY: z.string().min(1).optional(),
+
+  // Dados do convênio de cobrança, negociados com o gerente de relacionamento
+  // na contratação do serviço (BB Digital PJ > Cobrança e Pagamentos). Sem
+  // eles não dá para montar o payload de registro de boleto nem o
+  // numeroTituloCliente ("nosso número").
+  BB_CONVENIO_COBRANCA: z.string().min(1).optional(),
+  BB_CARTEIRA: z.string().default('17'),
+  BB_VARIACAO_CARTEIRA: z.string().min(1).optional(),
+  BB_MODALIDADE: z.enum(['1', '4']).optional(),
+  BB_AGENCIA: z.string().min(1).optional(),
+  BB_CONTA: z.string().min(1).optional(),
+
   // Executável do Chromium que vira a proposta em PDF (ver services/
   // pdfDocumento.ts).
   //
@@ -143,6 +177,33 @@ const schema = z.object({
         });
       }
     }
+  })
+  // Mesma lógica: BB_CLIENT_ID liga a integração, e as demais viram
+  // obrigatórias com ele — sem convênio/agência/conta não dá para montar o
+  // payload de registro de boleto, e chegar até o BB para descobrir isso no
+  // meio de uma emissão é o pior lugar possível.
+  .superRefine((v, ctx) => {
+    if (!v.BB_CLIENT_ID) return;
+
+    const faltando: Array<[keyof typeof v, string]> = [
+      ['BB_CLIENT_SECRET', 'o segredo da aplicação no Portal Developers BB'],
+      ['BB_APP_KEY', 'o gw-dev-app-key da aplicação'],
+      ['BB_CONVENIO_COBRANCA', 'o número do convênio de cobrança'],
+      ['BB_VARIACAO_CARTEIRA', 'a variação da carteira de cobrança'],
+      ['BB_MODALIDADE', 'a modalidade do convênio (1 ou 4)'],
+      ['BB_AGENCIA', 'a agência beneficiária do convênio'],
+      ['BB_CONTA', 'a conta beneficiária do convênio'],
+    ];
+
+    for (const [chave, porque] of faltando) {
+      if (!v[chave]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [chave],
+          message: `obrigatória quando BB_CLIENT_ID está definida — ${porque}.`,
+        });
+      }
+    }
   });
 
 const parsed = schema.safeParse(process.env);
@@ -170,6 +231,12 @@ export const config = {
    * APP_URL também estão preenchidas — o resto do código conta com isso.
    */
   whatsappAtivo: Boolean(parsed.data.UAZAPI_ADMIN_TOKEN),
+  /**
+   * Falso quando a integração com a API de Cobranças do BB não foi
+   * configurada. O superRefine acima garante que, sendo verdadeiro, convênio,
+   * agência, conta, carteira e variação também estão preenchidos.
+   */
+  bbCobrancasAtivo: Boolean(parsed.data.BB_CLIENT_ID),
   /** Endereço de onde o Chromium lê /p/<token> para imprimir o PDF. */
   pdfBaseUrl: (parsed.data.PDF_BASE_URL ?? `http://127.0.0.1:${parsed.data.PORT}`).replace(
     /\/+$/,

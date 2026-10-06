@@ -14,7 +14,10 @@
 // deploy/postgres/rotina-diaria-pg_cron.sql e desligue este agendador com
 // SCHEDULER_ATIVO=false.
 
-import { consultarUm } from './db.js';
+import { config } from './config.js';
+import { consultarUm, emTransacao } from './db.js';
+import { listarBaixaOperacional } from './services/bb/cobrancas.js';
+import { buscarBoletoIdPorNossoNumero, darBaixaBoleto } from './services/boletos.js';
 
 interface ResultadoRotina {
   boletos_vencidos: number;
@@ -28,6 +31,46 @@ export async function executarRotinaDiaria(): Promise<ResultadoRotina> {
     `SELECT * FROM "SolarCosta_fn_rotina_diaria"()`,
   );
   return linha ?? { boletos_vencidos: 0, obras_atrasadas: 0 };
+}
+
+/**
+ * Rede de segurança para o webhook do BB: consulta a baixa operacional dos
+ * últimos 5 dias (o máximo que a API aceita) e dá baixa em qualquer boleto que
+ * o webhook não tenha capturado — entrega perdida, Nginx fora do ar na hora,
+ * aplicação ainda não cadastrada em produção, etc. Idempotente: um boleto já
+ * pago simplesmente não bate no `WHERE situacao <> 'pago'` de darBaixaBoleto.
+ */
+export async function reconciliarBaixaOperacionalBB(): Promise<{ boletos_baixados: number }> {
+  if (!config.bbCobrancasAtivo) return { boletos_baixados: 0 };
+
+  const hoje = new Date();
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() - 5);
+  const isoInicio = inicio.toISOString().slice(0, 10);
+  const isoFim = hoje.toISOString().slice(0, 10);
+
+  const baixas = await listarBaixaOperacional(isoInicio, isoFim);
+
+  let contagem = 0;
+  for (const baixa of baixas) {
+    // Cancelamento de baixa (10): não reabrimos boleto automaticamente, igual
+    // ao webhook — reverteria um lançamento de caixa sem revisão humana.
+    if (baixa.codigoEstadoBaixaOperacional === 10) continue;
+
+    const baixou = await emTransacao(async (cliente) => {
+      const boletoId = await buscarBoletoIdPorNossoNumero(cliente, baixa.id);
+      if (!boletoId) return false;
+      const resultado = await darBaixaBoleto(cliente, boletoId, {
+        data_pagamento: baixa.dataLiquidacao,
+        valor_pago: baixa.valorPagoSacado,
+      });
+      return Boolean(resultado);
+    });
+
+    if (baixou) contagem++;
+  }
+
+  return { boletos_baixados: contagem };
 }
 
 /** Milissegundos até o próximo horário HH:MM no fuso local do servidor. */
@@ -70,6 +113,17 @@ export function iniciarAgendador(opcoes: AgendadorOpcoes): () => void {
       // Falhar aqui não pode derrubar a API: amanhã ela tenta de novo, e a
       // função é idempotente.
       console.error('[rotina] falhou:', erro instanceof Error ? erro.message : erro);
+    }
+
+    // Try/catch separado: uma falha no BB (fora do ar, credencial vencida) não
+    // pode impedir a rotina de boletos vencidos acima de ter rodado.
+    if (config.bbCobrancasAtivo) {
+      try {
+        const r = await reconciliarBaixaOperacionalBB();
+        console.log(`[rotina] ${motivo} · BB: ${r.boletos_baixados} boleto(s) baixado(s) por reconciliação`);
+      } catch (erro) {
+        console.error('[rotina] reconciliação BB falhou:', erro instanceof Error ? erro.message : erro);
+      }
     }
   };
 

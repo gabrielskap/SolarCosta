@@ -78,6 +78,25 @@ export function formatCurrencyBRL(value: number): string {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+/**
+ * Linha digitável do boleto (47 dígitos, sem separadores) -> formato padrão
+ * em 5 blocos: "00190.00009 03949.318017 71234.560008 1 84560000010000".
+ *
+ * Se não vier com exatamente 47 dígitos (já formatada pelo BB, ou boleto
+ * antigo/incompleto), devolve o valor original sem tentar reformatar.
+ */
+export function formatarLinhaDigitavel(linha: string): string {
+  const d = onlyDigits(linha);
+  if (d.length !== 47) return linha;
+  return (
+    `${d.slice(0, 5)}.${d.slice(5, 10)} ` +
+    `${d.slice(10, 15)}.${d.slice(15, 21)} ` +
+    `${d.slice(21, 26)}.${d.slice(26, 32)} ` +
+    `${d.slice(32, 33)} ` +
+    `${d.slice(33, 47)}`
+  );
+}
+
 /** "R$ 1.234,56" | "1.234,56" -> 1234.56 */
 export function parseCurrencyBRL(value: string | number): number {
   if (typeof value === 'number') return value;

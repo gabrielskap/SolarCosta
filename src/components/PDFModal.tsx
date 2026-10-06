@@ -12,6 +12,9 @@ import logoIcon from '../assets/logo-icon.png';
 import { TelhadoSatelite } from './mapa/TelhadoSatelite';
 import { imagemTelhado } from '../services/solar';
 import { enquadrar, rosaDosVentos } from '../utils/layoutModulos';
+import { formatarLinhaDigitavel } from '../utils/format';
+import JsBarcode from 'jsbarcode';
+import QRCode from 'qrcode';
 
 interface PDFModalProps {
   type: 'proposta' | 'contrato' | 'boleto';
@@ -66,6 +69,46 @@ export const PDFModal: React.FC<PDFModalProps> = ({
   const ehPagina = variante === 'pagina';
   const [activePage, setActivePage] = useState<number>(0); // 0 = all pages, 1..8 = page 1..8
   const [isCustomizeOpen, setIsCustomizeOpen] = useState<boolean>(false);
+
+  // Boleto: código de barras (SVG, desenhado via jsbarcode) e QR Pix (data URL
+  // via qrcode). Precisam ficar aqui no topo do componente, e não dentro do
+  // bloco `type === 'boleto'` mais abaixo — aquele bloco é uma IIFE de render,
+  // e hook não pode rodar dentro de uma função aninhada.
+  const barcodeRef = useRef<SVGSVGElement>(null);
+  const [pixQrDataUrl, setPixQrDataUrl] = useState<string | null>(null);
+  const [pixCopiado, setPixCopiado] = useState(false);
+
+  useEffect(() => {
+    if (type !== 'boleto') return;
+    const bol = data as Boleto;
+
+    if (barcodeRef.current && bol.codigoBarraNumerico) {
+      JsBarcode(barcodeRef.current, bol.codigoBarraNumerico, {
+        format: 'ITF',
+        width: 2,
+        height: 60,
+        displayValue: false,
+        margin: 0,
+      });
+    }
+
+    if (bol.pixQrcode) {
+      QRCode.toDataURL(bol.pixQrcode, { margin: 1, width: 160 })
+        .then(setPixQrDataUrl)
+        .catch(() => setPixQrDataUrl(null));
+    } else {
+      setPixQrDataUrl(null);
+    }
+  }, [type, data]);
+
+  const handleCopiarPix = () => {
+    if (type !== 'boleto') return;
+    const bol = data as Boleto;
+    if (!bol.pixQrcode) return;
+    navigator.clipboard.writeText(bol.pixQrcode);
+    setPixCopiado(true);
+    setTimeout(() => setPixCopiado(false), 2000);
+  };
 
   // Default observations and parameters if proposal
   const prop = type === 'proposta' ? (data as Proposta) : null;
@@ -993,12 +1036,17 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               );
             })()}
 
-            {/* BOLETO BANCO DO BRASIL VIEW */}
+            {/* BOLETO BANCO DO BRASIL VIEW
+                Layout simplificado (um cartão só, não a ficha de compensação +
+                recibo do sacado dupla do boleto físico): o pagamento aqui
+                acontece por linha digitável ou Pix, não por talão levado ao
+                caixa, então o que importa é a exatidão dos números, não a
+                fidelidade pixel-a-pixel ao layout do banco. */}
             {type === 'boleto' && (() => {
               const bol = data as Boleto;
               return (
-                <div className="bg-white rounded-2xl shadow-xl print:shadow-none p-6 max-w-2xl mx-auto border-2 border-slate-800 space-y-4 font-mono text-xs text-slate-900">
-                  <div className="flex items-center justify-between border-b-2 border-slate-800 pb-2">
+                <div className="bg-white rounded-2xl shadow-xl print:shadow-none p-6 max-w-2xl mx-auto border-2 border-slate-800 space-y-4 text-slate-900">
+                  <div className="flex items-center justify-between border-b-2 border-slate-800 pb-2 font-mono">
                     <div className="flex items-center gap-2">
                       <div className="bg-[#FFD100] text-[#004276] font-black px-2 py-1 text-sm border border-slate-800">
                         BANCO DO BRASIL
@@ -1007,15 +1055,88 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                         001-9
                       </span>
                     </div>
-                    <div className="font-bold text-sm tracking-widest text-right">
-                      {bol.linhaDigitavel}
+                    <div className="font-bold text-xs sm:text-sm tracking-wide text-right">
+                      {formatarLinhaDigitavel(bol.linhaDigitavel)}
                     </div>
                   </div>
 
-                  <div className="border-b border-slate-400 pb-2 text-[11px]">
-                    <span className="text-[9px] uppercase font-sans text-slate-500 block">Pagador</span>
-                    <strong>{bol.clienteNome}</strong> {bol.cpfCnpj && `- CPF/CNPJ: ${bol.cpfCnpj}`}
+                  <div className="grid grid-cols-3 gap-3 text-[11px] font-mono border-b border-slate-300 pb-3">
+                    <div>
+                      <span className="text-[9px] uppercase font-sans text-slate-500 block">Vencimento</span>
+                      <strong className="text-sm">{bol.vencimento}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase font-sans text-slate-500 block">Valor do documento</span>
+                      <strong className="text-sm">R$ {bol.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase font-sans text-slate-500 block">Parcela</span>
+                      <strong>{bol.parcela || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase font-sans text-slate-500 block">Nosso número</span>
+                      <strong>{bol.nossoNumero || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase font-sans text-slate-500 block">Número do documento</span>
+                      <strong>{bol.numeroDocumento || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase font-sans text-slate-500 block">Espécie</span>
+                      <strong>R$</strong>
+                    </div>
                   </div>
+
+                  <div className="border-b border-slate-300 pb-3 text-[11px] font-mono">
+                    <span className="text-[9px] uppercase font-sans text-slate-500 block">Pagador</span>
+                    <strong>{bol.clienteNome}</strong>{bol.cpfCnpj && ` — CPF/CNPJ: ${bol.cpfCnpj}`}
+                  </div>
+
+                  <p className="text-[10px] text-slate-500">
+                    Pagável em qualquer banco, agência lotérica ou pelo aplicativo do seu banco até a data de vencimento.
+                  </p>
+
+                  <div className="pt-1">
+                    {bol.codigoBarraNumerico ? (
+                      <svg ref={barcodeRef} className="w-full" />
+                    ) : (
+                      <p className="text-[10px] text-slate-400 italic">
+                        Código de barras indisponível — reemita o boleto pela tela Financeiro.
+                      </p>
+                    )}
+                  </div>
+
+                  {bol.pixQrcode && (
+                    <div className="flex flex-col sm:flex-row items-center gap-4 border-t-2 border-dashed border-slate-400 pt-4 mt-2">
+                      {pixQrDataUrl && (
+                        <img
+                          src={pixQrDataUrl}
+                          alt="QR Code Pix"
+                          className="w-32 h-32 border border-slate-300 rounded-lg shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 w-full space-y-1.5">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 block">
+                          Ou pague com Pix — aponte a câmera do app do seu banco para o QR Code
+                        </span>
+                        <div className="flex gap-2">
+                          <textarea
+                            readOnly
+                            value={bol.pixQrcode}
+                            onClick={(e) => e.currentTarget.select()}
+                            className="w-full text-[9px] font-mono p-2 bg-slate-50 border rounded-lg resize-none h-14"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleCopiarPix}
+                            className="no-print shrink-0 px-3 bg-slate-100 hover:bg-slate-200 rounded-lg text-[10px] font-bold"
+                          >
+                            {pixCopiado ? 'Copiado!' : 'Copiar'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
