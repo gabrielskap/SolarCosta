@@ -175,12 +175,20 @@ export interface ConteudoTextoRico {
   imagem_id: string | null;
 }
 
+export type TamanhoImagemGaleria = 'baixa' | 'media' | 'alta' | 'automatica';
+export type PosicaoImagemGaleria = 'topo' | 'centro' | 'base';
+
 export interface ConteudoGaleria {
   rotulo: string;
   titulo: string;
   descricao: string;
   claro: boolean;
-  imagens: { midia_id: string; legenda: string }[];
+  imagens: {
+    midia_id: string;
+    legenda: string;
+    tamanho: TamanhoImagemGaleria;
+    posicao: PosicaoImagemGaleria;
+  }[];
 }
 
 export type TamanhoVideo = 'pequena' | 'media' | 'grande' | 'completa';

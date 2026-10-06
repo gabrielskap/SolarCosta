@@ -377,8 +377,31 @@ export const CAMPOS_BLOCO: Record<TipoBloco, CampoEditor[]> = {
       campos: [
         { chave: 'midia_id', rotulo: 'Imagem', tipo: 'imagem' },
         { chave: 'legenda', rotulo: 'Legenda', tipo: 'texto' },
+        {
+          chave: 'tamanho',
+          rotulo: 'Tamanho da foto',
+          tipo: 'selecao',
+          ajuda: '"Automática" mostra a foto inteira, sem cortar nada.',
+          opcoes: [
+            { valor: 'baixa', rotulo: 'Baixa' },
+            { valor: 'media', rotulo: 'Média' },
+            { valor: 'alta', rotulo: 'Alta' },
+            { valor: 'automatica', rotulo: 'Automática (sem cortes)' },
+          ],
+        },
+        {
+          chave: 'posicao',
+          rotulo: 'Posição do corte',
+          tipo: 'selecao',
+          ajuda: 'Qual parte da foto fica visível quando o tamanho obriga um corte. Sem efeito em "Automática".',
+          opcoes: [
+            { valor: 'topo', rotulo: 'Topo' },
+            { valor: 'centro', rotulo: 'Centro' },
+            { valor: 'base', rotulo: 'Base' },
+          ],
+        },
       ],
-      novoItem: () => ({ midia_id: '', legenda: '' }),
+      novoItem: () => ({ midia_id: '', legenda: '', tamanho: 'media', posicao: 'centro' }),
     },
   ],
 
