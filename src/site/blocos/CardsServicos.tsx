@@ -6,11 +6,13 @@ import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { Secao, TituloSecao } from '../components/Secao';
 import { CardServico } from '../components/CardServico';
+import { useEditor } from '../editor/contexto';
 import type { ConteudoCardsServicos } from './tipos';
 
 export const CardsServicos: React.FC<{ conteudo: ConteudoCardsServicos }> = ({ conteudo: c }) => {
+  const { modoEditor } = useEditor();
   const itens = c.itens ?? [];
-  const temTitulo = !!(c.rotulo || c.titulo);
+  const temTitulo = !!(c.rotulo || c.titulo) || modoEditor;
   // Cartão aberto é alto: duas colunas dão mais ar que quatro.
   const colunas = c.completo ? 'md:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-4';
 
@@ -22,12 +24,20 @@ export const CardsServicos: React.FC<{ conteudo: ConteudoCardsServicos }> = ({ c
           titulo={c.titulo}
           descricao={c.descricao}
           centralizado={!!c.centralizado}
+          campoRotulo="rotulo"
+          campoTitulo="titulo"
+          campoDescricao="descricao"
         />
       )}
 
       <div className={[temTitulo ? 'mt-12' : '', 'grid gap-6', colunas].join(' ')}>
         {itens.map((s, i) => (
-          <CardServico key={s.id || i} servico={s} completo={!!c.completo} />
+          <CardServico
+            key={s.id || i}
+            servico={s}
+            completo={!!c.completo}
+            campoBase={`itens.${i}`}
+          />
         ))}
       </div>
 

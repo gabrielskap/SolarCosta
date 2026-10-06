@@ -65,12 +65,20 @@ const Sistema = () => {
   );
 };
 
+/**
+ * O preview do editor visual (um iframe em /?editor=1) é um documento próprio
+ * e montaria o aviso de nova versão junto — dentro da moldura do editor, onde
+ * ele não tem o que fazer, e com um botão de recarregar que jogaria fora a
+ * edição em andamento. Quem precisa ver o aviso é a aba de verdade.
+ */
+const noPreviewDoEditor = new URLSearchParams(window.location.search).get('editor') === '1';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {/* Fora do BrowserRouter de propósito: o service worker cobre o domínio
         inteiro (site público + /sistema), então o aviso de atualização não
         pode depender de qual árvore de rota está montada no momento. */}
-    <AvisoNovaVersao />
+    {!noPreviewDoEditor && <AvisoNovaVersao />}
     <BrowserRouter>
       <Suspense fallback={<Carregando />}>
         <Routes>

@@ -3,6 +3,8 @@
 // título em font-black e cartão branco com régua de gradiente no rodapé.
 
 import React from 'react';
+import { Editavel } from '../editor/Editavel';
+import { useEditor } from '../editor/contexto';
 
 export const Secao: React.FC<{
   children: React.ReactNode;
@@ -16,19 +18,83 @@ export const Secao: React.FC<{
   </section>
 );
 
+/**
+ * Cabeçalho de seção: rótulo, título e descrição.
+ *
+ * É usado por quase todo bloco, então é aqui que a edição no lugar rende
+ * mais: passar os três nomes de campo torna rótulo, título e descrição
+ * editáveis de uma vez, em qualquer bloco, sem repetir <Editavel> em cada um.
+ * Bloco que não passa os nomes continua só exibindo — é o que mantém este
+ * componente utilizável fora de um bloco.
+ */
 export const TituloSecao: React.FC<{
   rotulo: string;
   titulo: string;
   descricao?: string;
   centralizado?: boolean;
-}> = ({ rotulo, titulo, descricao, centralizado = false }) => (
-  <div className={`max-w-2xl ${centralizado ? 'mx-auto text-center' : ''}`}>
-    <span className="text-xs font-bold text-emerald-600 tracking-widest uppercase">{rotulo}</span>
-    <h2 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 mt-2">{titulo}</h2>
-    {descricao && <p className="text-base text-slate-600 mt-3 leading-relaxed">{descricao}</p>}
-    <div className={`w-12 h-1 bg-solar rounded-full mt-5 ${centralizado ? 'mx-auto' : ''}`} />
-  </div>
-);
+  campoRotulo?: string;
+  campoTitulo?: string;
+  campoDescricao?: string;
+}> = ({
+  rotulo,
+  titulo,
+  descricao,
+  centralizado = false,
+  campoRotulo,
+  campoTitulo,
+  campoDescricao,
+}) => {
+  const { modoEditor } = useEditor();
+
+  return (
+    <div className={`max-w-2xl ${centralizado ? 'mx-auto text-center' : ''}`}>
+      {campoRotulo ? (
+        <Editavel
+          como="span"
+          campo={campoRotulo}
+          valor={rotulo}
+          placeholder="Rótulo"
+          className="block text-xs font-bold text-emerald-600 tracking-widest uppercase"
+        />
+      ) : (
+        <span className="text-xs font-bold text-emerald-600 tracking-widest uppercase">
+          {rotulo}
+        </span>
+      )}
+
+      {campoTitulo ? (
+        <Editavel
+          como="h2"
+          campo={campoTitulo}
+          valor={titulo}
+          placeholder="Título da seção"
+          className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 mt-2"
+        />
+      ) : (
+        <h2 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 mt-2">
+          {titulo}
+        </h2>
+      )}
+
+      {/* Descrição vazia some do site, mas precisa existir no editor — senão
+          não há onde clicar para escrevê-la. */}
+      {campoDescricao && (descricao || modoEditor) ? (
+        <Editavel
+          como="p"
+          campo={campoDescricao}
+          valor={descricao}
+          multilinha
+          placeholder="Descrição (opcional)"
+          className="text-base text-slate-600 mt-3 leading-relaxed"
+        />
+      ) : (
+        descricao && <p className="text-base text-slate-600 mt-3 leading-relaxed">{descricao}</p>
+      )}
+
+      <div className={`w-12 h-1 bg-solar rounded-full mt-5 ${centralizado ? 'mx-auto' : ''}`} />
+    </div>
+  );
+};
 
 /** Cartão branco no padrão dos KPIs do dashboard. */
 export const Cartao: React.FC<{

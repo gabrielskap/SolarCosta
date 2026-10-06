@@ -8,20 +8,44 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { FormularioLead } from '../components/FormularioLead';
+import { Editavel } from '../editor/Editavel';
+import { useEditor } from '../editor/contexto';
 import type { ConteudoBannerConversao } from './tipos';
 
 export const BannerConversao: React.FC<{ conteudo: ConteudoBannerConversao }> = ({
   conteudo: c,
-}) => (
+}) => {
+  const { modoEditor } = useEditor();
+
+  return (
   <section className="bg-marca text-white">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20 grid lg:grid-cols-2 gap-12 items-center">
       <div className="space-y-6">
-        {c.rotulo && (
-          <span className="text-xs font-bold text-solar tracking-widest uppercase">{c.rotulo}</span>
+        {(c.rotulo || modoEditor) && (
+          <Editavel
+            como="span"
+            campo="rotulo"
+            valor={c.rotulo}
+            placeholder="Rótulo"
+            className="block text-xs font-bold text-solar tracking-widest uppercase"
+          />
         )}
-        <h2 className="text-3xl md:text-4xl font-black tracking-tight leading-tight">{c.titulo}</h2>
+        <Editavel
+          como="h2"
+          campo="titulo"
+          valor={c.titulo}
+          placeholder="Título da chamada"
+          className="text-3xl md:text-4xl font-black tracking-tight leading-tight"
+        />
         <div className="w-12 h-1 bg-emerald-500 rounded-full" />
-        <p className="text-blue-100 leading-relaxed">{c.texto}</p>
+        <Editavel
+          como="p"
+          campo="texto"
+          valor={c.texto}
+          multilinha
+          placeholder="Um parágrafo explicando o convite."
+          className="text-blue-100 leading-relaxed"
+        />
         {c.botao?.rotulo && (
           <Link
             to={c.botao.destino}
@@ -40,4 +64,5 @@ export const BannerConversao: React.FC<{ conteudo: ConteudoBannerConversao }> = 
       />
     </div>
   </section>
-);
+  );
+};

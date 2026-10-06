@@ -8,11 +8,25 @@
 //   · nenhuma outra tela consome esses dados, então não há o que compartilhar.
 //   · App.tsx já tem quase 900 linhas e ganharia mais uma dezena de handlers.
 //
-// Não há rascunho: salvar publica. É por isso que cada ação dá um retorno
-// explícito ("a alteração já está no ar") e que existe o link "Ver no site".
+// NESTA TELA não há rascunho: salvar publica. É por isso que cada ação dá um
+// retorno explícito ("a alteração já está no ar") e que existe o link "Ver no
+// site". O caminho com rascunho é o editor visual (EditorVisual.tsx), e os
+// dois convivem sobre as mesmas páginas — por isso o selo "rascunho pendente"
+// na lista ao lado e o aviso dentro de EditorPagina: editar aqui vai ao ar na
+// hora e invalida o rascunho que estiver aberto lá.
 
 import React, { useEffect, useState } from 'react';
-import { FileText, Globe, Image as ImageIcon, Loader2, Menu as MenuIcon, Plus, WifiOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  FileText,
+  Globe,
+  Image as ImageIcon,
+  Loader2,
+  Menu as MenuIcon,
+  MousePointerClick,
+  Plus,
+  WifiOff,
+} from 'lucide-react';
 import { Api } from '../../services/api';
 import { ErroApi } from '../../services/http';
 import { Site, PAGINAS_FIXAS, type PaginaAdmin, type MenuAdmin, type SiteAdmin } from '../../services/site';
@@ -39,6 +53,7 @@ interface Props {
 }
 
 export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
+  const navigate = useNavigate();
   const [aba, setAba] = useState<Aba>('paginas');
   const [dados, setDados] = useState<SiteAdmin | null>(null);
   const [empresa, setEmpresa] = useState<Record<string, any> | null>(null);
@@ -157,15 +172,29 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
             Textos, imagens e menus do site institucional. O que você salva aqui vai ao ar na hora.
           </p>
         </div>
-        <a
-          href="/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 text-slate-600 hover:border-[#004276] hover:text-[#004276] transition"
-        >
-          <Globe className="w-4 h-4" />
-          Abrir o site
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 text-slate-600 hover:border-[#004276] hover:text-[#004276] transition"
+          >
+            <Globe className="w-4 h-4" />
+            Abrir o site
+          </a>
+          {/* Preenchido porque passa a ser a ação primária desta tela: editar
+              vendo o resultado é o caminho que a maioria vai querer, e o
+              formulário das abas vira o caminho preciso de quem já sabe qual
+              campo quer mexer. */}
+          <button
+            type="button"
+            onClick={() => navigate(`/sistema/site/editor?pagina=${slug}`)}
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl bg-[#004276] hover:bg-[#003158] text-white shadow-sm transition"
+          >
+            <MousePointerClick className="w-4 h-4" />
+            Editar site
+          </button>
+        </div>
       </div>
 
       {/* ------------------------------------------------------- abas --- */}
@@ -212,7 +241,25 @@ export const SiteConfigView: React.FC<Props> = ({ currentUser, showToast }) => {
                       : 'text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <span className="block truncate">{p.nome}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="block truncate">{p.nome}</span>
+                    {/* Ponto âmbar = rascunho pendente no editor visual. Fica
+                        aqui porque é a única lista que mostra todas as páginas
+                        de uma vez: sem ele, um rascunho esquecido só apareceria
+                        para quem abrisse justo aquela página. */}
+                    {p.temRascunho && (
+                      <span
+                        title={
+                          p.rascunhoDesatualizado
+                            ? 'Rascunho desatualizado — não pode mais ser publicado'
+                            : 'Rascunho não publicado'
+                        }
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          p.rascunhoDesatualizado ? 'bg-rose-400' : 'bg-amber-400'
+                        }`}
+                      />
+                    )}
+                  </span>
                   <span
                     className={`block text-[10px] font-mono ${
                       p.slug === slug ? 'text-blue-200' : 'text-slate-400'

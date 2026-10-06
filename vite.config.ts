@@ -144,6 +144,29 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+
+      /*
+       * Em produção o mesmo Express serve o build e a API, então TODA URL de
+       * /api é relativa e de mesma origem. Em dev, sem este proxy, elas caem no
+       * Vite — que responde index.html por causa do navigateFallback do PWA.
+       *
+       * Quem chama a API por services/http.ts não sentia: lá o BASE_URL vira
+       * http://localhost:4000 em dev. O problema é a URL que NÃO passa por ele:
+       * urlMidia() (src/site/blocos/tipos.ts) devolve '/api/publico/midia/<id>'
+       * direto no src da <img>, porque tipos.ts é dado puro e não pode importar
+       * o cliente HTTP — é o mesmo arquivo que o gerador de seed usa no Node.
+       * Resultado: toda imagem da biblioteca aparecia quebrada em dev, no site
+       * e no editor.
+       *
+       * Com o proxy, dev e produção passam a ter a mesma origem para /api, que
+       * é o comportamento que o código já assume em todo lugar.
+       */
+      proxy: {
+        '/api': {
+          target: process.env.VITE_API_URL || 'http://localhost:4000',
+          changeOrigin: true,
+        },
+      },
     },
   };
 });

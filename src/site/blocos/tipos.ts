@@ -23,6 +23,7 @@ export const TIPOS_BLOCO = [
   'texto_rico',
   'galeria',
   'video_youtube',
+  'area_livre',
 ] as const;
 
 export type TipoBloco = (typeof TIPOS_BLOCO)[number];
@@ -173,10 +174,25 @@ export interface ConteudoTextoRico {
   claro: boolean;
   paragrafos: string[];
   imagem_id: string | null;
+  /**
+   * Largura da imagem em % da coluna, arrastada na alça do editor visual.
+   * Ausente = 100%, que é como o bloco sempre desenhou. Em % e não em px
+   * porque a coluna muda de largura com o viewport.
+   */
+  imagem_largura_pct?: number | null;
 }
 
 export type TamanhoImagemGaleria = 'baixa' | 'media' | 'alta' | 'automatica';
 export type PosicaoImagemGaleria = 'topo' | 'centro' | 'base';
+
+/**
+ * Limites das alças de foto. Ficam aqui, e não no componente da alça, porque
+ * o bloco também precisa deles para prender o valor que vem do banco — e a
+ * alça é carregada só no editor, enquanto o bloco roda no site de todo mundo.
+ */
+export const FOTO_ALTURA_MIN = 80;
+export const FOTO_ALTURA_MAX = 900;
+export const FOTO_COLUNAS_MAX = 3;
 
 export interface ConteudoGaleria {
   rotulo: string;
@@ -188,6 +204,21 @@ export interface ConteudoGaleria {
     legenda: string;
     tamanho: TamanhoImagemGaleria;
     posicao: PosicaoImagemGaleria;
+    /**
+     * Altura em px arrastada na alça do editor visual. Quando presente, VENCE
+     * `tamanho` — escolher um tamanho no painel apaga este valor. Fica numa
+     * chave própria, e não dentro do enum, para que o <select> do painel
+     * continue válido e o conteúdo já salvo não precise de migração.
+     */
+    altura_px?: number | null;
+    /**
+     * Quantas colunas da grade a foto ocupa (1 a 3). Ausente = 1.
+     *
+     * Em COLUNAS e não em pixels porque a grade muda de formato com a tela —
+     * 3 colunas no desktop, 2 no tablet, 1 no celular. "Ocupa duas colunas"
+     * continua querendo dizer a mesma coisa nas três; "600px de largura", não.
+     */
+    largura_colunas?: number | null;
   }[];
 }
 
@@ -203,6 +234,78 @@ export interface ConteudoVideoYoutube {
   legenda: string;
   tamanho: TamanhoVideo;
   alinhamento: AlinhamentoVideo;
+}
+
+/* ---------------------------------------------------------- área livre --- */
+
+/**
+ * Largura do canvas de projeto da área livre, em px.
+ *
+ * Toda a geometria dos elementos é guardada em px DESTE canvas, e no desktop o
+ * bloco inteiro é escalado por `larguraReal / 1200`. A alternativa — guardar x
+ * e largura em % — parece mais responsiva e é pior: o texto refluiria em cada
+ * largura de tela e passaria a sobrepor o elemento de baixo, que é a falha
+ * clássica de posicionamento absoluto. Escalando, a composição se mantém
+ * idêntica em qualquer largura de desktop, porque o texto escala junto.
+ *
+ * O preço é texto um pouco menor num desktop estreito (~0,8× a 1,0× entre
+ * 1024px e a largura máxima). É menos ruim do que elementos se sobrepondo, e
+ * no celular nada disto é usado: lá os elementos empilham.
+ *
+ * 1200 porque o container do site é max-w-7xl (1280) menos o padding lateral.
+ */
+export const LARGURA_AREA_LIVRE = 1200;
+
+/** Teto de elementos por bloco. Ver o comentário em AreaLivre.tsx. */
+export const MAX_ELEMENTOS_LIVRES = 40;
+
+export type TipoElementoLivre = 'texto' | 'imagem' | 'botao';
+export type CorTextoLivre = 'escuro' | 'suave' | 'marca' | 'solar' | 'branco';
+export type FundoAreaLivre = 'transparente' | 'branco' | 'cinza' | 'marca';
+
+export interface ElementoAreaLivre {
+  /** crypto.randomUUID(). Estável para o React e para a seleção no editor. */
+  id: string;
+  tipo: TipoElementoLivre;
+
+  /** Canto superior esquerdo e tamanho, em px no canvas de LARGURA_AREA_LIVRE. */
+  x: number;
+  y: number;
+  largura: number;
+  altura: number;
+
+  /**
+   * Ordem de empilhamento no desktop (z-index). NÃO é a ordem no celular:
+   * lá os elementos saem na ordem de leitura da composição, por (y, x).
+   */
+  camada: number;
+
+  // texto
+  texto?: string;
+  tamanho_fonte?: number;
+  peso?: 'normal' | 'bold' | 'black';
+  cor?: CorTextoLivre;
+  alinhamento?: 'esquerda' | 'centro' | 'direita';
+
+  // imagem
+  midia_id?: string | null;
+  ajuste?: 'cobrir' | 'conter';
+  raio?: number;
+
+  // botão
+  rotulo?: string;
+  destino?: string;
+  estilo?: 'solido' | 'contorno';
+}
+
+export interface ConteudoAreaLivre {
+  rotulo: string;
+  titulo: string;
+  claro: boolean;
+  /** Altura do canvas em px no projeto de LARGURA_AREA_LIVRE. */
+  altura: number;
+  fundo?: FundoAreaLivre;
+  elementos: ElementoAreaLivre[];
 }
 
 /* -------------------------------------------------------- agregadores --- */

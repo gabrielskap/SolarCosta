@@ -18,6 +18,7 @@ import {
   Image,
   LayoutList,
   MessageSquareQuote,
+  Move,
   Phone,
   Rows3,
   Sparkles,
@@ -48,7 +49,8 @@ import { BlocoSimulador } from './BlocoSimulador';
 import { TextoRico } from './TextoRico';
 import { Galeria } from './Galeria';
 import { VideoYoutube } from './VideoYoutube';
-import type { TipoBloco } from './tipos';
+import { AreaLivre } from './AreaLivre';
+import { LARGURA_AREA_LIVRE, type TipoBloco } from './tipos';
 
 export interface DefinicaoBloco {
   rotulo: string;
@@ -333,6 +335,40 @@ export const REGISTRO_BLOCOS: Record<TipoBloco, DefinicaoBloco> = {
       legenda: '',
       tamanho: 'grande',
       alinhamento: 'centro',
+    }),
+  },
+
+  area_livre: {
+    rotulo: 'Área livre',
+    descricao:
+      'Tela em branco: posicione texto, imagem e botão onde quiser, arrastando. No celular tudo empilha sozinho.',
+    Icone: Move,
+    Componente: AreaLivre,
+    padrao: () => ({
+      rotulo: '',
+      titulo: '',
+      claro: false,
+      fundo: 'transparente',
+      altura: 420,
+      // Nunca nasce vazio: um retângulo em branco não diz ao administrador o
+      // que ele deve fazer em seguida, e arrastar um elemento existente é mais
+      // fácil de descobrir do que achar o botão de criar o primeiro.
+      elementos: [
+        {
+          id: crypto.randomUUID(),
+          tipo: 'texto',
+          x: 80,
+          y: 120,
+          largura: Math.round(LARGURA_AREA_LIVRE / 2) - 80,
+          altura: 140,
+          camada: 1,
+          texto: 'Arraste este texto para onde quiser.',
+          tamanho_fonte: 32,
+          peso: 'black',
+          cor: 'escuro',
+          alinhamento: 'esquerda',
+        },
+      ],
     }),
   },
 };

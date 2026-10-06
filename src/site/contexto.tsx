@@ -14,6 +14,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Publico, type ConfigPublica, type SitePublico } from '../services/publico';
+
 import { CONTEUDO_PADRAO, paginaPadrao } from './conteudoPadrao';
 import type { BlocoSite, ChaveMenu, ItemMenu, PaginaSite } from './blocos/tipos';
 
@@ -25,19 +26,45 @@ interface Estado {
 
 const ContextoConfig = createContext<Estado>({ config: null, site: null, carregando: true });
 
-export const ProvedorConfigPublica: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+interface PropsProvedor {
+  children: React.ReactNode;
+  /**
+   * Conteúdo imposto de fora, em vez de buscado.
+   *
+   * É o preview do editor visual (src/site/editor/PonteEditor.tsx), que recebe
+   * o RASCUNHO do pai por postMessage. Só a parte editorial vem daqui: o
+   * cadastro da empresa continua saindo de /api/publico/config, porque ele não
+   * tem rascunho — é o mesmo valor no preview e no site no ar.
+   *
+   * Sem esta prop nada muda, e é esse o ponto: o site público segue com
+   * exatamente o mesmo comportamento de antes do editor existir.
+   */
+  fonte?: SitePublico | null;
+}
+
+export const ProvedorConfigPublica: React.FC<PropsProvedor> = ({ children, fonte }) => {
   const [estado, setEstado] = useState<Estado>({ config: null, site: null, carregando: true });
+  const imposto = fonte !== undefined;
 
   useEffect(() => {
     let ativo = true;
 
     // allSettled e não all: o simulador não pode sumir porque o CMS falhou,
     // nem o texto da home porque a tabela de concessionárias travou.
-    void Promise.allSettled([Publico.getConfig(), Publico.getSite()]).then(([c, s]) => {
+    //
+    // Com `fonte` imposta, o conteúdo editorial já chegou por outro caminho e
+    // buscá-lo seria uma requisição jogada fora — mas o cadastro da empresa
+    // continua vindo da rede nos dois casos.
+    const promessaSite = imposto
+      ? Promise.resolve(null)
+      : Publico.getSite().catch(() => null);
+
+    void Promise.allSettled([Publico.getConfig()]).then(async ([c]) => {
+      const site = await promessaSite;
       if (!ativo) return;
       setEstado({
         config: c.status === 'fulfilled' ? c.value : null,
-        site: s.status === 'fulfilled' ? s.value : null,
+        site,
         carregando: false,
       });
     });
@@ -45,9 +72,21 @@ export const ProvedorConfigPublica: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       ativo = false;
     };
-  }, []);
+  }, [imposto]);
 
-  return <ContextoConfig.Provider value={estado}>{children}</ContextoConfig.Provider>;
+  // O conteúdo imposto vence sempre que a prop está presente.
+  //
+  // Enquanto ele não chega, o preview continua CARREGANDO — e não "carregado
+  // e vazio". A diferença não é cosmética: PaginaCms distingue "ainda não sei"
+  // de "o site respondeu e não tem esta página", e a segunda leitura leva ao
+  // 404. Uma das 5 páginas fixas disfarçaria o erro, porque usePagina cai no
+  // conteúdo de fábrica; uma página criada no CMS não existe em
+  // conteudoPadrao.ts e cairia direto na tela de "página não existe".
+  const valor: Estado = imposto
+    ? { config: estado.config, site: fonte ?? null, carregando: !fonte }
+    : estado;
+
+  return <ContextoConfig.Provider value={valor}>{children}</ContextoConfig.Provider>;
 };
 
 export function useConfigPublica(): Estado {

@@ -16,6 +16,7 @@ export type TipoCampo =
   | 'paragrafos'
   | 'booleano'
   | 'selecao'
+  | 'numero'
   | 'icone'
   | 'imagem'
   | 'link'
@@ -28,6 +29,14 @@ export interface CampoEditor {
   ajuda?: string;
   /** Só para `selecao`. */
   opcoes?: { valor: string | number; rotulo: string }[];
+  /**
+   * Só para `numero`. O controle devolve `null` quando o campo é esvaziado —
+   * é o que permite "sem ajuste manual" ser um estado alcançável pelo teclado,
+   * e não só arrastando a alça de volta.
+   */
+  min?: number;
+  max?: number;
+  passo?: number;
   /** Só para `lista`: a forma de cada item e como nasce um item novo. */
   campos?: CampoEditor[];
   rotuloItem?: string;
@@ -362,6 +371,14 @@ export const CAMPOS_BLOCO: Record<TipoBloco, CampoEditor[]> = {
     FUNDO_CLARO,
     { chave: 'paragrafos', rotulo: 'Parágrafos', tipo: 'paragrafos' },
     { chave: 'imagem_id', rotulo: 'Imagem ao lado', tipo: 'imagem' },
+    {
+      chave: 'imagem_largura_pct',
+      rotulo: 'Largura da imagem (%)',
+      tipo: 'numero',
+      min: 30,
+      max: 100,
+      ajuda: 'Arraste a borda da imagem no editor visual, ou digite aqui. Em branco = largura cheia.',
+    },
   ],
 
   galeria: [
@@ -381,13 +398,30 @@ export const CAMPOS_BLOCO: Record<TipoBloco, CampoEditor[]> = {
           chave: 'tamanho',
           rotulo: 'Tamanho da foto',
           tipo: 'selecao',
-          ajuda: '"Automática" mostra a foto inteira, sem cortar nada.',
+          ajuda:
+            '"Automática" mostra a foto inteira, sem cortar nada. Se houver altura ajustada à mão abaixo, ela prevalece sobre esta opção.',
           opcoes: [
             { valor: 'baixa', rotulo: 'Baixa' },
             { valor: 'media', rotulo: 'Média' },
             { valor: 'alta', rotulo: 'Alta' },
             { valor: 'automatica', rotulo: 'Automática (sem cortes)' },
           ],
+        },
+        {
+          chave: 'altura_px',
+          rotulo: 'Altura ajustada à mão (px)',
+          tipo: 'numero',
+          min: 80,
+          max: 900,
+          ajuda: 'Preenchido ao arrastar a borda de baixo da foto no editor visual. Apague para voltar a usar o tamanho acima.',
+        },
+        {
+          chave: 'largura_colunas',
+          rotulo: 'Largura em colunas',
+          tipo: 'numero',
+          min: 1,
+          max: 3,
+          ajuda: 'Quantas colunas da grade a foto ocupa (1 a 3). Arraste a borda direita da foto no editor visual. Em branco = 1.',
         },
         {
           chave: 'posicao',
@@ -438,6 +472,136 @@ export const CAMPOS_BLOCO: Record<TipoBloco, CampoEditor[]> = {
         { valor: 'centro', rotulo: 'Centro' },
         { valor: 'direita', rotulo: 'Direita' },
       ],
+    },
+  ],
+
+  // O editor de verdade da área livre é o canvas, não este formulário: posição
+  // e tamanho se acertam arrastando. A lista existe para os casos em que o
+  // canvas não ajuda — elemento escondido atrás de outro, valor que precisa ser
+  // exato, ou escolher a imagem (que nunca será um gesto). Por isso a geometria
+  // aparece aqui também, e não só as propriedades visuais.
+  area_livre: [
+    ROTULO,
+    TITULO,
+    FUNDO_CLARO,
+    {
+      chave: 'fundo',
+      rotulo: 'Fundo da área',
+      tipo: 'selecao',
+      opcoes: [
+        { valor: 'transparente', rotulo: 'Sem fundo' },
+        { valor: 'branco', rotulo: 'Branco' },
+        { valor: 'cinza', rotulo: 'Cinza' },
+        { valor: 'marca', rotulo: 'Azul da marca' },
+      ],
+    },
+    {
+      chave: 'altura',
+      rotulo: 'Altura da área (px)',
+      tipo: 'numero',
+      min: 160,
+      max: 2000,
+      ajuda: 'Altura no projeto de 1200px de largura. No celular a altura é automática.',
+    },
+    {
+      chave: 'elementos',
+      rotulo: 'Elementos',
+      tipo: 'lista',
+      rotuloItem: 'Elemento',
+      ajuda: 'A ordem no celular é de cima para baixo e da esquerda para a direita, pela posição no computador.',
+      campos: [
+        {
+          chave: 'tipo',
+          rotulo: 'Tipo',
+          tipo: 'selecao',
+          opcoes: [
+            { valor: 'texto', rotulo: 'Texto' },
+            { valor: 'imagem', rotulo: 'Imagem' },
+            { valor: 'botao', rotulo: 'Botão' },
+          ],
+        },
+        { chave: 'texto', rotulo: 'Texto', tipo: 'texto_longo' },
+        { chave: 'rotulo', rotulo: 'Texto do botão', tipo: 'texto' },
+        { chave: 'destino', rotulo: 'Destino do botão', tipo: 'texto' },
+        { chave: 'midia_id', rotulo: 'Imagem', tipo: 'imagem' },
+        { chave: 'x', rotulo: 'Posição horizontal (px)', tipo: 'numero', min: 0, max: 1200 },
+        { chave: 'y', rotulo: 'Posição vertical (px)', tipo: 'numero', min: 0, max: 2000 },
+        { chave: 'largura', rotulo: 'Largura (px)', tipo: 'numero', min: 24, max: 1200 },
+        { chave: 'altura', rotulo: 'Altura (px)', tipo: 'numero', min: 24, max: 2000 },
+        {
+          chave: 'camada',
+          rotulo: 'Camada',
+          tipo: 'numero',
+          min: 1,
+          max: 99,
+          ajuda: 'Quem fica por cima quando dois elementos se sobrepõem. Maior vence.',
+        },
+        { chave: 'tamanho_fonte', rotulo: 'Tamanho da letra (px)', tipo: 'numero', min: 10, max: 96 },
+        {
+          chave: 'peso',
+          rotulo: 'Espessura da letra',
+          tipo: 'selecao',
+          opcoes: [
+            { valor: 'normal', rotulo: 'Normal' },
+            { valor: 'bold', rotulo: 'Negrito' },
+            { valor: 'black', rotulo: 'Extra negrito' },
+          ],
+        },
+        {
+          chave: 'cor',
+          rotulo: 'Cor do texto',
+          tipo: 'selecao',
+          opcoes: [
+            { valor: 'escuro', rotulo: 'Escuro' },
+            { valor: 'suave', rotulo: 'Cinza' },
+            { valor: 'marca', rotulo: 'Azul da marca' },
+            { valor: 'solar', rotulo: 'Amarelo' },
+            { valor: 'branco', rotulo: 'Branco' },
+          ],
+        },
+        {
+          chave: 'alinhamento',
+          rotulo: 'Alinhamento do texto',
+          tipo: 'selecao',
+          opcoes: [
+            { valor: 'esquerda', rotulo: 'Esquerda' },
+            { valor: 'centro', rotulo: 'Centro' },
+            { valor: 'direita', rotulo: 'Direita' },
+          ],
+        },
+        {
+          chave: 'ajuste',
+          rotulo: 'Ajuste da imagem',
+          tipo: 'selecao',
+          opcoes: [
+            { valor: 'cobrir', rotulo: 'Preencher (corta)' },
+            { valor: 'conter', rotulo: 'Caber inteira' },
+          ],
+        },
+        {
+          chave: 'estilo',
+          rotulo: 'Estilo do botão',
+          tipo: 'selecao',
+          opcoes: [
+            { valor: 'solido', rotulo: 'Preenchido' },
+            { valor: 'contorno', rotulo: 'Contorno' },
+          ],
+        },
+      ],
+      novoItem: () => ({
+        id: crypto.randomUUID(),
+        tipo: 'texto',
+        x: 40,
+        y: 40,
+        largura: 360,
+        altura: 120,
+        camada: 1,
+        texto: 'Novo texto',
+        tamanho_fonte: 20,
+        peso: 'normal',
+        cor: 'escuro',
+        alinhamento: 'esquerda',
+      }),
     },
   ],
 };

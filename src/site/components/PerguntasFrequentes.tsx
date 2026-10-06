@@ -5,29 +5,60 @@
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Secao, TituloSecao } from './Secao';
+import { Editavel } from '../editor/Editavel';
+import { useEditor } from '../editor/contexto';
 import type { ConteudoFaq } from '../blocos/tipos';
 
-export const PerguntasFrequentes: React.FC<{ conteudo: ConteudoFaq }> = ({ conteudo: c }) => (
+export const PerguntasFrequentes: React.FC<{ conteudo: ConteudoFaq }> = ({ conteudo: c }) => {
+  const { modoEditor } = useEditor();
+
+  return (
   <Secao claro={!!c.claro} id="duvidas">
-    {(c.rotulo || c.titulo) && (
-      <TituloSecao rotulo={c.rotulo} titulo={c.titulo} descricao={c.descricao} centralizado />
+    {(c.rotulo || c.titulo || modoEditor) && (
+      <TituloSecao
+        rotulo={c.rotulo}
+        titulo={c.titulo}
+        descricao={c.descricao}
+        centralizado
+        campoRotulo="rotulo"
+        campoTitulo="titulo"
+        campoDescricao="descricao"
+      />
     )}
 
     <div className="mt-10 max-w-3xl mx-auto space-y-3">
       {(c.perguntas ?? []).map((p, i) => (
+        // No editor todos os itens abrem: a resposta só é editável se estiver
+        // visível, e abrir um <details> ali exigiria clicar no <summary> —
+        // que é justamente o campo da pergunta.
         <details
-          key={`${p.pergunta}-${i}`}
+          key={i}
+          open={modoEditor || undefined}
           className="group bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden"
         >
           <summary className="flex items-center justify-between gap-4 cursor-pointer list-none px-6 py-4 font-bold text-slate-900 hover:text-marca transition">
-            <span className="text-sm md:text-base">{p.pergunta}</span>
+            <Editavel
+              como="span"
+              campo={`perguntas.${i}.pergunta`}
+              valor={p.pergunta}
+              placeholder="Escreva a pergunta"
+              className="text-sm md:text-base"
+            />
             <ChevronDown className="w-5 h-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
           </summary>
           <div className="px-6 pb-5 -mt-1">
-            <p className="text-sm text-slate-600 leading-relaxed">{p.resposta}</p>
+            <Editavel
+              como="p"
+              campo={`perguntas.${i}.resposta`}
+              valor={p.resposta}
+              multilinha
+              placeholder="Escreva a resposta."
+              className="text-sm text-slate-600 leading-relaxed"
+            />
           </div>
         </details>
       ))}
     </div>
   </Secao>
-);
+  );
+};

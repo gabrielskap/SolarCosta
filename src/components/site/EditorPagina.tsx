@@ -5,6 +5,7 @@
 // ruim com teclado, e as setas resolvem os dois casos.
 
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ChevronDown,
   ChevronUp,
@@ -12,9 +13,11 @@ import {
   EyeOff,
   GripVertical,
   Loader2,
+  MousePointerClick,
   Pencil,
   Plus,
   Trash2,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import { Site, type BlocoAdmin, type PaginaAdmin } from '../../services/site';
@@ -199,6 +202,61 @@ export const EditorPagina: React.FC<Props> = ({
           )}
         </div>
       </div>
+
+      {/* Rascunho aberto no editor visual.
+          Esta tela NÃO é bloqueada por causa dele, de propósito: é o único
+          caminho para consertar com urgência uma página que está no ar, e
+          travá-la transformaria um rascunho esquecido em refém. Em troca, ela
+          avisa — e o servidor invalida o rascunho a cada escrita daqui, para
+          que publicá-lo depois falhe com 409 em vez de ressuscitar conteúdo
+          antigo por cima do que acabou de ser corrigido. */}
+      {pagina.temRascunho && (
+        <div
+          className={`flex flex-wrap items-start gap-3 rounded-xl border p-3 mb-4 ${
+            pagina.rascunhoDesatualizado
+              ? 'bg-rose-50 border-rose-200'
+              : 'bg-amber-50 border-amber-200'
+          }`}
+        >
+          <TriangleAlert
+            className={`w-4 h-4 mt-0.5 shrink-0 ${
+              pagina.rascunhoDesatualizado ? 'text-rose-600' : 'text-amber-600'
+            }`}
+          />
+          <div className="min-w-0 flex-1">
+            <p
+              className={`text-xs font-bold ${
+                pagina.rascunhoDesatualizado ? 'text-rose-900' : 'text-amber-900'
+              }`}
+            >
+              {pagina.rascunhoDesatualizado
+                ? 'Há um rascunho desta página que não pode mais ser publicado'
+                : 'Há um rascunho desta página que ainda não foi publicado'}
+            </p>
+            <p
+              className={`text-[11px] leading-relaxed mt-0.5 ${
+                pagina.rascunhoDesatualizado ? 'text-rose-800' : 'text-amber-800'
+              }`}
+            >
+              {pagina.rascunhoPorNome ? `Salvo por ${pagina.rascunhoPorNome}. ` : ''}
+              {pagina.rascunhoDesatualizado
+                ? 'A página mudou aqui depois que o rascunho começou. No editor, use "Recarregar do que está no ar" para recomeçar.'
+                : 'Editar por aqui vai direto ao ar e invalida esse rascunho.'}
+            </p>
+          </div>
+          <Link
+            to={`/sistema/site/editor?pagina=${pagina.slug}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-white shrink-0 transition ${
+              pagina.rascunhoDesatualizado
+                ? 'bg-rose-600 hover:bg-rose-700'
+                : 'bg-amber-600 hover:bg-amber-700'
+            }`}
+          >
+            <MousePointerClick className="w-3.5 h-3.5" />
+            Abrir o editor
+          </Link>
+        </div>
+      )}
 
       {pagina.blocos.length === 0 ? (
         <div className="border border-dashed border-slate-300 rounded-2xl p-10 text-center">

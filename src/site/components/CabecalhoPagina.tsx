@@ -9,9 +9,12 @@ import React from 'react';
 import logoIcon from '../../assets/logo-icon.png';
 
 interface Props {
-  rotulo: string;
+  // Os três aceitam nó, e não só string, para que o bloco possa passar um
+  // <Editavel> no lugar do texto quando o editor visual estiver aberto —
+  // sem este componente precisar saber que o editor existe.
+  rotulo: React.ReactNode;
   titulo: React.ReactNode;
-  descricao?: string;
+  descricao?: React.ReactNode;
   /** Ícone opcional ao lado do rótulo (o simulador usa a calculadora). */
   Icone?: React.ComponentType<{ className?: string }>;
   children?: React.ReactNode;

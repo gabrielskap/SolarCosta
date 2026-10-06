@@ -233,6 +233,11 @@ export const Campo: React.FC<Props> = ({ campo, valor, onChange, ctx }) => {
     <div>
       <label className={ROTULO}>{campo.rotulo}</label>
 
+      {/* Numa lista, a ajuda vem ANTES dos itens: colocada no fim, como nos
+          outros tipos, ela acabaria depois de uma dúzia de mini-formulários e
+          ninguém a leria. */}
+      {campo.tipo === 'lista' && <div className="-mt-0.5 mb-2"><Ajuda texto={campo.ajuda} /></div>}
+
       {campo.tipo === 'texto' && (
         <input
           type="text"
@@ -253,6 +258,26 @@ export const Campo: React.FC<Props> = ({ campo, valor, onChange, ctx }) => {
 
       {campo.tipo === 'paragrafos' && (
         <CampoParagrafos valor={valor as string[]} onChange={onChange} />
+      )}
+
+      {campo.tipo === 'numero' && (
+        <input
+          type="number"
+          value={typeof valor === 'number' ? valor : ''}
+          min={campo.min}
+          max={campo.max}
+          step={campo.passo ?? 1}
+          // Campo vazio vira null, não 0: num ajuste opcional (a altura em px
+          // de uma foto, por exemplo) "sem valor" e "zero" são coisas
+          // diferentes, e só o null faz o componente voltar ao padrão.
+          onChange={(e) => {
+            const t = e.target.value.trim();
+            if (t === '') return onChange(null);
+            const n = Number(t);
+            onChange(Number.isFinite(n) ? n : null);
+          }}
+          className={CAMPO}
+        />
       )}
 
       {campo.tipo === 'selecao' && (

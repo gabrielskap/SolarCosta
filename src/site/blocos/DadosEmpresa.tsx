@@ -41,6 +41,9 @@ export const DadosEmpresa: React.FC<{ conteudo: ConteudoDadosEmpresa }> = ({ con
             rotulo={c.rotulo_cadastro}
             titulo={c.titulo_cadastro}
             descricao={c.descricao_cadastro}
+            campoRotulo="rotulo_cadastro"
+            campoTitulo="titulo_cadastro"
+            campoDescricao="descricao_cadastro"
           />
 
           <Cartao className="mt-8" regua="from-emerald-500 to-teal-400">
@@ -72,7 +75,12 @@ export const DadosEmpresa: React.FC<{ conteudo: ConteudoDadosEmpresa }> = ({ con
         </div>
 
         <div>
-          <TituloSecao rotulo={c.rotulo_escritorio} titulo={c.titulo_escritorio} />
+          <TituloSecao
+            rotulo={c.rotulo_escritorio}
+            titulo={c.titulo_escritorio}
+            campoRotulo="rotulo_escritorio"
+            campoTitulo="titulo_escritorio"
+          />
 
           <Cartao className="mt-8 space-y-5" regua="from-amber-500 to-orange-400">
             <div className="flex items-start gap-3">

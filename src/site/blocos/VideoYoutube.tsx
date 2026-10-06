@@ -30,7 +30,15 @@ export const VideoYoutube: React.FC<{ conteudo: ConteudoVideoYoutube }> = ({ con
   return (
     <Secao claro={!!c.claro}>
       {(c.rotulo || c.titulo) && (
-        <TituloSecao rotulo={c.rotulo} titulo={c.titulo} descricao={c.descricao} centralizado />
+        <TituloSecao
+          rotulo={c.rotulo}
+          titulo={c.titulo}
+          descricao={c.descricao}
+          centralizado
+          campoRotulo="rotulo"
+          campoTitulo="titulo"
+          campoDescricao="descricao"
+        />
       )}
 
       <div className={['mt-10', largura, alinhamento].join(' ')}>

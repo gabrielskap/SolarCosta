@@ -296,6 +296,9 @@ export const BlocoSimulador: React.FC<{ conteudo: ConteudoSimulador }> = ({ cont
               rotulo={c.proximo_rotulo}
               titulo={c.proximo_titulo}
               descricao={c.proximo_descricao}
+              campoRotulo="proximo_rotulo"
+              campoTitulo="proximo_titulo"
+              campoDescricao="proximo_descricao"
             />
             <ul className="mt-8 space-y-3 text-sm text-slate-600">
               {(c.proximo_itens ?? []).map((t, i) => (

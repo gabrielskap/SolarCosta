@@ -38,6 +38,7 @@ const ObrasView = lazy(() => import('./components/ObrasView').then((m) => ({ def
 const ReportsView = lazy(() => import('./components/ReportsView').then((m) => ({ default: m.ReportsView })));
 const AuditTrailView = lazy(() => import('./components/AuditTrailView').then((m) => ({ default: m.AuditTrailView })));
 const SiteConfigView = lazy(() => import('./components/site/SiteConfigView').then((m) => ({ default: m.SiteConfigView })));
+const EditorVisual = lazy(() => import('./components/site/EditorVisual').then((m) => ({ default: m.EditorVisual })));
 const WhatsAppView = lazy(() => import('./components/whatsapp/WhatsAppView').then((m) => ({ default: m.WhatsAppView })));
 import { Menu, Loader2, WifiOff } from 'lucide-react';
 import logoFull from './assets/logo-full.png';
@@ -955,6 +956,20 @@ export default function App() {
                   element={
                     currentUser.cargo === 'Administrador' || currentUser.permissoes?.gerenciarSite ? (
                       <SiteConfigView currentUser={currentUser} showToast={showToast} />
+                    ) : (
+                      <Navigate to="/sistema/dashboard" replace />
+                    )
+                  }
+                />
+
+                {/* Editor visual. Rota irmã, e não aninhada em "site", porque
+                    ele ocupa o viewport inteiro (pinta fixed inset-0) em vez
+                    de viver dentro do painel — mesma escolha do EditorTelhado. */}
+                <Route
+                  path="site/editor"
+                  element={
+                    currentUser.cargo === 'Administrador' || currentUser.permissoes?.gerenciarSite ? (
+                      <EditorVisual currentUser={currentUser} showToast={showToast} />
                     ) : (
                       <Navigate to="/sistema/dashboard" replace />
                     )

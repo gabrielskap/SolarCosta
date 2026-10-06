@@ -15,11 +15,14 @@ import logoIcon from '../../assets/logo-icon.png';
 import { useConfigPublica } from '../contexto';
 import { CONTATO_PADRAO } from '../../services/publico';
 import { Secao } from './Secao';
+import { Editavel } from '../editor/Editavel';
+import { useEditor } from '../editor/contexto';
 import { icone } from '../blocos/icones';
 import type { ConteudoSelos } from '../blocos/tipos';
 
 export const SeloCredibilidade: React.FC<{ conteudo: ConteudoSelos }> = ({ conteudo: c }) => {
   const { config } = useConfigPublica();
+  const { modoEditor } = useEditor();
   const empresa = config?.empresa ?? null;
 
   /** Valor de cada credencial, na ordem em que os itens foram cadastrados. */
@@ -70,10 +73,14 @@ export const SeloCredibilidade: React.FC<{ conteudo: ConteudoSelos }> = ({ conte
             <p className="mt-5 text-lg font-black tracking-tight">
               {empresa?.nome_fantasia || 'Solar Costa Energia'}
             </p>
-            {c.marca_legenda && (
-              <p className="text-[11px] font-bold text-solar tracking-[0.2em] uppercase mt-1.5">
-                {c.marca_legenda}
-              </p>
+            {(c.marca_legenda || modoEditor) && (
+              <Editavel
+                como="p"
+                campo="marca_legenda"
+                valor={c.marca_legenda}
+                placeholder="Legenda da marca"
+                className="text-[11px] font-bold text-solar tracking-[0.2em] uppercase mt-1.5"
+              />
             )}
             <div className="w-10 h-1 bg-emerald-500 rounded-full mx-auto mt-4" />
           </div>
@@ -81,24 +88,41 @@ export const SeloCredibilidade: React.FC<{ conteudo: ConteudoSelos }> = ({ conte
 
         {/* ------------------------------------------------ credenciais -- */}
         <div className="p-6 md:p-8">
-          {c.rotulo && (
-            <span className="text-xs font-bold text-emerald-600 tracking-widest uppercase">
-              {c.rotulo}
-            </span>
+          {(c.rotulo || modoEditor) && (
+            <Editavel
+              como="span"
+              campo="rotulo"
+              valor={c.rotulo}
+              placeholder="Rótulo"
+              className="block text-xs font-bold text-emerald-600 tracking-widest uppercase"
+            />
           )}
-          <p className="mt-2 text-slate-600 text-sm leading-relaxed max-w-xl">{c.descricao}</p>
+          <Editavel
+            como="p"
+            campo="descricao"
+            valor={c.descricao}
+            multilinha
+            placeholder="Texto curto convidando o visitante a conferir os registros."
+            className="mt-2 text-slate-600 text-sm leading-relaxed max-w-xl"
+          />
 
           <div className="mt-7 grid gap-6 sm:grid-cols-3">
             {itens.map((item, i) => {
               const Icone = icone(item.icone);
               return (
-                <div key={`${item.rotulo}-${i}`}>
+                <div key={i}>
                   <div className={`p-2.5 rounded-xl w-fit ${item.cor}`}>
                     <Icone className="w-5 h-5" />
                   </div>
-                  <p className="mt-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    {item.rotulo}
-                  </p>
+                  {/* Só o RÓTULO é editável. O valor ao lado vem do cadastro
+                      da empresa de propósito — ver o cabeçalho do arquivo. */}
+                  <Editavel
+                    como="p"
+                    campo={`itens.${i}.rotulo`}
+                    valor={item.rotulo}
+                    placeholder="Rótulo da credencial"
+                    className="mt-3 text-xs font-bold text-slate-500 uppercase tracking-wider"
+                  />
                   <p className="mt-1 text-sm font-black text-slate-900 leading-snug">{item.valor}</p>
                   <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">
                     {item.notaFinal}

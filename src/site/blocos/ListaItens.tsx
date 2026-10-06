@@ -4,6 +4,8 @@
 
 import React from 'react';
 import { Secao, TituloSecao, Cartao, ChipIcone } from '../components/Secao';
+import { Editavel } from '../editor/Editavel';
+import { useEditor } from '../editor/contexto';
 import { icone } from './icones';
 import type { ConteudoListaItens, CorChip } from './tipos';
 
@@ -16,7 +18,8 @@ const COLUNAS: Record<number, string> = {
 const CORES: CorChip[] = ['blue', 'emerald', 'amber', 'violet'];
 
 export const ListaItens: React.FC<{ conteudo: ConteudoListaItens }> = ({ conteudo: c }) => {
-  const temTitulo = !!(c.rotulo || c.titulo);
+  const { modoEditor } = useEditor();
+  const temTitulo = !!(c.rotulo || c.titulo) || modoEditor;
   const grade = COLUNAS[c.colunas] ?? COLUNAS[3];
 
   return (
@@ -27,6 +30,9 @@ export const ListaItens: React.FC<{ conteudo: ConteudoListaItens }> = ({ conteud
           titulo={c.titulo}
           descricao={c.descricao}
           centralizado={!!c.centralizado}
+          campoRotulo="rotulo"
+          campoTitulo="titulo"
+          campoDescricao="descricao"
         />
       )}
 
@@ -34,8 +40,21 @@ export const ListaItens: React.FC<{ conteudo: ConteudoListaItens }> = ({ conteud
         {(c.itens ?? []).map((item, i) => (
           <Cartao key={i} className="h-full" regua="from-blue-600 to-indigo-500">
             <ChipIcone Icone={icone(item.icone)} cor={CORES.includes(item.cor) ? item.cor : 'blue'} />
-            <h3 className="mt-4 text-base font-black text-slate-900 tracking-tight">{item.titulo}</h3>
-            <p className="mt-2 text-sm text-slate-600 leading-relaxed">{item.texto}</p>
+            <Editavel
+              como="h3"
+              campo={`itens.${i}.titulo`}
+              valor={item.titulo}
+              placeholder="Título do item"
+              className="mt-4 text-base font-black text-slate-900 tracking-tight"
+            />
+            <Editavel
+              como="p"
+              campo={`itens.${i}.texto`}
+              valor={item.texto}
+              multilinha
+              placeholder="Explique em uma frase."
+              className="mt-2 text-sm text-slate-600 leading-relaxed"
+            />
           </Cartao>
         ))}
       </div>

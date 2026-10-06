@@ -8,8 +8,20 @@
 // A forma de `conteudo` depende do `tipo` do bloco, e é AQUI que ela é
 // validada — a coluna no banco é jsonb livre (ver V008). O `schemaConteudo`
 // abaixo é a autoridade sobre o que pode entrar; o site, do outro lado,
-// ignora tipo que não conhece. Publicar é direto, sem rascunho: por isso a
-// validação é estreita, e não "aceita e vê no que dá".
+// ignora tipo que não conhece. A validação é estreita, e não "aceita e vê no
+// que dá", porque boa parte das escritas daqui publica direto.
+//
+// DOIS CAMINHOS DE ESCRITA convivem neste arquivo, e a diferença importa:
+//
+//   · AO VIVO — POST /paginas/:id/blocos, PATCH /blocos/:id, DELETE
+//     /blocos/:id e PATCH /paginas/:id/blocos/ordem. É o que a tela antiga
+//     (/sistema/site) usa: grava em SiteBlocos e vai ao ar na hora.
+//   · RASCUNHO — PUT /paginas/:id/rascunho + POST /paginas/:id/publicar. É o
+//     que o editor visual (/sistema/site/editor) usa: grava um snapshot em
+//     SitePaginas.blocos_rascunho e só toca SiteBlocos ao publicar (V013).
+//
+// Os dois podem agir sobre a mesma página, então toda escrita ao vivo marca
+// `rascunho_desatualizado_em` — ver invalidarRascunho() lá embaixo.
 
 import { Router } from 'express';
 import { createHash } from 'node:crypto';
@@ -46,6 +58,7 @@ const TIPOS_BLOCO = [
   'texto_rico',
   'galeria',
   'video_youtube',
+  'area_livre',
 ] as const;
 
 const link = z.object({ rotulo: z.string().max(120), destino: z.string().max(400) });
@@ -79,11 +92,25 @@ const schemaConteudo = z.record(valorJson).refine(
 
 /* ============================================================== leitura == */
 
-/** Blocos de todas as páginas, já agrupados por página. */
+/**
+ * Blocos de todas as páginas, já agrupados por página.
+ *
+ * Traz o ESTADO do rascunho (existe? de quem? invalidado?) mas nunca o
+ * snapshot em si: `blocos_rascunho` pode ter centenas de KB por página e esta
+ * consulta roda ao abrir /sistema/site, onde o que se precisa saber é só se há
+ * um rascunho pendente para avisar. O conteúdo vem no GET dedicado.
+ */
 async function lerPaginas(): Promise<unknown[]> {
   const paginas = await consultar(
-    `SELECT id, slug, caminho, nome, titulo_seo, descricao_seo, publicada, ordem
-       FROM "SolarCosta_SitePaginas" ORDER BY ordem, nome`,
+    `SELECT p.id, p.slug, p.caminho, p.nome, p.titulo_seo, p.descricao_seo,
+            p.publicada, p.ordem,
+            p.rascunho_em,
+            (p.blocos_rascunho IS NOT NULL)                       AS tem_rascunho,
+            (p.rascunho_desatualizado_em > p.rascunho_em)         AS rascunho_desatualizado,
+            u.nome                                                AS rascunho_por_nome
+       FROM "SolarCosta_SitePaginas" p
+       LEFT JOIN "SolarCosta_Usuarios" u ON u.id = p.rascunho_por
+      ORDER BY p.ordem, p.nome`,
   );
   const blocos = await consultar(
     `SELECT id, pagina_id, tipo, ordem, visivel, conteudo
@@ -268,6 +295,27 @@ siteRouter.delete(
 
 /* =============================================================== blocos == */
 
+/**
+ * Marca o rascunho da página como desatualizado, se houver um.
+ *
+ * Chamada por TODA escrita ao vivo em blocos, dentro da mesma transação. Sem
+ * isso, publicar um snapshot tirado antes da escrita ao vivo ressuscitaria o
+ * conteúdo antigo e apagaria o bloco recém-criado (ele não está no snapshot) —
+ * perda de dado, e silenciosa.
+ *
+ * Note que ela INVALIDA, não funde nem apaga. Apagar jogaria fora o trabalho
+ * não publicado de outra pessoa a partir de uma tela que nem menciona o
+ * editor; fundir seria merge de três vias sem ancestral comum. O que sobra, e
+ * é o certo, é recusar a publicação depois e pedir para recarregar.
+ */
+async function invalidarRascunho(cliente: Cliente, paginaId: string): Promise<void> {
+  await cliente.query(
+    `UPDATE "SolarCosta_SitePaginas" SET rascunho_desatualizado_em = now()
+      WHERE id = $1 AND blocos_rascunho IS NOT NULL`,
+    [paginaId],
+  );
+}
+
 /** Devolve o bloco no mesmo formato da listagem, para o front trocar em memória. */
 async function lerBloco(cliente: Cliente, id: string): Promise<unknown> {
   const { rows } = await cliente.query(
@@ -311,6 +359,7 @@ siteRouter.post(
       );
 
       const novoId = rows[0]!.id as string;
+      await invalidarRascunho(cliente, paginaId);
       await cliente.query(
         `SELECT "SolarCosta_fn_auditar"('criar', 'Site', $1, NULL, $2)`,
         [`Bloco ${d.tipo}`, `Adicionado em ${pag[0]!.nome}`],
@@ -339,10 +388,12 @@ siteRouter.patch(
             atualizado_em  = now(),
             atualizado_por = "SolarCosta_fn_usuario_atual"()
           WHERE id = $1
-          RETURNING tipo`,
+          RETURNING tipo, pagina_id`,
         [id, d.conteudo ? JSON.stringify(d.conteudo) : null, d.visivel ?? null],
       );
       if (rows.length === 0) throw naoEncontrado('Bloco');
+
+      await invalidarRascunho(cliente, rows[0]!.pagina_id as string);
 
       await cliente.query(
         `SELECT "SolarCosta_fn_auditar"('editar', 'Site', $1, NULL, $2)`,
@@ -373,10 +424,12 @@ siteRouter.delete(
       // histórico. O que preserva o texto sem mostrá-lo é `visivel = false`,
       // e é isso que a tela oferece primeiro.
       const { rows } = await cliente.query(
-        `DELETE FROM "SolarCosta_SiteBlocos" WHERE id = $1 RETURNING tipo`,
+        `DELETE FROM "SolarCosta_SiteBlocos" WHERE id = $1 RETURNING tipo, pagina_id`,
         [id],
       );
       if (rows.length === 0) throw naoEncontrado('Bloco');
+
+      await invalidarRascunho(cliente, rows[0]!.pagina_id as string);
 
       await cliente.query(
         `SELECT "SolarCosta_fn_auditar"('excluir', 'Site', $1, NULL, 'Bloco removido da página')`,
@@ -411,9 +464,284 @@ siteRouter.patch(
         if (rowCount === 0) throw naoEncontrado('Bloco');
       }
 
+      await invalidarRascunho(cliente, paginaId);
+
       await cliente.query(
         `SELECT "SolarCosta_fn_auditar"('editar', 'Site', $1, NULL, 'Blocos reordenados')`,
         [`Página ${paginaId}`],
+      );
+
+      const { rows } = await cliente.query(
+        `SELECT id, pagina_id, tipo, ordem, visivel, conteudo
+           FROM "SolarCosta_SiteBlocos" WHERE pagina_id = $1 ORDER BY ordem`,
+        [paginaId],
+      );
+      return rows;
+    }, ator(req));
+
+    res.json({ blocos });
+  }),
+);
+
+/* ============================================================= rascunho == */
+
+/**
+ * Um bloco dentro do snapshot de rascunho.
+ *
+ * `ordem` NÃO entra: ela sai da posição no array, mesma filosofia do endpoint
+ * de reordenação acima. Enviar as duas coisas abriria a porta para um snapshot
+ * cuja ordem do array discorda do campo `ordem`, e não há resposta certa para
+ * isso.
+ *
+ * O `id` vem do cliente (crypto.randomUUID()) porque um bloco criado só no
+ * rascunho precisa de identidade estável antes de existir no banco — é o que
+ * permite selecioná-lo, editá-lo e reordená-lo no editor sem ter publicado
+ * nada. SiteBlocos.id tem DEFAULT gen_random_uuid(), então INSERT com id
+ * explícito é legítimo.
+ */
+const blocoRascunhoSchema = z.object({
+  id: z.string().uuid(),
+  tipo: z.enum(TIPOS_BLOCO),
+  visivel: z.boolean().default(true),
+  conteudo: schemaConteudo.default({}),
+});
+
+/**
+ * Teto do snapshot inteiro. Cada bloco já é limitado a 60 KB por
+ * `schemaConteudo`; 100 blocos no limite dariam 6 MB, o que estouraria o
+ * express.json({limit:'2mb'}) do app com um erro genérico de parse em vez de
+ * uma mensagem útil. 600 KB cabe com folga e é mais do que qualquer página
+ * real — a maior do seed não chega a 20 KB.
+ */
+const rascunhoSchema = z.object({
+  blocos: z.array(blocoRascunhoSchema).max(100),
+  /** ISO do `rascunho_em` que o cliente acredita estar no banco; null = primeiro salvamento. */
+  rascunho_em: z.string().datetime().nullable().optional(),
+}).refine(
+  (v) => JSON.stringify(v.blocos).length <= 600_000,
+  'Rascunho grande demais. Divida o conteúdo em mais de uma página.',
+);
+
+interface EstadoRascunho {
+  rascunho_em: string | null;
+  rascunho_desatualizado_em: string | null;
+}
+
+/**
+ * Lê o estado do rascunho travando a linha da página (FOR UPDATE).
+ *
+ * O lock importa: sem ele, dois PUTs simultâneos leriam o mesmo `rascunho_em`,
+ * ambos passariam na checagem e o segundo sobrescreveria o primeiro — que é
+ * exatamente o que a checagem existe para impedir.
+ */
+async function travarPagina(cliente: Cliente, paginaId: string): Promise<EstadoRascunho> {
+  const { rows } = await cliente.query(
+    `SELECT rascunho_em, rascunho_desatualizado_em
+       FROM "SolarCosta_SitePaginas" WHERE id = $1 FOR UPDATE`,
+    [paginaId],
+  );
+  if (rows.length === 0) throw naoEncontrado('Página');
+  return rows[0] as EstadoRascunho;
+}
+
+const MSG_DESATUALIZADO =
+  'Esta página mudou fora do editor depois que o rascunho começou. ' +
+  'Recarregue para partir do conteúdo que está no ar.';
+
+const MSG_OUTRO_EDITOR =
+  'Outra pessoa salvou um rascunho desta página enquanto você editava. ' +
+  'Recarregue para ver o que mudou.';
+
+/** `true` quando houve escrita ao vivo depois do último salvamento do rascunho. */
+function desatualizado(e: EstadoRascunho): boolean {
+  if (!e.rascunho_desatualizado_em || !e.rascunho_em) return false;
+  return new Date(e.rascunho_desatualizado_em) > new Date(e.rascunho_em);
+}
+
+/**
+ * O rascunho de uma página, mais os blocos que estão no ar.
+ *
+ * Os dois vêm juntos porque o editor precisa dos dois: o rascunho quando
+ * existe, e os blocos vivos para SEMEAR o rascunho quando não existe (ou
+ * quando o usuário manda recarregar depois de um 409).
+ *
+ * Exige `gerenciar_site` mesmo sendo um GET: ler conteúdo que ainda não foi
+ * publicado está mais perto de escrever do que de ler o site.
+ */
+siteRouter.get(
+  '/paginas/:id/rascunho',
+  escrever,
+  asyncHandler(async (req, res) => {
+    const paginaId = z.string().uuid().parse(req.params.id);
+
+    const pagina = await consultarUm(
+      `SELECT p.blocos_rascunho, p.rascunho_em, p.rascunho_desatualizado_em, u.nome AS rascunho_por_nome
+         FROM "SolarCosta_SitePaginas" p
+         LEFT JOIN "SolarCosta_Usuarios" u ON u.id = p.rascunho_por
+        WHERE p.id = $1`,
+      [paginaId],
+    );
+    if (!pagina) throw naoEncontrado('Página');
+
+    const p = pagina as Record<string, unknown>;
+    const blocos = await consultar(
+      `SELECT id, pagina_id, tipo, ordem, visivel, conteudo
+         FROM "SolarCosta_SiteBlocos" WHERE pagina_id = $1 ORDER BY ordem, criado_em`,
+      [paginaId],
+    );
+
+    res.json({
+      blocos,
+      rascunho: p.blocos_rascunho
+        ? {
+            blocos: p.blocos_rascunho,
+            rascunho_em: p.rascunho_em,
+            rascunho_por_nome: p.rascunho_por_nome,
+            desatualizado: desatualizado(p as unknown as EstadoRascunho),
+          }
+        : null,
+    });
+  }),
+);
+
+/**
+ * Salva (ou substitui) o rascunho. Nada vai ao ar aqui.
+ *
+ * Recusa com 409 em dois casos, ambos recuperáveis recarregando: outra pessoa
+ * salvou um rascunho no meio (o `rascunho_em` enviado não bate), ou a tela
+ * antiga publicou algo nesta página (`rascunho_desatualizado_em` mais novo).
+ */
+siteRouter.put(
+  '/paginas/:id/rascunho',
+  escrever,
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const paginaId = z.string().uuid().parse(req.params.id);
+    const d = rascunhoSchema.parse(req.body);
+
+    const salvo = await emTransacao(async (cliente) => {
+      const atual = await travarPagina(cliente, paginaId);
+
+      const enviado = d.rascunho_em ? new Date(d.rascunho_em).getTime() : null;
+      const noBanco = atual.rascunho_em ? new Date(atual.rascunho_em).getTime() : null;
+      if (enviado !== noBanco) throw conflito(MSG_OUTRO_EDITOR);
+      if (desatualizado(atual)) throw conflito(MSG_DESATUALIZADO);
+
+      const { rows } = await cliente.query(
+        `UPDATE "SolarCosta_SitePaginas" SET
+            blocos_rascunho = $2::jsonb,
+            rascunho_em     = now(),
+            rascunho_por    = "SolarCosta_fn_usuario_atual"()
+          WHERE id = $1
+          RETURNING rascunho_em`,
+        [paginaId, JSON.stringify(d.blocos)],
+      );
+      return rows[0]!.rascunho_em as string;
+    }, ator(req));
+
+    res.json({ rascunho_em: salvo });
+  }),
+);
+
+/** Joga o rascunho fora. O que está no ar não é tocado. */
+siteRouter.delete(
+  '/paginas/:id/rascunho',
+  escrever,
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const paginaId = z.string().uuid().parse(req.params.id);
+
+    await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query(
+        `UPDATE "SolarCosta_SitePaginas" SET
+            blocos_rascunho = NULL, rascunho_em = NULL,
+            rascunho_por = NULL, rascunho_desatualizado_em = NULL
+          WHERE id = $1 AND blocos_rascunho IS NOT NULL
+          RETURNING nome`,
+        [paginaId],
+      );
+      // Sem rascunho é sucesso, não erro: descartar duas vezes tem o mesmo
+      // efeito de descartar uma, e a tela não tem o que fazer com um 404 aqui.
+      if (rows.length === 0) return;
+
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('editar', 'Site', $1, NULL, 'Rascunho descartado')`,
+        [`Página ${rows[0]!.nome}`],
+      );
+    }, ator(req));
+
+    res.status(204).end();
+  }),
+);
+
+/**
+ * Publica o rascunho: reconcilia o snapshot contra SiteBlocos.
+ *
+ * Tudo-ou-nada por página, numa transação só. Três passos, nesta ordem:
+ * apaga os blocos vivos que sumiram do snapshot, insere/atualiza o resto, e
+ * renumera `ordem` pela posição no array. O UPDATE/INSERT é sempre restrito a
+ * `pagina_id` para que um snapshot adulterado não consiga sequestrar um bloco
+ * de outra página.
+ */
+siteRouter.post(
+  '/paginas/:id/publicar',
+  escrever,
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const paginaId = z.string().uuid().parse(req.params.id);
+
+    const blocos = await emTransacao(async (cliente) => {
+      const atual = await travarPagina(cliente, paginaId);
+      if (desatualizado(atual)) throw conflito(MSG_DESATUALIZADO);
+
+      const { rows: pag } = await cliente.query(
+        `SELECT nome, blocos_rascunho FROM "SolarCosta_SitePaginas" WHERE id = $1`,
+        [paginaId],
+      );
+      if (!pag[0]!.blocos_rascunho) throw conflito('Esta página não tem rascunho para publicar.');
+
+      // Revalida o que saiu do banco: o snapshot foi gravado por uma versão
+      // possivelmente anterior desta API, e publicar é quando ele vira o site.
+      const doRascunho = z.array(blocoRascunhoSchema).max(100).parse(pag[0]!.blocos_rascunho);
+      const ids = doRascunho.map((b) => b.id);
+
+      await cliente.query(
+        `DELETE FROM "SolarCosta_SiteBlocos"
+          WHERE pagina_id = $1 AND NOT (id = ANY($2::uuid[]))`,
+        [paginaId, ids],
+      );
+
+      for (const [i, b] of doRascunho.entries()) {
+        const { rowCount } = await cliente.query(
+          `INSERT INTO "SolarCosta_SiteBlocos"
+                 (id, pagina_id, tipo, ordem, visivel, conteudo, atualizado_por)
+           VALUES ($1, $2, $3, $4::smallint, $5, $6::jsonb, "SolarCosta_fn_usuario_atual"())
+           ON CONFLICT (id) DO UPDATE SET
+                 tipo           = EXCLUDED.tipo,
+                 ordem          = EXCLUDED.ordem,
+                 visivel        = EXCLUDED.visivel,
+                 conteudo       = EXCLUDED.conteudo,
+                 atualizado_em  = now(),
+                 atualizado_por = EXCLUDED.atualizado_por
+             WHERE "SolarCosta_SiteBlocos".pagina_id = $2`,
+          [b.id, paginaId, b.tipo, i + 1, b.visivel, JSON.stringify(b.conteudo)],
+        );
+        // O WHERE do DO UPDATE é a trava contra sequestro de bloco de outra
+        // página; quando ele barra, o INSERT vira um no-op silencioso. Preferir
+        // o 409 a perder o bloco sem avisar.
+        if (rowCount === 0) {
+          throw conflito('O rascunho referencia um bloco que pertence a outra página.');
+        }
+      }
+
+      await cliente.query(
+        `UPDATE "SolarCosta_SitePaginas" SET
+            blocos_rascunho = NULL, rascunho_em = NULL,
+            rascunho_por = NULL, rascunho_desatualizado_em = NULL
+          WHERE id = $1`,
+        [paginaId],
+      );
+
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('editar', 'Site', $1, NULL, $2)`,
+        [`Página ${pag[0]!.nome}`, `Publicada pelo editor visual (${doRascunho.length} blocos)`],
       );
 
       const { rows } = await cliente.query(

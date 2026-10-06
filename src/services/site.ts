@@ -28,6 +28,25 @@ export interface PaginaAdmin {
   publicada: boolean;
   ordem: number;
   blocos: BlocoAdmin[];
+  /** Há um rascunho não publicado nesta página (V013). */
+  temRascunho: boolean;
+  rascunhoEm: string | null;
+  rascunhoPorNome: string | null;
+  /** A tela antiga publicou algo depois que o rascunho começou — ele não pode mais ser publicado. */
+  rascunhoDesatualizado: boolean;
+}
+
+/**
+ * O que o editor visual guarda como rascunho.
+ *
+ * É a lista de blocos inteira, e a ORDEM DO ARRAY é a ordem na página — por
+ * isso `ordem` não viaja. `paginaId` também não: ele está na URL.
+ */
+export interface RascunhoPagina {
+  blocos: BlocoAdmin[];
+  rascunhoEm: string | null;
+  rascunhoPorNome: string | null;
+  desatualizado: boolean;
 }
 
 export interface ItemMenuAdmin {
@@ -100,6 +119,10 @@ function paraPagina(p: any): PaginaAdmin {
     publicada: p.publicada !== false,
     ordem: Number(p.ordem ?? 0),
     blocos: (p.blocos ?? []).map(paraBloco),
+    temRascunho: !!p.tem_rascunho,
+    rascunhoEm: p.rascunho_em ?? null,
+    rascunhoPorNome: p.rascunho_por_nome ?? null,
+    rascunhoDesatualizado: !!p.rascunho_desatualizado,
   };
 }
 
@@ -187,6 +210,67 @@ export const Site = {
 
   reordenarBlocos: async (paginaId: string, ordem: string[]): Promise<BlocoAdmin[]> => {
     const r = await http.patch<any>(`/api/site/paginas/${paginaId}/blocos/ordem`, { ordem });
+    return (r.blocos ?? []).map(paraBloco);
+  },
+
+  /* ------------------------------------------------------------ rascunho -- */
+
+  /**
+   * O rascunho da página, se houver, mais o que está no ar.
+   *
+   * Os dois vêm juntos porque o editor precisa dos dois: abre no rascunho
+   * quando existe, e SEMEIA um rascunho novo a partir dos blocos vivos quando
+   * não existe (ou depois de um 409, quando o usuário manda recarregar).
+   */
+  carregarRascunho: async (
+    paginaId: string,
+  ): Promise<{ blocos: BlocoAdmin[]; rascunho: RascunhoPagina | null }> => {
+    const r = await http.get<any>(`/api/site/paginas/${paginaId}/rascunho`);
+    return {
+      blocos: (r.blocos ?? []).map(paraBloco),
+      rascunho: r.rascunho
+        ? {
+            blocos: (r.rascunho.blocos ?? []).map((b: any, i: number) =>
+              paraBloco({ ...b, pagina_id: paginaId, ordem: i + 1 }),
+            ),
+            rascunhoEm: r.rascunho.rascunho_em ?? null,
+            rascunhoPorNome: r.rascunho.rascunho_por_nome ?? null,
+            desatualizado: !!r.rascunho.desatualizado,
+          }
+        : null,
+    };
+  },
+
+  /**
+   * Grava o rascunho. Nada vai ao ar.
+   *
+   * `rascunhoEm` é o token de concorrência: manda de volta o que veio do
+   * servidor no último salvamento (ou `null` no primeiro). Não bateu, a API
+   * responde 409 em vez de sobrescrever o trabalho de outra pessoa.
+   */
+  salvarRascunho: async (
+    paginaId: string,
+    blocos: BlocoAdmin[],
+    rascunhoEm: string | null,
+  ): Promise<string> => {
+    const r = await http.put<any>(`/api/site/paginas/${paginaId}/rascunho`, {
+      blocos: blocos.map((b) => ({
+        id: b.id,
+        tipo: b.tipo,
+        visivel: b.visivel,
+        conteudo: b.conteudo,
+      })),
+      rascunho_em: rascunhoEm,
+    });
+    return r.rascunho_em as string;
+  },
+
+  descartarRascunho: (paginaId: string): Promise<void> =>
+    http.delete<void>(`/api/site/paginas/${paginaId}/rascunho`),
+
+  /** Reconcilia o rascunho contra o que está no ar. Devolve os blocos publicados. */
+  publicarPagina: async (paginaId: string): Promise<BlocoAdmin[]> => {
+    const r = await http.post<any>(`/api/site/paginas/${paginaId}/publicar`, {});
     return (r.blocos ?? []).map(paraBloco);
   },
 

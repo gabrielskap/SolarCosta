@@ -6,23 +6,34 @@
 
 import React from 'react';
 import { Secao, TituloSecao } from './Secao';
+import { Editavel } from '../editor/Editavel';
+import { useEditor } from '../editor/contexto';
 import { icone } from '../blocos/icones';
 import type { ConteudoPassos } from '../blocos/tipos';
 
 export const ComoFunciona: React.FC<{ conteudo: ConteudoPassos }> = ({ conteudo: c }) => {
+  const { modoEditor } = useEditor();
   const itens = c.itens ?? [];
 
   return (
     <Secao claro id="como-funciona">
-      {(c.rotulo || c.titulo) && (
-        <TituloSecao rotulo={c.rotulo} titulo={c.titulo} descricao={c.descricao} centralizado />
+      {(c.rotulo || c.titulo || modoEditor) && (
+        <TituloSecao
+          rotulo={c.rotulo}
+          titulo={c.titulo}
+          descricao={c.descricao}
+          centralizado
+          campoRotulo="rotulo"
+          campoTitulo="titulo"
+          campoDescricao="descricao"
+        />
       )}
 
       <ol className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {itens.map((etapa, i) => {
           const Icone = icone(etapa.icone);
           return (
-            <li key={`${etapa.numero}-${i}`} className="relative">
+            <li key={i} className="relative">
               {/* Conector entre os passos, só onde há um próximo à direita. */}
               {i < itens.length - 1 && (
                 <span
@@ -36,13 +47,30 @@ export const ComoFunciona: React.FC<{ conteudo: ConteudoPassos }> = ({ conteudo:
                   <div className="w-14 h-14 rounded-2xl bg-marca text-solar flex items-center justify-center shadow-md">
                     <Icone className="w-6 h-6" />
                   </div>
-                  <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-solar text-marca text-[11px] font-black flex items-center justify-center border-2 border-white">
-                    {etapa.numero}
-                  </span>
+                  <Editavel
+                    como="span"
+                    campo={`itens.${i}.numero`}
+                    valor={etapa.numero}
+                    placeholder="00"
+                    className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-solar text-marca text-[11px] font-black flex items-center justify-center border-2 border-white"
+                  />
                 </div>
 
-                <h3 className="mt-5 text-base font-black text-slate-900">{etapa.titulo}</h3>
-                <p className="mt-2 text-sm text-slate-600 leading-relaxed">{etapa.descricao}</p>
+                <Editavel
+                  como="h3"
+                  campo={`itens.${i}.titulo`}
+                  valor={etapa.titulo}
+                  placeholder="Nome da etapa"
+                  className="mt-5 text-base font-black text-slate-900"
+                />
+                <Editavel
+                  como="p"
+                  campo={`itens.${i}.descricao`}
+                  valor={etapa.descricao}
+                  multilinha
+                  placeholder="O que acontece aqui."
+                  className="mt-2 text-sm text-slate-600 leading-relaxed"
+                />
               </div>
             </li>
           );
