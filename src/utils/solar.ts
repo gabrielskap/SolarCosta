@@ -115,6 +115,46 @@ export function projetarEconomia({
   return { economiaMensal, economiaAnual, economiaAcumulada };
 }
 
+export interface EntradaParcela {
+  /** Total menos a entrada — o que efetivamente é financiado. */
+  valorFinanciado: number;
+  /** Juros ao mês, em PONTOS PERCENTUAIS (1.45 = 1,45% a.m.). */
+  jurosMesPct: number;
+  parcelas: number;
+}
+
+/**
+ * Prestação mensal pela Tabela Price.
+ *
+ * Mora aqui, e não na calculadora, porque a folha de despesas mensais da
+ * proposta precisa da MESMA parcela que o consultor viu na tela ao fechar o
+ * negócio. Com a fórmula escrita duas vezes, bastava um arredondamento
+ * diferente para o PDF enviado ao cliente divergir do que foi combinado — e
+ * ninguém descobriria antes dele apontar.
+ *
+ * O PDF não pode simplesmente ler a parcela do banco: ela nunca foi
+ * persistida. O que a proposta guarda são as ENTRADAS (valor financiado via
+ * entrada_financiamento_valor, parcelas_financiamento, juros_financiamento_mes_pct),
+ * e delas a parcela se reconstrói exatamente.
+ */
+export function parcelaFinanciamento({
+  valorFinanciado,
+  jurosMesPct,
+  parcelas,
+}: EntradaParcela): number {
+  // Sem prazo não há prestação. A versão inline que isto substituiu dividia
+  // por `parcelas` direto e devolvia Infinity quando o campo ficava em branco.
+  if (!(parcelas > 0) || !(valorFinanciado > 0)) return 0;
+
+  const i = jurosMesPct / 100;
+  // Juros zero não é caso degenerado: é o "financiamento" sem juros que
+  // algumas campanhas oferecem — e na fórmula de Price daria 0/0.
+  if (i <= 0) return Number((valorFinanciado / parcelas).toFixed(2));
+
+  const fator = Math.pow(1 + i, parcelas);
+  return Number(((valorFinanciado * (i * fator)) / (fator - 1)).toFixed(2));
+}
+
 /**
  * Consumo aproximado a partir do valor da conta de luz — a pergunta que o
  * visitante do site sabe responder de cabeça, ao contrário de "quantos kWh".

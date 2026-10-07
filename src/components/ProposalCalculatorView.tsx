@@ -10,7 +10,7 @@ import {
   type EnderecoViaCEP,
 } from '../services/cep';
 import { paramNum, type ConfigApp } from '../services/api';
-import { dimensionar, projetarEconomia } from '../utils/solar';
+import { dimensionar, projetarEconomia, parcelaFinanciamento } from '../utils/solar';
 import {
   PainelTelhado,
   type CoordenadaConhecida,
@@ -219,6 +219,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [perdasPct, setPerdasPct] = useState(() => propostaExistente?.perdasPct ?? paramNum(config, 'proposta.perdas_pct_padrao', 24.5));
   const [moduloWp, setModuloWp] = useState(() => propostaExistente?.moduloWp ?? paramNum(config, 'proposta.modulo_wp_padrao', 710));
 
+  // Despesas fixas da conta — o que o cliente continua pagando mesmo gerando a
+  // própria energia, e que a folha de despesas mensais do PDF imprime.
+  // Começam em 0 e são semeadas pela concessionária no efeito mais abaixo.
+  const [iluminacaoPublicaSemSfcr, setIluminacaoPublicaSemSfcr] = useState(propostaExistente?.iluminacaoPublicaSemSfcr ?? 0);
+  const [custoDisponibilidade, setCustoDisponibilidade] = useState(propostaExistente?.custoDisponibilidade ?? 0);
+  const [iluminacaoPublicaComSfcr, setIluminacaoPublicaComSfcr] = useState(propostaExistente?.iluminacaoPublicaComSfcr ?? 0);
+
   // Kit vazio: o consultor monta a partir do catálogo real. Retomando um
   // rascunho, vem o kit que já estava montado.
   const [kitItens, setKitItens] = useState<PropostaItem[]>(propostaExistente?.kitItens ?? []);
@@ -258,6 +265,29 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setJurosFinanciamentoMesPct(paramNum(config, 'financiamento.juros_mes_pct', 1.45));
     if (config.bancos.length > 0) setBancoFinanciamento(config.bancos[0].nome);
   }, [config, editando]);
+
+  /*
+   * Despesas fixas, semeadas pela concessionária escolhida.
+   *
+   * Efeito SEPARADO do de cima, e não mais uma linha dentro dele, porque este
+   * precisa acompanhar `concessionaria`: trocar a distribuidora no formulário
+   * tem que repuxar o custo de disponibilidade. Junto com os outros, a mesma
+   * troca reverteria tarifa, HSP e desconto para o padrão global, apagando o
+   * que o consultor acabou de digitar.
+   *
+   * `custo_disponibilidade` da concessionária é UM número que mistura taxa
+   * mínima e iluminação pública (ver utils/solar.ts), então ele serve de ponto
+   * de partida para os três campos — não de valor final. O consultor abre a
+   * conta do cliente e separa; é por isso que os campos são editáveis.
+   */
+  useEffect(() => {
+    if (!config || editando) return;
+    const fixo = config.concessionarias.find((c) => c.nome === concessionaria)?.custo_disponibilidade;
+    if (fixo == null) return;
+    setIluminacaoPublicaSemSfcr(Number(fixo));
+    setCustoDisponibilidade(Number(fixo));
+    setIluminacaoPublicaComSfcr(Number(fixo));
+  }, [config, concessionaria, editando]);
 
   /**
    * Só reaplica quando o LEAD muda de fato.
@@ -365,13 +395,18 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
   // PMT Price Formula for Financiamento:
   // PV = Total - Entrada
+  //
+  // A fórmula mora em utils/solar.ts porque a folha de despesas mensais do PDF
+  // reconstrói esta mesma parcela a partir dos campos persistidos — a parcela
+  // em si nunca foi gravada. Duas cópias da conta divergiriam, e a divergência
+  // apareceria no documento que vai para o cliente.
   const entradaValor = (valorTotalInvestimento * entradaFinanciamentoPct) / 100;
   const valorFinanciado = valorTotalInvestimento - entradaValor;
-  const i = jurosFinanciamentoMesPct / 100;
-  const n = parcelasFinanciamento;
-  const pmtParcelaFinanciamento = i > 0 
-    ? (valorFinanciado * (i * Math.pow(1 + i, n))) / (Math.pow(1 + i, n) - 1)
-    : valorFinanciado / n;
+  const pmtParcelaFinanciamento = parcelaFinanciamento({
+    valorFinanciado,
+    jurosMesPct: jurosFinanciamentoMesPct,
+    parcelas: parcelasFinanciamento,
+  });
 
   /*
    * Sync kit item 1 (modulos) with sizing if modulosQtd changes.
@@ -490,6 +525,9 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     telhado,
     consumoKwh,
     tarifaKwh,
+    iluminacaoPublicaSemSfcr,
+    custoDisponibilidade,
+    iluminacaoPublicaComSfcr,
     hsp,
     perdasPct,
     moduloWp,
@@ -868,6 +906,58 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
             </div>
 
+            {/*
+              Despesas fixas da conta — o que a geração não compensa e que a
+              folha de despesas mensais do PDF imprime nas duas tabelas.
+              Vêm pré-preenchidas da concessionária; o consultor confere contra
+              a conta de energia do cliente e separa os valores.
+            */}
+            <div>
+              <h4 className="text-[10px] font-bold uppercase text-slate-500 mb-2 tracking-wide">
+                DESPESAS FIXAS DA CONTA (R$/MÊS)
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                    TX. ILUM. PÚBLICA (HOJE)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={iluminacaoPublicaSemSfcr}
+                    onChange={(e) => setIluminacaoPublicaSemSfcr(Number(e.target.value))}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                    CUSTO DE DISPONIBILIDADE
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={custoDisponibilidade}
+                    onChange={(e) => setCustoDisponibilidade(Number(e.target.value))}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                    TX. ILUM. PÚBLICA (COM SISTEMA)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={iluminacaoPublicaComSfcr}
+                    onChange={(e) => setIluminacaoPublicaComSfcr(Number(e.target.value))}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Calculated sizing banner */}
             <div className="bg-blue-50/70 border border-blue-100 rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
               <div>
@@ -1090,12 +1180,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     <span className="text-slate-900">R$ {entradaValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block uppercase">VALOR DA PARCELA ({n}x)</span>
+                    <span className="text-[10px] text-slate-400 block uppercase">VALOR DA PARCELA ({parcelasFinanciamento}x)</span>
                     <span className="text-[#004276] text-sm">R$ {pmtParcelaFinanciamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block uppercase">TOTAL DO FINANCIAMENTO</span>
-                    <span className="text-slate-900">R$ {(entradaValor + pmtParcelaFinanciamento * n).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span className="text-slate-900">R$ {(entradaValor + pmtParcelaFinanciamento * parcelasFinanciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               </div>

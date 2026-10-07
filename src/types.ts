@@ -204,6 +204,21 @@ export interface Proposta {
   hsp: number;
   perdasPct: number;
   moduloWp: number;
+  /**
+   * Despesas fixas da conta de energia (V014), em R$/mês — o que a geração NÃO
+   * compensa. São elas que a folha de despesas mensais soma de cada lado:
+   *
+   *   sem SFCR → consumoKwh × tarifaKwh + iluminacaoPublicaSemSfcr
+   *   com SFCR → custoDisponibilidade + iluminacaoPublicaComSfcr + prestação
+   *
+   * A CIP aparece duas vezes de propósito: é cobrada por faixa de consumo, e
+   * com o sistema compensando o consumo faturado a faixa muda. Opcionais
+   * porque proposta anterior à V014 não as tem — aí a folha sai zerada, que é
+   * melhor do que imprimir um valor que ninguém negociou.
+   */
+  iluminacaoPublicaSemSfcr?: number;
+  custoDisponibilidade?: number;
+  iluminacaoPublicaComSfcr?: number;
   potenciaKwp: number;
   modulosQtd: number;
   areaEstimadaM2: number;

@@ -414,7 +414,16 @@ export interface ParametroApp {
 export interface ConfigApp {
   empresa: Record<string, any> | null;
   parametros: ParametroApp[];
-  concessionarias: { id: number; nome: string; tarifa_kwh?: number; hsp_media?: number }[];
+  // custo_disponibilidade sempre veio no payload (painel.routes.ts) e só esta
+  // interface o descartava — a calculadora o usa para pré-preencher as
+  // despesas fixas da conta na proposta.
+  concessionarias: {
+    id: number;
+    nome: string;
+    tarifa_kwh?: number;
+    custo_disponibilidade?: number;
+    hsp_media?: number;
+  }[];
   origens: { id: number; nome: string }[];
   telhados: { id: number; nome: string }[];
   categorias: { id: number; nome: string; escopo: string }[];

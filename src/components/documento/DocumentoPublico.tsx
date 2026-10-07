@@ -19,11 +19,14 @@ import { PDFModal } from '../PDFModal';
  * diferente do que foi aprovado.
  */
 
+// `empresa` vem na mesma resposta do documento (ver publico.routes.ts). É o
+// cadastro de onde sai o CREA impresso na folha de equipamentos — aqui não há
+// /api/config para consultar, o visitante não tem sessão.
 type Estado =
   | { fase: 'carregando' }
   | { fase: 'erro'; mensagem: string }
-  | { fase: 'pronto'; tipo: 'proposta'; documento: Proposta }
-  | { fase: 'pronto'; tipo: 'contrato'; documento: Contrato };
+  | { fase: 'pronto'; tipo: 'proposta'; documento: Proposta; empresa: Record<string, any> | null }
+  | { fase: 'pronto'; tipo: 'contrato'; documento: Contrato; empresa: Record<string, any> | null };
 
 export const DocumentoPublico: React.FC = () => {
   const { token = '' } = useParams<{ token: string }>();
@@ -41,8 +44,18 @@ export const DocumentoPublico: React.FC = () => {
         // mesmas colunas, então o que não vem simplesmente fica vazio.
         setEstado(
           r.tipo === 'proposta'
-            ? { fase: 'pronto', tipo: 'proposta', documento: paraProposta(r.documento) }
-            : { fase: 'pronto', tipo: 'contrato', documento: paraContrato(r.documento) },
+            ? {
+                fase: 'pronto',
+                tipo: 'proposta',
+                documento: paraProposta(r.documento),
+                empresa: r.empresa ?? null,
+              }
+            : {
+                fase: 'pronto',
+                tipo: 'contrato',
+                documento: paraContrato(r.documento),
+                empresa: r.empresa ?? null,
+              },
         );
       } catch (e) {
         if (!vivo) return;
@@ -102,6 +115,7 @@ export const DocumentoPublico: React.FC = () => {
     <PDFModal
       type={estado.tipo}
       data={estado.documento}
+      empresa={estado.empresa}
       variante="pagina"
       tokenPublico={token}
       // Não há para onde fechar: a variante 'pagina' esconde o X. O callback

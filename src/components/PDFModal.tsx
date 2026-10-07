@@ -12,7 +12,8 @@ import logoIcon from '../assets/logo-icon.png';
 import { TelhadoSatelite } from './mapa/TelhadoSatelite';
 import { imagemTelhado } from '../services/solar';
 import { enquadrar, rosaDosVentos } from '../utils/layoutModulos';
-import { formatarLinhaDigitavel } from '../utils/format';
+import { formatarLinhaDigitavel, formatCurrencyBRL } from '../utils/format';
+import { parcelaFinanciamento } from '../utils/solar';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 
@@ -40,21 +41,37 @@ interface PDFModalProps {
    * telhado abriria em branco no navegador do cliente.
    */
   tokenPublico?: string;
+  /**
+   * A linha do SolarCosta_Empresa, crua (snake_case). É de onde sai o CREA do
+   * responsável técnico impresso na folha de equipamentos.
+   *
+   * O CRM passa `config.empresa`; /p/:token passa o `empresa` que a própria
+   * rota do documento já devolve. Opcional porque a folha não depende dela:
+   * sem empresa o bloco do CREA simplesmente não sai — melhor do que imprimir
+   * o registro profissional de alguém por engano.
+   */
+  empresa?: Record<string, any> | null;
 }
 
 /*
  * Páginas que a proposta REALMENTE renderiza.
  *
- * Existem PageWrapper para 1-5 e 8; as de número 6 e 7 nunca foram
- * escritas. O seletor oferecia [1..8] e o rodapé imprimia "PÁGINA n DE 8",
- * então clicar em P6/P7 abria uma folha em branco e o cliente recebia um
- * documento que pulava da página 5 para a 8.
+ * Existem PageWrapper para 1-5, 6 e 8; a de número 7 nunca foi escrita. O
+ * seletor oferecia [1..8] e o rodapé imprimia "PÁGINA n DE 8", então clicar em
+ * P6/P7 abria uma folha em branco e o cliente recebia um documento que pulava
+ * da página 5 para a 8.
  *
  * Os números aqui são os `pageNum` internos (usados para decidir o que
  * renderizar) e continuam como estavam; o que o usuário e o cliente veem
- * passa por `ordinalPagina`, que numera 1..6 sem buracos.
+ * passa por `ordinalPagina`, que numera 1..7 sem buracos.
+ *
+ * A ORDEM DO ARRAY é a ordem impressa, não a numérica: o 6 (despesas mensais)
+ * ocupa um dos dois `pageNum` historicamente vagos, mas entra logo depois do
+ * gráfico de geração, porque o argumento encadeia — quanto o sistema gera,
+ * depois quanto o cliente paga hoje contra quanto vai pagar. Ele cai no índice
+ * 3 e imprime "PÁGINA 4 DE 7". O JSX tem que seguir a mesma ordem daqui.
  */
-const PAGINAS_PROPOSTA = [1, 2, 3, 4, 5, 8] as const;
+const PAGINAS_PROPOSTA = [1, 2, 3, 6, 4, 5, 8] as const;
 const TOTAL_PAGINAS = PAGINAS_PROPOSTA.length;
 const ordinalPagina = (pageNum: number): number =>
   PAGINAS_PROPOSTA.indexOf(pageNum as (typeof PAGINAS_PROPOSTA)[number]) + 1;
@@ -65,6 +82,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
   onClose,
   variante = 'modal',
   tokenPublico,
+  empresa,
 }) => {
   const ehPagina = variante === 'pagina';
   const [activePage, setActivePage] = useState<number>(0); // 0 = all pages, 1..8 = page 1..8
@@ -113,8 +131,35 @@ export const PDFModal: React.FC<PDFModalProps> = ({
   // Default observations and parameters if proposal
   const prop = type === 'proposta' ? (data as Proposta) : null;
 
+  /*
+   * O kit que vai impresso na folha de equipamentos.
+   *
+   * É o que o consultor montou no passo 3 da calculadora, item a item, a
+   * partir do catálogo — e que o banco guarda em SolarCosta_PropostaItens.
+   *
+   * Durante um bom tempo essa folha foi uma lista FIXA no JSX: painel TLC 710 W,
+   * micro Solax, estrutura de laje, 70 m². Toda proposta saía com aquelas
+   * marcas e aquelas quantidades, qualquer que fosse o kit vendido — trocar o
+   * equipamento na calculadora mudava o valor total e não mudava uma linha da
+   * lista. Nada na folha denunciava que era texto fixo, então o erro ia inteiro
+   * para a mão do cliente.
+   */
+  const kitItens = prop?.kitItens ?? [];
+
+  /*
+   * CREA do responsável técnico, montado a partir do cadastro da empresa.
+   *
+   * Também era fixo no JSX, com um dígito a mais do que o registro real. Um
+   * número de registro profissional errado numa proposta assinada é problema
+   * de outra ordem: aqui ele sai do banco ou não sai.
+   */
+  const creaResponsavel = [empresa?.crea, empresa?.responsavel_tecnico]
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter(Boolean)
+    .join(' — ');
+
   const defaultObservacoes = prop?.observacoes || 
-    `📍 Validade da proposta: 10 dias corridos a partir da data de emissão.\n⚡ Incluso projeto elétrico, ART, instalação e homologação técnica na CEMIG.\n🏠 Estrutura de fixação para telhado colonial/laje com certificação de resistência aos ventos.\n💳 Condição especial: 5% de desconto adicional para pagamento à vista via PIX/Transferência.`;
+    `📍 Validade da proposta: 10 dias corridos a partir da data de emissão.\n⚡ Incluso projeto elétrico, ART, instalação e homologação técnica na CEMIG.\n🏠 Estrutura de fixação para telhado colonial/laje com certificação de resistência aos ventos.`;
 
   // Customization States
   const [logoStyle, setLogoStyle] = useState<'standard' | 'dark' | 'minimal' | 'custom'>('standard');
@@ -443,6 +488,47 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               const valorInvestimento = prop?.valorTotal || 22490;
               const parcelas12 = Number((valorInvestimento / 12 * 1.14).toFixed(2));
 
+              /*
+               * Folha de despesas mensais: o que o cliente paga hoje contra o
+               * que vai pagar depois do sistema.
+               *
+               * Os três fixos são da PROPOSTA (V014), não da concessionária —
+               * a CIP é municipal e por faixa de consumo, o custo de
+               * disponibilidade depende do tipo de ligação, e o que foi
+               * negociado com este cliente não pode mudar porque alguém editou
+               * um cadastro global depois do envio.
+               *
+               * Zero em proposta anterior à V014. A folha imprime R$ 0,00, que
+               * é honesto; inventar 33,73 seria imprimir um número que ninguém
+               * combinou.
+               */
+              const cipSem = prop?.iluminacaoPublicaSemSfcr ?? 0;
+              const custoDisp = prop?.custoDisponibilidade ?? 0;
+              const cipCom = prop?.iluminacaoPublicaComSfcr ?? 0;
+
+              const despesaEnergia = consumo * tarifa;
+              const totalSemSfcr = despesaEnergia + cipSem;
+
+              /*
+               * A prestação é RECONSTRUÍDA, não lida: a parcela nunca foi
+               * persistida — só as entradas dela. Mesma função que a
+               * calculadora usa, para o PDF não divergir do que o consultor
+               * mostrou na tela.
+               *
+               * À vista ou no cartão não há prestação, e a linha sai R$ 0,00
+               * em vez de desaparecer: a tabela precisa fechar a soma à vista
+               * de quem lê.
+               */
+              const prestacao =
+                prop?.formaPagamento === 'financiamento'
+                  ? parcelaFinanciamento({
+                      valorFinanciado: valorInvestimento - (prop.entradaFinanciamentoValor ?? 0),
+                      jurosMesPct: prop.jurosFinanciamentoMesPct ?? 0,
+                      parcelas: prop.parcelasFinanciamento ?? 0,
+                    })
+                  : 0;
+              const totalComSfcr = custoDisp + cipCom + prestacao;
+
               // Perfil mensal de geração.
               //
               // Os fatores abaixo são a sazonalidade da região (1,0 = média
@@ -469,7 +555,11 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               // 25 Years Expenses without solar
               const projection25Years = [];
               let currentTariff = tarifa;
-              let currentMonthlyCost = (consumo * currentTariff) + 33.73;
+              // Mesma conta "sem SFCR" da folha de despesas, projetada no
+              // tempo — por isso o fixo é `cipSem` da proposta, e não o 33,73
+              // que estava cravado aqui (o custo_disponibilidade genérico de
+              // todas as concessionárias, que não era o deste cliente).
+              let currentMonthlyCost = (consumo * currentTariff) + cipSem;
               let accumulatedNoSolar = 0;
 
               for (let yr = 2026; yr <= 2050; yr++) {
@@ -498,7 +588,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                 });
 
                 currentTariff *= 1.06;
-                currentMonthlyCost = (consumo * currentTariff) + 33.73;
+                currentMonthlyCost = (consumo * currentTariff) + cipSem;
               }
 
               // Reusable Page Shell Component
@@ -538,23 +628,13 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                   {/* PÁGINA 1: CAPA E RESUMO TÉCNICO */}
                   <PageWrapper pageNum={1} title="Apresentação & Dimensionamento">
                     <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-6 items-center">
-                        <div className="md:col-span-2 print:col-span-2 space-y-3">
-                          <h2 className="text-xl sm:text-2xl font-black text-[#004276] leading-tight">
-                            Proposta Técnica e Comercial para Fornecimento de Sistema Solar Fotovoltaico Conectado à Rede Elétrica
-                          </h2>
-                          <div className="text-xs font-bold text-slate-600 space-y-0.5 pt-1">
-                            <p>Belo Horizonte, 30 de Julho de 2026</p>
-                            <p className="text-[#004276]">Att: {prop?.clienteNome || 'Cristiano'} — {prop?.cidade || 'Belo Horizonte / BH'}</p>
-                          </div>
-                        </div>
-
-                        <div className="bg-gradient-to-br from-[#004276] to-blue-900 text-white p-4 rounded-2xl shadow-md border border-blue-800 text-center space-y-2">
-                          <div className="w-10 h-10 rounded-full bg-[#FFD100] mx-auto flex items-center justify-center">
-                            <Zap className="w-6 h-6 text-[#004276]" />
-                          </div>
-                          <h3 className="text-sm font-extrabold text-[#FFD100]">SOLAR COSTA ENERGIA</h3>
-                          <p className="text-[11px] text-slate-200">Geração Limpa & Economia Sustentável</p>
+                      <div className="space-y-3">
+                        <h2 className="text-xl sm:text-2xl font-black text-[#004276] leading-tight">
+                          Proposta Técnica e Comercial para Fornecimento de Sistema Solar Fotovoltaico Conectado à Rede Elétrica
+                        </h2>
+                        <div className="text-xs font-bold text-slate-600 space-y-0.5 pt-1">
+                          <p>Belo Horizonte, 30 de Julho de 2026</p>
+                          <p className="text-[#004276]">Att: {prop?.clienteNome || 'Cristiano'} — {prop?.cidade || 'Belo Horizonte / BH'}</p>
                         </div>
                       </div>
 
@@ -727,6 +807,118 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                     </div>
                   </PageWrapper>
 
+                  {/*
+                    PÁGINA 6 (4ª impressa): DESPESAS MENSAIS — SEM × COM SFCR
+
+                    Duas tabelas e a lista de exclusões de escopo. As letras
+                    correm de (A) a (I) SEM reiniciar na segunda tabela: na
+                    planilha de origem ambas começavam em (E), e a referência
+                    "(E) Total" ficava ambígua entre os dois totais. Pelo mesmo
+                    motivo a linha (C) diz (AxB), que é a conta que ela faz —
+                    a planilha dizia (AxD), apontando para a taxa de iluminação.
+                  */}
+                  <PageWrapper pageNum={6} title="Despesas Mensais">
+                    <div className="space-y-5">
+
+                      {/* TABELA 1 — SEM SFCR */}
+                      <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <div className="bg-[#004276] text-white px-3 py-2.5 text-center">
+                          <span className="text-sm font-black uppercase tracking-wide">
+                            DESPESAS MENSAL <span className="text-base">SEM</span> SFCR
+                          </span>
+                          <span className="block text-[10px] font-bold uppercase text-blue-100">
+                            (CONTA DE ENERGIA)
+                          </span>
+                        </div>
+                        <table className="w-full text-left text-xs">
+                          <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200">(A) Média de Consumo Mensal:</td>
+                              <td className="p-2.5 text-center w-44 font-bold">
+                                {consumo.toLocaleString('pt-BR')} <span className="italic font-medium text-slate-600">kWh</span>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200">(B) Valor do kWh:</td>
+                              <td className="p-2.5 text-center font-bold">{formatCurrencyBRL(tarifa)}</td>
+                            </tr>
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200">(C) Despesa média com energia (AxB):</td>
+                              <td className="p-2.5 text-center text-sm font-black text-[#00B050]">
+                                {formatCurrencyBRL(despesaEnergia)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200">(D) Tx. Iluminação Pública:</td>
+                              <td className="p-2.5 text-center font-bold">{formatCurrencyBRL(cipSem)}</td>
+                            </tr>
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200 font-bold">(E) Total:</td>
+                              <td className="p-2.5 text-center text-sm font-black text-[#0070C0]">
+                                {formatCurrencyBRL(totalSemSfcr)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* TABELA 2 — COM SFCR */}
+                      <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <div className="bg-[#004276] text-white px-3 py-2.5 text-center">
+                          <span className="text-sm font-black uppercase tracking-wide">
+                            DESPESAS MENSAL <span className="text-base">COM</span> SFCR
+                          </span>
+                          <span className="block text-[10px] font-bold uppercase text-blue-100">
+                            (CONTA DE ENERGIA + PRESTAÇÃO)
+                          </span>
+                        </div>
+                        <table className="w-full text-left text-xs">
+                          <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200">(F) Custo de disponibilidade:</td>
+                              <td className="p-2.5 text-center w-44 font-bold">{formatCurrencyBRL(custoDisp)}</td>
+                            </tr>
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200">(G) Taxa de Iluminação Pública:</td>
+                              <td className="p-2.5 text-center font-bold">{formatCurrencyBRL(cipCom)}</td>
+                            </tr>
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200">(H) Prestação do Financiamento:</td>
+                              <td className="p-2.5 text-center text-sm font-black text-[#00B050]">
+                                {formatCurrencyBRL(prestacao)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200 font-bold">(I) Total:</td>
+                              <td className="p-2.5 text-center text-sm font-black text-[#0070C0]">
+                                {formatCurrencyBRL(totalComSfcr)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* EXCLUSÕES DE ESCOPO */}
+                      <div className="space-y-2 pt-1">
+                        <p className="text-sm font-bold text-[#ED7D31] leading-snug">
+                          Os custos de aquisição e execução dos seguintes itens não fazem parte
+                          do escopo de fornecimento, podendo ser cotados à parte, se necessário:
+                        </p>
+                        <ul className="text-[11px] text-slate-700 leading-relaxed space-y-0.5">
+                          <li>• Adequação das estruturas civis ao peso dos equipamentos;</li>
+                          <li>• Adequação das instalações existentes para os requisitos da concessionária;</li>
+                          <li>• Sistemas de para-raios e aterramento, mesmo que adequação de sistemas existentes.</li>
+                          <li>• Medidor (es) bidirecional (is) de energia no padrão da concessionária;</li>
+                          <li>• Licenças ambientais, se necessárias;</li>
+                          <li>• Quaisquer taxas e emolumentos devidos a autarquias ou órgãos das administrações municipais, estaduais e federais;</li>
+                          <li>• Obras civis de qualquer natureza, tais como, abrigos para equipamentos elétricos, passagem de eletrodutos, reforço em estruturas, bases para equipamentos, etc.;</li>
+                          <li>• Quaisquer outros itens não mencionados claramente nesta proposta.</li>
+                        </ul>
+                      </div>
+
+                    </div>
+                  </PageWrapper>
+
                   {/* PÁGINA 4: EQUIPAMENTOS E CONDIÇÕES */}
                   <PageWrapper pageNum={4} title="Lista de Equipamentos e Serviços">
                     <div className="space-y-6">
@@ -734,47 +926,62 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                         Descrição dos Equipamentos
                       </h2>
 
-                      <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                        <table className="w-full text-left text-xs">
-                          <thead>
-                            <tr className="bg-[#004276] text-white font-bold">
-                              <th className="p-3">Descrição</th>
-                              <th className="p-3 text-center w-28">Quantidade</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 font-medium text-slate-900">
-                            <tr className="hover:bg-slate-50">
-                              <td className="p-3">PAINEL TLC tier 1 710 w</td>
-                              <td className="p-3 text-center font-bold">12</td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="p-3">Micro inversor Solax</td>
-                              <td className="p-3 text-center font-bold">3</td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="p-3">Estrutura laje</td>
-                              <td className="p-3 text-center font-bold">1</td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="p-3">Área sistema</td>
-                              <td className="p-3 text-center font-bold">70,00 m²</td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="p-3">Material, cabos e conexões</td>
-                              <td className="p-3 text-center font-bold">1</td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="p-3">Instalação, projeto e Homologação do SFCR</td>
-                              <td className="p-3 text-center font-bold">1</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
+                      {/* Kit vazio não vira lista de exemplo: a folha diz que
+                          está vazia. Imprimir equipamento que ninguém vendeu é
+                          pior do que imprimir um espaço em branco. */}
+                      {kitItens.length === 0 ? (
+                        <div className="p-4 border border-dashed border-slate-300 rounded-xl text-xs font-semibold text-slate-500">
+                          Nenhum equipamento cadastrado nesta proposta. Monte o kit no
+                          passo 3 da calculadora para que os itens apareçam aqui.
+                        </div>
+                      ) : (
+                        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="bg-[#004276] text-white font-bold">
+                                <th className="p-3">Descrição</th>
+                                <th className="p-3 text-center w-28">Quantidade</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 font-medium text-slate-900">
+                              {kitItens.map((item, idx) => (
+                                // A rota pública devolve os itens sem `id` (ela
+                                // só seleciona o que vai impresso), então o
+                                // índice é o que sobra como chave.
+                                <tr key={item.id ?? idx} className="hover:bg-slate-50">
+                                  <td className="p-3">{item.descricao}</td>
+                                  <td className="p-3 text-center font-bold">
+                                    {item.qtd.toLocaleString('pt-BR')}
+                                  </td>
+                                </tr>
+                              ))}
 
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-rose-700 flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 shrink-0" />
-                        <span>CREA RESPONSÁVEL: MG00000023481D MG Thiago Gonçalves Leal</span>
-                      </div>
+                              {/* Área não é item de catálogo — é o
+                                  dimensionamento. Continua na tabela porque é
+                                  onde o cliente está acostumado a procurar. */}
+                              {!!prop?.areaEstimadaM2 && (
+                                <tr className="hover:bg-slate-50">
+                                  <td className="p-3">Área do sistema</td>
+                                  <td className="p-3 text-center font-bold">
+                                    {prop.areaEstimadaM2.toLocaleString('pt-BR', {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })}{' '}
+                                    m²
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {creaResponsavel && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-rose-700 flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 shrink-0" />
+                          <span>CREA RESPONSÁVEL: {creaResponsavel}</span>
+                        </div>
+                      )}
                     </div>
                   </PageWrapper>
 

@@ -1081,6 +1081,7 @@ export default function App() {
           <PDFModal
             type={pdfModal.type}
             data={pdfModal.data}
+            empresa={config?.empresa}
             onClose={() => setPdfModal({ isOpen: false, type: 'proposta', data: null })}
           />
         </Suspense>

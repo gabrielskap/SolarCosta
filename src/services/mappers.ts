@@ -344,6 +344,11 @@ export function paraProposta(linha: any): Proposta {
     telhado: txt(linha.telhado),
     consumoKwh: num(linha.consumo_kwh),
     tarifaKwh: num(linha.tarifa_kwh),
+    // Despesas fixas da conta (V014). num() e não numOpc: ausente aqui é
+    // proposta antiga, e 0 é exatamente o que a folha deve imprimir nela.
+    iluminacaoPublicaSemSfcr: num(linha.iluminacao_publica_sem_sfcr),
+    custoDisponibilidade: num(linha.custo_disponibilidade),
+    iluminacaoPublicaComSfcr: num(linha.iluminacao_publica_com_sfcr),
     hsp: num(linha.hsp),
     perdasPct: num(linha.perdas_pct),
     moduloWp: num(linha.modulo_wp),
@@ -408,6 +413,9 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     telhado: p.telhado || null,
     consumo_kwh: p.consumoKwh,
     tarifa_kwh: p.tarifaKwh,
+    iluminacao_publica_sem_sfcr: p.iluminacaoPublicaSemSfcr ?? 0,
+    custo_disponibilidade: p.custoDisponibilidade ?? 0,
+    iluminacao_publica_com_sfcr: p.iluminacaoPublicaComSfcr ?? 0,
     hsp: p.hsp,
     perdas_pct: p.perdasPct,
     modulo_wp: p.moduloWp,

@@ -344,8 +344,18 @@ publicoRouter.get(
     );
 
     if (link.tipo === 'proposta') {
+      // consumo_kwh e tarifa_kwh ficaram de fora desta lista até a folha de
+      // despesas mensais precisar deles. O efeito era silencioso e feio:
+      // paraProposta mapeava os dois para 0, o PDFModal caía no fallback de
+      // 1000 kWh / R$ 1,19 e o cliente recebia um documento com números que
+      // não eram os dele — enquanto o mesmo PDF, aberto pelo CRM, saía certo.
+      // Como o anexo do WhatsApp é gerado justamente a partir desta rota (ver
+      // services/pdfDocumento.ts), era o documento ENVIADO que estava errado.
       const proposta = await consultarUm(
         `SELECT p.id, p.numero, p.cliente_nome, p.cpf_cnpj, p.endereco, p.cidade, p.cep,
+                p.consumo_kwh, p.tarifa_kwh,
+                p.iluminacao_publica_sem_sfcr, p.custo_disponibilidade,
+                p.iluminacao_publica_com_sfcr,
                 p.potencia_kwp, p.modulos_qtd, p.modulo_wp, p.area_estimada_m2,
                 p.geracao_media_kwh, p.cobertura_pct,
                 p.economia_mensal, p.economia_anual, p.economia_25_anos, p.payback_anos,

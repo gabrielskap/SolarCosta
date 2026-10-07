@@ -46,6 +46,13 @@ const propostaSchema = z.object({
   perdas_pct: z.coerce.number().min(0).max(99.9),
   modulo_wp: z.coerce.number().int().positive(),
 
+  // Despesas fixas da conta (V014), em R$/mês — as parcelas que a geração NÃO
+  // compensa e que a folha de despesas mensais imprime. Opcionais porque
+  // proposta anterior à V014 não as tinha; chegam como 0 e a folha sai zerada.
+  iluminacao_publica_sem_sfcr: z.coerce.number().min(0).nullish(),
+  custo_disponibilidade: z.coerce.number().min(0).nullish(),
+  iluminacao_publica_com_sfcr: z.coerce.number().min(0).nullish(),
+
   // Resultados do cálculo
   potencia_kwp: z.coerce.number().min(0),
   modulos_qtd: z.coerce.number().int().min(0),
@@ -247,7 +254,8 @@ propostasRouter.post(
             mapa_zoom, telhado_imagem_data, telhado_area_m2,
             layout_modulos, layout_segmentos,
             cep, numero_endereco,
-            layout_ajuste_manual, layout_modulo
+            layout_ajuste_manual, layout_modulo,
+            iluminacao_publica_sem_sfcr, custo_disponibilidade, iluminacao_publica_com_sfcr
          ) VALUES (
             $1,$2,$3,$4,NULLIF($5,'')::citext,$6,$7,
             COALESCE($8::int, (SELECT id FROM "SolarCosta_Concessionarias" WHERE nome = $9)),
@@ -262,7 +270,8 @@ propostasRouter.post(
             $44,$45::date,$46,
             $47::jsonb,$48::jsonb,
             $49,$50,
-            COALESCE($51, false),$52::jsonb
+            COALESCE($51, false),$52::jsonb,
+            COALESCE($53,0),COALESCE($54,0),COALESCE($55,0)
          ) RETURNING id`,
         [
           d.lead_id ?? null, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null,
@@ -287,6 +296,8 @@ propostasRouter.post(
           paraJsonb(d.layout_modulos), paraJsonb(d.layout_segmentos),
           d.cep ?? null, d.numero_endereco ?? null,
           d.layout_ajuste_manual ?? false, paraJsonb(d.layout_modulo),
+          d.iluminacao_publica_sem_sfcr ?? 0, d.custo_disponibilidade ?? 0,
+          d.iluminacao_publica_com_sfcr ?? 0,
         ],
       );
       const novoId = rows[0]!.id as string;
@@ -350,7 +361,10 @@ propostasRouter.put(
             -- O vínculo com o lead também é editável: a tela de "continuar
             -- preenchendo" mostra o seletor de lead, e sem esta coluna trocá-lo
             -- lá não teria efeito nenhum — o pior tipo de falha, a silenciosa.
-            lead_id = $52::uuid
+            lead_id = $52::uuid,
+            iluminacao_publica_sem_sfcr = COALESCE($53,0),
+            custo_disponibilidade       = COALESCE($54,0),
+            iluminacao_publica_com_sfcr = COALESCE($55,0)
           WHERE id = $1`,
         [
           id, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null, d.email ?? null,
@@ -375,6 +389,8 @@ propostasRouter.put(
           d.cep ?? null, d.numero_endereco ?? null,
           d.layout_ajuste_manual ?? false, paraJsonb(d.layout_modulo),
           d.lead_id ?? null,
+          d.iluminacao_publica_sem_sfcr ?? 0, d.custo_disponibilidade ?? 0,
+          d.iluminacao_publica_com_sfcr ?? 0,
         ],
       );
 
