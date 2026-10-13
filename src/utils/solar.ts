@@ -36,11 +36,25 @@ export interface Dimensionamento {
 }
 
 /**
- * Potência kWp = Consumo kWh / (30 · HSP · (1 − Perdas/100)).
+ * Dimensionamento fotovoltaico.
  *
- * Os arredondamentos intermediários são propositais e reproduzem o que a
- * proposta impressa mostra: a potência fecha em 2 casas ANTES de virar
- * quantidade de módulos e geração.
+ * 1. Geração mensal por kWp instalado:
+ *    geracaoPorKwp = 30 · HSP · (1 − Perdas/100)
+ *
+ * 2. Geração média mensal de 1 módulo (kWh/mês por módulo):
+ *    geracaoPorModulo = (moduloWp / 1000) · geracaoPorKwp
+ *
+ * 3. Quantidade necessária de módulos para cobrir o consumo mensal:
+ *    modulosQtd = Math.ceil(consumoKwh / geracaoPorModulo)
+ *
+ * 4. Potência real instalada no sistema (kWp):
+ *    potenciaKwp = (modulosQtd · moduloWp) / 1000
+ *
+ * 5. Geração média mensal real produzida pelos módulos (kWh/mês):
+ *    geracaoMediaKwh = Math.round(potenciaKwp · geracaoPorKwp)
+ *
+ * 6. Cobertura real do consumo pela geração média calculada (%):
+ *    coberturaPct = (geracaoMediaKwh / consumoKwh) · 100
  */
 export function dimensionar({
   consumoKwh,
@@ -62,12 +76,24 @@ export function dimensionar({
     };
   }
 
-  const potenciaKwp = Number((consumoKwh / geracaoPorKwp).toFixed(2));
-  const modulosQtd = Math.ceil((potenciaKwp * 1000) / moduloWp);
+  // Geração média mensal gerada por 1 único módulo (kWh/mês)
+  const geracaoPorModulo = (moduloWp / 1000) * geracaoPorKwp;
+
+  // Quantidade de módulos necessária para suprir o consumo informado
+  const modulosQtd = Math.ceil(consumoKwh / geracaoPorModulo);
+
+  // Potência real instalada do sistema (kWp) = Qtd Módulos · Potência do Módulo
+  const potenciaKwp = Number(((modulosQtd * moduloWp) / 1000).toFixed(2));
+
+  // Geração média mensal efetiva do sistema instalado (kWh/mês)
   const geracaoMediaKwh = Math.round(potenciaKwp * geracaoPorKwp);
+
+  // Área estimada ocupada pelo conjunto de placas (m²)
   const areaEstimadaM2 = Number(
     (modulosQtd * MODULO_LARGURA_M * MODULO_ALTURA_M).toFixed(2),
   );
+
+  // Percentual de cobertura do consumo pela geração dos módulos instalados
   const coberturaPct = Number(((geracaoMediaKwh / consumoKwh) * 100).toFixed(1));
 
   return {
@@ -112,7 +138,11 @@ export function projetarEconomia({
     doAno *= 1 + reajusteAnual;
   }
 
-  return { economiaMensal, economiaAnual, economiaAcumulada };
+  return {
+    economiaMensal,
+    economiaAnual,
+    economiaAcumulada: Number(economiaAcumulada.toFixed(2)),
+  };
 }
 
 export interface EntradaParcela {

@@ -1366,7 +1366,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <div className="flex items-center justify-between pt-2 border-t">
                 <span className="text-slate-500 font-medium">Em 25 anos (reajuste 6% a.a.)</span>
                 <span className="font-bold text-slate-900">
-                  R$ {economia25Anos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R$ {economia25Anos.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
 

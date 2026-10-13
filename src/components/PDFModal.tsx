@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { 
   X, Printer, Download, CheckCircle2, ChevronLeft, ChevronRight, Award, DollarSign,
   TrendingUp, Zap, Calendar, ShieldCheck, Phone, Mail, MapPin, SlidersHorizontal, Image as ImageIcon,
-  Upload, FileText, Check, RotateCcw, Sparkles, Layers, Eye, EyeOff, Palette, MessageSquare, User
+  Upload, FileText, Check, RotateCcw, Sparkles, Layers, Eye, EyeOff, Palette, MessageSquare, User,
+  CreditCard, Landmark
 } from 'lucide-react';
 import { Proposta, Contrato, Boleto } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
@@ -486,7 +487,32 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               const tarifa = prop?.tarifaKwh || 1.19;
               const potencia = prop?.potenciaKwp || 8.52;
               const valorInvestimento = prop?.valorTotal || 22490;
-              const parcelas12 = Number((valorInvestimento / 12 * 1.14).toFixed(2));
+
+              // 3 Modalidades de Pagamento:
+              const formaPagamentoSelecionada = prop?.formaPagamento || 'avista';
+
+              // 1. À Vista (com desconto)
+              const descontoAvistaPct = prop?.descontoAvistaPct ?? 7;
+              const valorAvistaComDesconto = Number((valorInvestimento * (1 - descontoAvistaPct / 100)).toFixed(2));
+              const economiaAvista = Number((valorInvestimento * (descontoAvistaPct / 100)).toFixed(2));
+
+              // 2. Cartão de Crédito
+              const parcelasCartaoQtd = prop?.parcelasCartao ?? 12;
+              const taxaCartaoPct = prop?.taxaCartaoPct ?? 4.5;
+              const valorTotalCartao = Number((valorInvestimento * (1 + taxaCartaoPct / 100)).toFixed(2));
+              const parcelaCartaoValor = Number((valorTotalCartao / parcelasCartaoQtd).toFixed(2));
+
+              // 3. Financiamento Bancário
+              const entradaFinancValor = prop?.entradaFinanciamentoValor ?? 0;
+              const parcelasFinancQtd = prop?.parcelasFinanciamento ?? 60;
+              const jurosFinancMesPct = prop?.jurosFinanciamentoMesPct ?? 1.45;
+              const valorFinanciadoTotal = Math.max(0, valorInvestimento - entradaFinancValor);
+              const parcelaFinancValor = parcelaFinanciamento({
+                valorFinanciado: valorFinanciadoTotal,
+                jurosMesPct: jurosFinancMesPct,
+                parcelas: parcelasFinancQtd,
+              });
+              const bancoFinancNome = prop?.bancoFinanciamento;
 
               /*
                * Folha de despesas mensais: o que o cliente paga hoje contra o
@@ -567,7 +593,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                 accumulatedNoSolar += annualNoSolar;
 
                 const yearDegradation = Math.pow(0.993, yr - 2026);
-                const geracaoAnoKwh = Math.round(11012 * yearDegradation);
+                const geracaoAnoKwh = Math.round(geracaoMediaMensal * 12 * yearDegradation);
                 const geracaoValorRs = Math.round(geracaoAnoKwh * currentTariff);
                 const custoManutencaoAno = (yr === 2040) ? 3000 : Math.round(200 * Math.pow(1.05, yr - 2026));
                 
@@ -660,30 +686,147 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                         </p>
                       </div>
 
-                      {/* BIG HIGHLIGHTS BANNER */}
-                      <div className="bg-slate-100 border-2 border-[#004276] rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-6 items-center shadow-sm">
-                        <div className="space-y-3 md:col-span-2 print:col-span-2">
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-amber-600 text-sm">Potência:</span>
-                            <span className="text-2xl font-black text-[#004276]">{potencia} kWp</span>
+                      {/* RESUMO DO DIMENSIONAMENTO E INVESTIMENTO */}
+                      <div className="bg-slate-100 border-2 border-[#004276] rounded-2xl p-5 shadow-sm space-y-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-3 border-b border-slate-300">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Potência</span>
+                            <span className="text-xl font-black text-[#004276]">{potencia} kWp</span>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-amber-600 text-sm">Área do Sistema Estimada:</span>
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Geração Média</span>
+                            <span className="text-xl font-black text-slate-900">{Math.round(geracaoMediaMensal).toLocaleString('pt-BR')} kWh/mês</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Área Estimada</span>
                             <span className="text-xl font-extrabold text-slate-900">{prop?.areaEstimadaM2 || 70} m²</span>
                           </div>
-                          <div className="flex items-center gap-3 pt-2 border-t border-slate-300">
-                            <span className="font-bold text-amber-600 text-sm">Valor do Investimento:</span>
-                            <div>
-                              <span className="text-2xl font-black text-emerald-700">R$ {valorInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                              <span className="text-xs font-bold text-slate-600 ml-2">à vista</span>
-                            </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Módulos</span>
+                            <span className="text-xl font-black text-slate-900">{prop?.modulosQtd ?? Math.ceil(potencia * 1000 / (prop?.moduloWp || 710))} un</span>
                           </div>
                         </div>
 
-                        <div className="bg-[#004276] text-white p-5 rounded-xl text-center space-y-2 border border-blue-900">
-                          <span className="text-[11px] font-bold text-[#FFD100] uppercase tracking-wider block">OPÇÃO PARCELADA</span>
-                          <h4 className="text-2xl font-black text-[#FFD100]">12x R$ {parcelas12.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
-                          <p className="text-[10px] text-slate-300">Entrada facilitada ou cartão de crédito</p>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pt-1">
+                          <span className="font-extrabold text-[#004276] text-xs uppercase tracking-wide">
+                            Valor do Investimento Global:
+                          </span>
+                          <span className="text-2xl font-black text-emerald-700">
+                            R$ {valorInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* MODALIDADES DE PAGAMENTO (3 OPÇÕES DISPONÍVEIS) */}
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-extrabold text-[#004276] text-xs uppercase tracking-wider border-l-4 border-[#FFD100] pl-2.5">
+                            OPÇÕES E CONDIÇÕES DE PAGAMENTO
+                          </h4>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">
+                            Planos comerciais flexíveis
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-3">
+                          {/* 1. À VISTA */}
+                          <div className={`p-3.5 rounded-xl border-2 flex flex-col justify-between relative ${
+                            formaPagamentoSelecionada === 'avista'
+                              ? 'bg-blue-50/70 border-[#004276] shadow-sm'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}>
+                            {formaPagamentoSelecionada === 'avista' && (
+                              <span className="absolute -top-2.5 right-3 bg-[#004276] text-[#FFD100] text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
+                                ★ Selecionada
+                              </span>
+                            )}
+                            <div>
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <DollarSign className="w-4 h-4 text-emerald-600" />
+                                <h5 className="text-xs font-black uppercase text-slate-900">À Vista</h5>
+                              </div>
+                              <p className="text-[10px] font-bold text-slate-500">
+                                {descontoAvistaPct > 0 ? `${descontoAvistaPct}% de desconto especial` : 'Sem desconto'}
+                              </p>
+                              <div className="my-1.5">
+                                <span className="text-lg font-black text-emerald-700 block">
+                                  R$ {valorAvistaComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium border-t border-slate-200 pt-1.5 mt-1">
+                              {descontoAvistaPct > 0
+                                ? `Economia de R$ ${economiaAvista.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                                : 'Pagamento integral'}
+                            </p>
+                          </div>
+
+                          {/* 2. CARTÃO DE CRÉDITO */}
+                          <div className={`p-3.5 rounded-xl border-2 flex flex-col justify-between relative ${
+                            formaPagamentoSelecionada === 'cartao'
+                              ? 'bg-blue-50/70 border-[#004276] shadow-sm'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}>
+                            {formaPagamentoSelecionada === 'cartao' && (
+                              <span className="absolute -top-2.5 right-3 bg-[#004276] text-[#FFD100] text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
+                                ★ Selecionada
+                              </span>
+                            )}
+                            <div>
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <CreditCard className="w-4 h-4 text-[#004276]" />
+                                <h5 className="text-xs font-black uppercase text-slate-900">Cartão de Crédito</h5>
+                              </div>
+                              <p className="text-[10px] font-bold text-slate-500">
+                                Parcelado em até {parcelasCartaoQtd}x
+                              </p>
+                              <div className="my-1.5">
+                                <span className="text-lg font-black text-[#004276] block">
+                                  {parcelasCartaoQtd}x R$ {parcelaCartaoValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium border-t border-slate-200 pt-1.5 mt-1">
+                              Total: R$ {valorTotalCartao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}{taxaCartaoPct > 0 ? ` (${taxaCartaoPct}% taxa)` : ''}
+                            </p>
+                          </div>
+
+                          {/* 3. FINANCIAMENTO BANCÁRIO */}
+                          <div className={`p-3.5 rounded-xl border-2 flex flex-col justify-between relative ${
+                            formaPagamentoSelecionada === 'financiamento'
+                              ? 'bg-[#004276] text-white border-blue-900 shadow-md'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}>
+                            {formaPagamentoSelecionada === 'financiamento' && (
+                              <span className="absolute -top-2.5 right-3 bg-[#FFD100] text-[#004276] text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
+                                ★ Selecionada
+                              </span>
+                            )}
+                            <div>
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <Landmark className={`w-4 h-4 ${formaPagamentoSelecionada === 'financiamento' ? 'text-[#FFD100]' : 'text-[#004276]'}`} />
+                                <h5 className={`text-xs font-black uppercase ${formaPagamentoSelecionada === 'financiamento' ? 'text-white' : 'text-slate-900'}`}>
+                                  Financiamento
+                                </h5>
+                              </div>
+                              <p className={`text-[10px] font-bold ${formaPagamentoSelecionada === 'financiamento' ? 'text-blue-100' : 'text-slate-500'}`}>
+                                Plano em {parcelasFinancQtd} meses
+                              </p>
+                              <div className="my-1.5">
+                                <span className={`text-lg font-black block ${formaPagamentoSelecionada === 'financiamento' ? 'text-[#FFD100]' : 'text-[#004276]'}`}>
+                                  {parcelasFinancQtd}x R$ {parcelaFinancValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </div>
+                            <p className={`text-[10px] font-medium border-t pt-1.5 mt-1 ${
+                              formaPagamentoSelecionada === 'financiamento'
+                                ? 'text-blue-200 border-blue-800'
+                                : 'text-slate-500 border-slate-200'
+                            }`}>
+                              {entradaFinancValor > 0 ? `Entrada R$ ${entradaFinancValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} • ` : 'Sem entrada • '}
+                              {jurosFinancMesPct}% a.m.{bancoFinancNome ? ` (${bancoFinancNome})` : ''}
+                            </p>
+                          </div>
                         </div>
                       </div>
 
@@ -719,7 +862,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                           <div className="w-12 h-12 rounded-full bg-blue-900/80 border border-[#FFD100] flex items-center justify-center text-[#FFD100]">
                             <Zap className="w-7 h-7" />
                           </div>
-                          <h3 className="text-3xl font-black text-white">1011 KW</h3>
+                          <h3 className="text-3xl font-black text-white">{Math.round(geracaoMediaMensal).toLocaleString('pt-BR')} kWh</h3>
                           <p className="text-xs font-bold text-[#FFD100] uppercase tracking-wider">
                             POR MÊS DE GERAÇÃO
                           </p>
@@ -730,7 +873,9 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                             <DollarSign className="w-7 h-7" />
                           </div>
                           <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-widest">ECONOMIA:</h3>
-                          <p className="text-2xl font-black text-white">R$ 1.203,60 POR MÊS</p>
+                          <p className="text-2xl font-black text-white">
+                            R$ {(prop?.economiaMensal ?? Number((geracaoMediaMensal * tarifa).toFixed(2))).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} POR MÊS
+                          </p>
                         </div>
 
                         <div className="bg-[#004276] text-white p-6 rounded-2xl shadow-lg border border-blue-900 flex flex-col items-center justify-center text-center space-y-3 min-h-[180px]">
@@ -738,8 +883,12 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                             <TrendingUp className="w-7 h-7" />
                           </div>
                           <h3 className="text-xs font-bold text-slate-300 uppercase">EQUIVALENTE A</h3>
-                          <p className="text-3xl font-black text-[#FFD100]">101,14%</p>
-                          <p className="text-xs font-extrabold text-slate-200">DA MÉDIA MENSAL DE 1.000 KW</p>
+                          <p className="text-3xl font-black text-[#FFD100]">
+                            {(prop?.coberturaPct ?? Number(((geracaoMediaMensal / consumo) * 100).toFixed(1))).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                          </p>
+                          <p className="text-xs font-extrabold text-slate-200">
+                            DA MÉDIA MENSAL DE {Math.round(consumo).toLocaleString('pt-BR')} kWh
+                          </p>
                         </div>
 
                         <div className="bg-[#004276] text-white p-6 rounded-2xl shadow-lg border border-blue-900 flex flex-col items-center justify-center text-center space-y-3 min-h-[180px]">
@@ -747,7 +896,9 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                             <Calendar className="w-7 h-7" />
                           </div>
                           <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">RETORNO DO INVESTIMENTO</h3>
-                          <p className="text-2xl font-black text-white">EM ATÉ 2 ANOS</p>
+                          <p className="text-2xl font-black text-white">
+                            EM ATÉ {prop?.paybackAnos ? `${prop.paybackAnos.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ANOS` : `${Number((valorInvestimento / ((prop?.economiaAnual || (geracaoMediaMensal * tarifa * 12)) || 1)).toFixed(1)).toLocaleString('pt-BR')} ANOS`}
+                          </p>
                         </div>
                       </div>
                     </div>
