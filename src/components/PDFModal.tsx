@@ -148,13 +148,24 @@ export const PDFModal: React.FC<PDFModalProps> = ({
   const kitItens = prop?.kitItens ?? [];
 
   /*
-   * CREA do responsável técnico, montado a partir do cadastro da empresa.
+   * CREA do responsável técnico.
    *
-   * Também era fixo no JSX, com um dígito a mais do que o registro real. Um
-   * número de registro profissional errado numa proposta assinada é problema
-   * de outra ordem: aqui ele sai do banco ou não sai.
+   * Era fixo no JSX, com um dígito a mais do que o registro real. Um número de
+   * registro profissional errado numa proposta assinada é problema de outra
+   * ordem: aqui ele sai do banco ou não sai.
+   *
+   * A PROPOSTA ganha do cadastro (V017): quem emitiu escolheu o engenheiro
+   * naquele momento, e essa escolha não pode ser desfeita por uma edição
+   * posterior do cadastro da empresa — o PDF é remontado a cada impressão, de
+   * modo que o documento já enviado ao cliente mudaria junto.
+   *
+   * Cada metade cai de volta na empresa por conta própria: proposta anterior à
+   * V017 não tem nenhuma das duas e imprime o par do cadastro, como sempre.
    */
-  const creaResponsavel = [empresa?.crea, empresa?.responsavel_tecnico]
+  const creaResponsavel = [
+    prop?.crea ?? empresa?.crea,
+    prop?.responsavelTecnico ?? empresa?.responsavel_tecnico,
+  ]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean)
     .join(' — ');
@@ -486,7 +497,11 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               const consumo = prop?.consumoKwh || 1000;
               const tarifa = prop?.tarifaKwh || 1.19;
               const potencia = prop?.potenciaKwp || 8.52;
-              const valorInvestimento = prop?.valorTotal || 22490;
+              // `??` e não `||`: desde a V018 o total pode ser um valor
+              // negociado, e zero é negociação legítima (bonificação, brinde).
+              // Com `||`, um total de R$ 0 caía no 22.490 de demonstração e o
+              // cliente recebia um PDF com um preço que ninguém combinou.
+              const valorInvestimento = prop?.valorTotal ?? 22490;
 
               // 3 Modalidades de Pagamento:
               const formaPagamentoSelecionada = prop?.formaPagamento || 'avista';
@@ -1096,15 +1111,29 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                             </thead>
                             <tbody className="divide-y divide-slate-200 font-medium text-slate-900">
                               {kitItens.map((item, idx) => (
-                                // A rota pública devolve os itens sem `id` (ela
-                                // só seleciona o que vai impresso), então o
-                                // índice é o que sobra como chave.
-                                <tr key={item.id ?? idx} className="hover:bg-slate-50">
-                                  <td className="p-3">{item.descricao}</td>
-                                  <td className="p-3 text-center font-bold">
-                                    {item.qtd.toLocaleString('pt-BR')}
-                                  </td>
-                                </tr>
+                                <React.Fragment key={item.id ?? idx}>
+                                  <tr className="hover:bg-slate-50">
+                                    <td className="p-3">{item.descricao}</td>
+                                    <td className="p-3 text-center font-bold">
+                                      {item.qtd.toLocaleString('pt-BR')}
+                                    </td>
+                                  </tr>
+
+                                  {/* Produtos que compõem o kit. Sem eles o
+                                      cliente receberia uma folha de
+                                      equipamentos dizendo só "Kit 8 kWp — 1",
+                                      sem o que vai instalado. O preço não
+                                      aparece aqui: esta folha nunca imprimiu
+                                      valor por linha. */}
+                                  {(item.componentes ?? []).map((c, cIdx) => (
+                                    <tr key={c.id ?? `${idx}-${cIdx}`} className="hover:bg-slate-50">
+                                      <td className="p-3 pl-8 text-slate-600">{c.descricao}</td>
+                                      <td className="p-3 text-center font-bold text-slate-600">
+                                        {c.qtd.toLocaleString('pt-BR')}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </React.Fragment>
                               ))}
 
                               {/* Área não é item de catálogo — é o

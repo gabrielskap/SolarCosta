@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FileText, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { FileText, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { ErroApi } from '../../services/http';
 import { WhatsApp, type DadosModelo, type ModeloMensagem } from '../../services/whatsapp';
 import { BotoesMarcador, inserirMarcador, PreviaMensagem } from './PreviaMensagem';
@@ -248,25 +249,16 @@ export const AbaModelos: React.FC<Props> = ({ showToast }) => {
 
       {/* ------------------------------------------------------- editor -- */}
       {editando && (
-        <div className="modal-overlay fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
-            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <FileText className="w-5 h-5 text-[#FFD100]" />
-                <h2 className="font-bold text-sm">
-                  {editando.id ? 'Editar modelo' : 'Novo modelo'}
-                </h2>
-              </div>
-              <button
-                onClick={() => setEditando(null)}
-                className="text-blue-200 hover:text-white p-1"
-                aria-label="Fechar"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
+            <ModalCabecalho
+              icone={FileText}
+              titulo={editando.id ? 'Editar modelo' : 'Novo modelo'}
+              subtitulo="Mensagem pronta para disparo no WhatsApp"
+              onFechar={() => setEditando(null)}
+            />
 
-            <div className="modal-corpo p-5 max-h-[80vh] overflow-y-auto">
+            <div className="modal-corpo campos-modal p-5 max-h-[80vh] overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-3">
                   <div>

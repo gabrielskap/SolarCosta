@@ -154,7 +154,14 @@ contratosRouter.get(
               p.entrada_financiamento_valor, p.parcelas_financiamento,
               b.nome AS banco_agente,
               l.rg_inscricao, l.cep,
-              e.responsavel_tecnico, e.crea, e.foro_padrao AS foro_eleito
+              -- O responsável técnico ESCOLHIDO na proposta (V017) manda no
+              -- rascunho do contrato: o cliente recebeu a proposta assinada por
+              -- um engenheiro e o contrato que nasce dela não pode trazer
+              -- outro. Sem a escolha — proposta anterior à V017 —, cai no
+              -- cadastro da empresa, que é de onde isto sempre veio.
+              COALESCE(p.responsavel_tecnico, e.responsavel_tecnico) AS responsavel_tecnico,
+              COALESCE(p.crea, e.crea)                               AS crea,
+              e.foro_padrao AS foro_eleito
          FROM "SolarCosta_Propostas" p
          LEFT JOIN "SolarCosta_Leads" l ON l.id = p.lead_id
          LEFT JOIN "SolarCosta_BancosFinanciamento" b ON b.id = p.banco_financiamento_id

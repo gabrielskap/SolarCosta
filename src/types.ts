@@ -30,22 +30,36 @@ export interface User {
   permissoes?: UserPermissions;
 }
 
-export type LeadStage = 
-  | 'Novo lead' 
-  | 'Contato feito' 
-  | 'Visita técnica' 
-  | 'Proposta enviada' 
-  | 'Negociação' 
+/** Etapas do funil, na ordem em que acontecem (ver STAGES em LeadsKanbanView). */
+export type LeadStage =
+  | 'Novo lead'
+  | 'Contato feito'
+  | 'Proposta enviada'
+  | 'Visita técnica'
+  | 'Negociação'
   | 'Fechado';
 
 export interface DocumentoItem {
   id: string;
   nome: string;
   pasta: string;
+  /** Id da pasta no banco. A tela filtra por ele, e não pelo nome, para que duas pastas renomeadas não se confundam. */
+  pastaId: number | null;
   tipo: string;
+  /** Já formatado ("1,4 MB") — o banco guarda o número; ver tamanhoBytes. */
   tamanho: string;
+  tamanhoBytes: number;
   enviadoPor: string;
   dataEnvio: string;
+}
+
+/** Uma pasta de documentos com a contagem REAL do lead (SolarCosta_vw_PastasDocumentos). */
+export interface PastaDocumento {
+  id: number;
+  nome: string;
+  qtdArquivos: number;
+  /** Data do envio mais recente, ou undefined se a pasta estiver vazia. */
+  ultimoEnvio?: string;
 }
 
 export interface HistoricoItem {
@@ -134,20 +148,65 @@ export interface Produto {
   tipo: TipoProduto;
   fornecedorId: string;
   fornecedorNome: string;
-  preco: number;
+  /**
+   * Custo interno, opcional. NÃO é o preço de venda: quem precifica é o kit
+   * (ver `Kit`), e produto avulso tem o valor digitado na própria proposta.
+   * A coluna continua no banco, mas o cadastro não a pede mais.
+   */
+  preco?: number;
   estoque: number;
   unidade?: string;
   potencia?: string;
   potenciaWp?: number;
 }
 
+/** Produto que compõe um kit, com a quantidade usada. */
+export interface KitItem {
+  id: string;
+  produtoId: string;
+  produtoNome: string;
+  qtd: number;
+  /** false quando o produto foi excluído do catálogo depois de entrar no kit. */
+  produtoAtivo?: boolean;
+}
+
+/**
+ * Kit de instalação vendável: um nome e UM preço fechado.
+ *
+ * O preço não é a soma dos componentes — embute serviço e margem —, por isso é
+ * campo próprio e não cálculo.
+ */
+export interface Kit {
+  id: string;
+  codigo: string;
+  nome: string;
+  descricao?: string;
+  preco: number;
+  itens: KitItem[];
+  /** Soma de `potenciaWp * qtd` dos componentes, calculada pela view. */
+  potenciaWpTotal?: number;
+}
+
 export interface PropostaItem {
   id: string;
   produtoId?: string;
+  /** Preenchido quando a linha veio de um kit do catálogo. */
+  kitId?: string;
   descricao: string;
   qtd: number;
   valorUnit: number;
   total: number;
+  /**
+   * Produtos que compõem o kit. Entram no PDF e na baixa de estoque da obra,
+   * mas com `valorUnit` 0: o preço do kit está nesta linha-pai, então somar só
+   * o topo da lista já dá o total da proposta.
+   */
+  componentes?: PropostaItem[];
+  /**
+   * Quantidade por unidade de kit, só no estado da tela. Mudar a qtd do kit
+   * reescala os componentes a partir dela, sem acumular erro de arredondamento.
+   */
+  qtdUnitaria?: number;
 }
 
 export type FormaPagamentoType = 'avista' | 'cartao' | 'financiamento';
@@ -226,6 +285,12 @@ export interface Proposta {
   coberturaPct: number;
   kitItens: PropostaItem[];
   valorTotal: number;
+  /**
+   * Valor negociado, que SOBRESCREVE a soma dos itens em `valorTotal`.
+   * `null`/ausente = não negociado, usa a soma. Quem aplica a regra é o
+   * trigger do banco (V018), então `valorTotal` já chega resolvido da API.
+   */
+  valorTotalAjustado?: number | null;
   economiaMensal: number;
   economiaAnual: number;
   economia25Anos: number;
@@ -243,6 +308,18 @@ export interface Proposta {
   status: 'rascunho' | 'enviada' | 'aceita';
   observacoes?: string;
   customLogoUrl?: string;
+
+  /**
+   * Responsável técnico impresso na folha de equipamentos (V017).
+   *
+   * Snapshot da proposta, não do cadastro: trocar o engenheiro aqui vale para
+   * ESTA proposta e não mexe nas já emitidas — o contrário do que acontecia
+   * quando o par vinha só de SolarCosta_Empresa, já que o PDF é remontado a
+   * cada impressão. Ausente = imprime o responsável da empresa, que é como
+   * toda proposta anterior à V017 continua saindo.
+   */
+  responsavelTecnico?: string;
+  crea?: string;
 
   // Endereço de instalação em partes (V006). O CEP dispara a busca por
   // satélite e o número é o que a faz cair sobre a edificação — os dois

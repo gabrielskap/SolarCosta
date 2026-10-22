@@ -364,6 +364,11 @@ publicoRouter.get(
                 p.entrada_financiamento_valor, p.entrada_financiamento_pct,
                 p.parcelas_financiamento, p.juros_financiamento_mes_pct,
                 p.observacoes, p.logo_customizada_url, p.validade_dias, p.criado_em,
+                -- V017: responsável técnico escolhido NA proposta. Sem ele
+                -- aqui, o link do cliente e o PDF do WhatsApp cairiam no
+                -- cadastro da empresa e imprimiriam outro engenheiro — o PDF
+                -- aberto pelo CRM é que estaria certo.
+                p.responsavel_tecnico, p.crea,
                 p.latitude, p.longitude, p.mapa_zoom, p.telhado_area_m2,
                 p.layout_modulos, p.layout_segmentos, p.layout_modulo,
                 c.nome AS concessionaria, t.nome AS telhado,
@@ -382,8 +387,14 @@ publicoRouter.get(
         return;
       }
 
+      // `id` e `item_pai_id` entram juntos e por um motivo só: é por eles que a
+      // folha de equipamentos aninha os componentes sob o kit. Sem o id, o
+      // item_pai_id do filho não acha o pai e a lista sai plana aqui — no
+      // documento que vai para o cliente — enquanto sai certa pelo CRM.
+      // `valor_total` da proposta já reflete o valor negociado (trigger da
+      // V018), então não há nada a somar deste lado.
       const itens = await consultar(
-        `SELECT descricao, qtd, valor_unit, total
+        `SELECT id, produto_id, kit_id, item_pai_id, descricao, qtd, valor_unit, total
            FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1 ORDER BY ordem`,
         [link.referencia_id],
       );

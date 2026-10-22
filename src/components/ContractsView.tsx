@@ -126,6 +126,14 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
     }
     if (p.parcelasFinanciamento) setParcelasInfo(`${p.parcelasFinanciamento}x`);
     setBancoAgente(p.bancoFinanciamento || '');
+
+    // Responsável técnico: o que a PROPOSTA escolheu (V017) ganha do cadastro
+    // da empresa. O cliente recebeu a proposta assinada por um engenheiro e o
+    // contrato que nasce dela não pode trazer outro sem ninguém notar. Os `if`
+    // preservam o padrão da empresa quando a proposta não escolheu — sem eles,
+    // proposta anterior à V017 limparia os dois campos ao ser selecionada.
+    if (p.responsavelTecnico) setResponsavelTecnico(p.responsavelTecnico);
+    if (p.crea) setCrea(p.crea);
   }, [propostaOrigemId, propostas, leads]);
 
   // Biblioteca de cláusulas cadastrada no banco; as marcadas como `padrao`

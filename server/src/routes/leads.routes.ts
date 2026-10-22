@@ -14,11 +14,14 @@ import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../
 export const leadsRouter = Router();
 leadsRouter.use(exigirLogin);
 
+// Ordem do funil — igual à de STAGES no front. Aqui ela só vira z.enum (a
+// validação não liga para a ordem), mas manter as duas listas iguais evita que
+// alguém leia esta como a sequência real das etapas.
 const ETAPAS = [
   'Novo lead',
   'Contato feito',
-  'Visita técnica',
   'Proposta enviada',
+  'Visita técnica',
   'Negociação',
   'Fechado',
 ] as const;
@@ -129,8 +132,12 @@ leadsRouter.get(
 
     const [documentos, historico, propostas, contratos] = await Promise.all([
       consultar(
-        `SELECT d.id, d.nome_arquivo, d.mime_type, d.tamanho_bytes, d.storage_path,
-                d.enviado_em, p.nome AS pasta, u.nome AS enviado_por
+        // `extensao` e `pasta_id` entram aqui, e `conteudo` NUNCA: sem extensao
+        // o front cai no fallback e carimba "PDF" em todo arquivo (inclusive
+        // .jpg); com conteudo, a resposta do detalhe carregaria cada anexo do
+        // lead em base64. storage_path saiu — é resíduo da V001 (ver V015).
+        `SELECT d.id, d.nome_arquivo, d.mime_type, d.extensao, d.tamanho_bytes,
+                d.pasta_id, d.enviado_em, p.nome AS pasta, u.nome AS enviado_por
            FROM "SolarCosta_LeadDocumentos" d
            LEFT JOIN "SolarCosta_PastasDocumento" p ON p.id = d.pasta_id
            LEFT JOIN "SolarCosta_Usuarios" u        ON u.id = d.enviado_por_id

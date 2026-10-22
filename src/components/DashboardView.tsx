@@ -126,11 +126,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const momDeltaPct = receitaMesAnterior > 0 ? ((receitaMesAtual - receitaMesAnterior) / receitaMesAnterior) * 100 : null;
 
   // 3. Data for "Leads por Etapa" Chart
+  // Mesma ordem do kanban (STAGES em LeadsKanbanView): proposta antes da visita.
   const stagesOrder = [
     'Novo lead',
     'Contato feito',
-    'Visita técnica',
     'Proposta enviada',
+    'Visita técnica',
     'Negociação',
     'Fechado'
   ];

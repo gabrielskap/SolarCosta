@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  HardHat, Zap, MapPin, Plus, X, Trash2, CheckCircle2, Clock, AlertTriangle,
+  HardHat, Zap, MapPin, Plus, Trash2, CheckCircle2, Clock, AlertTriangle,
   ArrowRight, ClipboardCheck, User as UserIcon, CalendarClock, Package, MoveRight
 } from 'lucide-react';
 import {
@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { today, toISODateStr } from '../utils/dates';
 import { SeletorEtapa } from './comuns/SeletorEtapa';
+import { ModalCabecalho } from './comuns/ModalCabecalho';
 
 interface ObrasViewProps {
   obras: Obra[];
@@ -555,22 +556,22 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
         const o = selectedObra;
         const hDone = homologacaoDone(o.homologacao);
         return (
-          <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-              {/* Header */}
-              <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-start justify-between shrink-0">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono text-blue-200">{o.numero}</span>
+          <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+              <ModalCabecalho
+                icone={HardHat}
+                titulo={o.clienteNome}
+                subtitulo={
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono">{o.numero}</span>
                     {statusBadge(o)}
-                  </div>
-                  <h3 className="font-bold text-lg mt-0.5">{o.clienteNome}</h3>
-                  <p className="text-xs text-blue-200 mt-0.5">{o.endereco} · {o.cidade}</p>
-                </div>
-                <button onClick={() => setSelectedObra(null)} className="text-slate-300 hover:text-white p-1"><X className="w-5 h-5" /></button>
-              </div>
+                    <span className="truncate">{o.endereco} · {o.cidade}</span>
+                  </span>
+                }
+                onFechar={() => setSelectedObra(null)}
+              />
 
-              <div className="modal-corpo p-5 space-y-5 overflow-y-auto">
+              <div className="modal-corpo campos-modal p-5 space-y-5 overflow-y-auto">
                 {/* Specs */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
@@ -701,16 +702,18 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
 
       {/* New obra modal */}
       {isNewOpen && (
-        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-center justify-between shrink-0">
-              <h3 className="font-bold text-lg">Abrir nova obra</h3>
-              <button onClick={() => setIsNewOpen(false)} className="text-slate-300 hover:text-white p-1"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleCreate} className="modal-corpo p-6 space-y-4 overflow-y-auto text-xs">
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <ModalCabecalho
+              icone={HardHat}
+              titulo="Abrir nova obra"
+              subtitulo="A partir de um contrato assinado ou preenchida à mão"
+              onFechar={() => setIsNewOpen(false)}
+            />
+            <form onSubmit={handleCreate} className="modal-corpo campos-modal p-6 space-y-4 overflow-y-auto text-xs">
               {/* Origem contrato */}
               <div>
-                <label className="block font-bold text-slate-600 uppercase mb-1">Gerar a partir do contrato (opcional)</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Gerar a partir do contrato (opcional)</label>
                 <select
                   value={fContratoId}
                   onChange={(e) => e.target.value ? prefillFromContrato(e.target.value) : setFContratoId('')}
@@ -730,15 +733,15 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Cliente *</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Cliente *</label>
                   <input type="text" required value={fCliente} onChange={(e) => setFCliente(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Cidade / UF</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Cidade / UF</label>
                   <input type="text" value={fCidade} onChange={(e) => setFCidade(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Concessionária</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Concessionária</label>
                   <select value={fConcessionaria} onChange={(e) => setFConcessionaria(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium">
                     <option value="CEMIG">CEMIG</option>
                     <option value="ENEL">ENEL</option>
@@ -747,52 +750,52 @@ export const ObrasView: React.FC<ObrasViewProps> = ({
                   </select>
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Endereço da instalação *</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Endereço da instalação *</label>
                   <input type="text" required value={fEndereco} onChange={(e) => setFEndereco(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Potência (kWp) *</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Potência (kWp) *</label>
                   <input type="number" step="0.01" required min="0.01" value={fPotencia || ''} onChange={(e) => setFPotencia(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Nº de módulos *</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Nº de módulos *</label>
                   <input type="number" required min="1" value={fModulos || ''} onChange={(e) => setFModulos(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Módulo</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Módulo</label>
                   <input type="text" value={fModulo} onChange={(e) => setFModulo(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Inversor</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Inversor</label>
                   <input type="text" value={fInversor} onChange={(e) => setFInversor(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Responsável técnico</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Responsável técnico</label>
                   <select value={fResponsavel} onChange={(e) => setFResponsavel(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium">
                     {engenheiros.length === 0 && <option value="">—</option>}
                     {engenheiros.map(u => <option key={u.id} value={u.nome}>{u.nome}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Equipe de instalação</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Equipe de instalação</label>
                   <select value={fEquipe} onChange={(e) => setFEquipe(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium">
                     <option value="A definir">A definir</option>
                     {instaladores.map(u => <option key={u.id} value={u.nome}>{u.nome}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Valor da obra (R$)</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Valor da obra (R$)</label>
                   <input type="number" step="0.01" value={fValor} onChange={(e) => setFValor(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-600 uppercase mb-1">Previsão de conclusão</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Previsão de conclusão</label>
                   <input type="date" value={fPrevisao} onChange={(e) => setFPrevisao(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
               </div>
 
-              <div className="barra-acoes bg-white pt-4 border-t flex justify-end gap-3">
-                <button type="button" onClick={() => setIsNewOpen(false)} className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl text-sm hover:bg-slate-100">Cancelar</button>
-                <button type="submit" className="px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow">Abrir obra</button>
+              <div className="rodape-modal barra-acoes">
+                <button type="button" onClick={() => setIsNewOpen(false)} className="btn-modal-cancelar">Cancelar</button>
+                <button type="submit" className="btn-modal-salvar">Abrir obra</button>
               </div>
             </form>
           </div>

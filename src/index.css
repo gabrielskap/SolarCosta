@@ -215,6 +215,182 @@
   }
 }
 
+/* ------------------------ ENTRADA DOS MODAIS ------------------------- */
+/*
+ * Os modais apareciam secos: num quadro a listagem, no quadro seguinte o cartão
+ * já parado no meio da tela. Duas animações curtas amarram o painel ao clique
+ * que o abriu, sem atrasar quem só quer preencher o formulário.
+ *
+ * Classes próprias (e não as `.modal-*` já existentes) porque isto é opcional:
+ * cada modal escolhe se quer a entrada, e os outros nove do sistema seguem
+ * exatamente como estão até alguém decidir o contrário.
+ *
+ * Como aplicar:
+ *   .modal-entrada-fundo  -> na mesma div do .modal-overlay
+ *   .modal-entrada-painel -> na mesma div do .modal-painel
+ */
+@keyframes modal-fundo-entra {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes modal-painel-entra {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* No celular o painel é uma folha de tela cheia: ela sobe, não cresce. */
+@keyframes modal-folha-entra {
+  from { opacity: 0; transform: translateY(2.5%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.modal-entrada-fundo {
+  animation: modal-fundo-entra 150ms ease-out;
+}
+
+.modal-entrada-painel {
+  animation: modal-painel-entra 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  /*
+   * Fio de contorno que separa o cartão do fundo escurecido. `outline` e não
+   * `ring`/`border`: não ocupa espaço no layout, então não desloca nada no
+   * desenho já existente de cada modal.
+   */
+  outline: 1px solid rgb(15 23 42 / 0.06);
+  outline-offset: -1px;
+}
+
+@media screen and (max-width: 767px) {
+  .modal-entrada-painel {
+    animation: modal-folha-entra 220ms ease-out;
+  }
+}
+
+/* Quem pediu menos movimento no sistema operacional recebe o modal parado. */
+@media (prefers-reduced-motion: reduce) {
+  .modal-entrada-fundo,
+  .modal-entrada-painel {
+    animation: none;
+  }
+}
+
+/* ---------------------- CAMPOS E RODAPÉ DO MODAL --------------------- */
+/*
+ * Aparência comum dos formulários em modal.
+ *
+ * Os campos do CRM foram escritos um a um e divergiram: uns têm
+ * `border-slate-200`, outros só `border` (que no Tailwind v4 cai em
+ * `currentColor`), e nenhum marcava o foco além do contorno do navegador —
+ * num formulário de catorze campos o usuário perdia de vista onde estava.
+ *
+ * Fica em `@layer components` de propósito: as utilitárias do Tailwind moram
+ * em `@layer utilities`, que vence por ordem de camada. Ou seja, isto é um
+ * PISO — o campo que já declara `bg-white` ou `text-center` continua mandando,
+ * e o que não declara nada ganha a borda, o raio e o anel de foco da marca.
+ *
+ * Aplicar `.campos-modal` no elemento que embrulha os campos (o <form> ou o
+ * corpo que rola). Caixas de seleção e seletores de cor ficam de fora: o piso
+ * de borda e preenchimento estragaria o desenho nativo deles.
+ */
+@layer components {
+  .campos-modal
+    :where(
+      input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+      select,
+      textarea
+    ) {
+    border: 1px solid #e2e8f0;          /* slate-200 */
+    border-radius: 0.75rem;
+    background-color: #f8fafc;          /* slate-50  */
+    color: #0f172a;                     /* slate-900 */
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .campos-modal
+    :where(
+      input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+      select,
+      textarea
+    ):focus {
+    outline: none;
+    background-color: #fff;
+    border-color: #004276;
+    box-shadow: 0 0 0 4px rgb(0 66 118 / 0.1);
+  }
+
+  .campos-modal :where(input, textarea)::placeholder {
+    color: #94a3b8;                     /* slate-400 */
+    font-weight: 400;
+  }
+
+  .campos-modal :where(input, select, textarea):disabled {
+    background-color: #f1f5f9;          /* slate-100 */
+    color: #94a3b8;
+    cursor: not-allowed;
+  }
+
+  /*
+   * Rodapé de botões. Separa as ações do formulário com uma linha em vez de
+   * deixá-las flutuando logo abaixo do último campo.
+   */
+  .rodape-modal {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    margin-top: 0.25rem;
+    border-top: 1px solid #f1f5f9;      /* slate-100 */
+    background-color: #fff;
+  }
+
+  /*
+   * Os dois botões de todo formulário. Também em `@layer components`: o modal
+   * que precisa de um salvar destrutivo continua podendo escrever
+   * `bg-rose-600` por cima e a utilitária vence.
+   */
+  .btn-modal-cancelar,
+  .btn-modal-salvar {
+    border-radius: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: background-color 150ms ease, color 150ms ease, transform 150ms ease, opacity 150ms ease;
+  }
+
+  .btn-modal-cancelar {
+    padding: 0.625rem 1rem;
+    border: 1px solid #e2e8f0;          /* slate-200 */
+    background-color: #fff;
+    color: #475569;                     /* slate-600 */
+  }
+
+  .btn-modal-cancelar:hover {
+    background-color: #f1f5f9;          /* slate-100 */
+    color: #1e293b;                     /* slate-800 */
+  }
+
+  .btn-modal-salvar {
+    padding: 0.625rem 1.25rem;
+    background-color: #004276;
+    color: #fff;
+    box-shadow: 0 10px 15px -3px rgb(0 66 118 / 0.25);
+  }
+
+  .btn-modal-salvar:hover {
+    background-color: #003159;
+  }
+
+  .btn-modal-salvar:active {
+    transform: scale(0.98);
+  }
+
+  .btn-modal-salvar:disabled {
+    opacity: 0.5;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+}
+
 /* -------------------------- MODAL COMO SHEET -------------------------- */
 /*
  * No desktop os modais do CRM são um cartão centrado com o corpo limitado a

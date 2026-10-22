@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Loader2, QrCode, RefreshCw, Smartphone, X } from 'lucide-react';
+import { CheckCircle2, Loader2, QrCode, RefreshCw, Smartphone } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { ErroApi } from '../../services/http';
 import { formatarTelefoneInternacional } from '../../utils/contato';
 import { WhatsApp, type InstanciaWhatsApp } from '../../services/whatsapp';
@@ -100,19 +101,16 @@ export const ConexaoInstancia: React.FC<Props> = ({ instanciaInicial, onFechar, 
   const segundos = String(restante % 60).padStart(2, '0');
 
   return (
-    <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <QrCode className="w-5 h-5 text-[#FFD100]" />
-            <h2 className="font-bold text-sm">Conectar WhatsApp</h2>
-          </div>
-          <button onClick={onFechar} className="text-blue-200 hover:text-white p-1" aria-label="Fechar">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <ModalCabecalho
+          icone={QrCode}
+          titulo="Conectar WhatsApp"
+          subtitulo={conectada ? 'Número conectado' : 'Leia o QR Code no aparelho'}
+          onFechar={onFechar}
+        />
 
-        <div className="modal-corpo p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+        <div className="modal-corpo campos-modal p-6 space-y-5 max-h-[80vh] overflow-y-auto">
           {conectada ? (
             <div className="text-center space-y-3 py-4">
               <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />

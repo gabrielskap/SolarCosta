@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Link2, Loader2, Search, Unlink, X } from 'lucide-react';
+import { Link2, Loader2, Search, Unlink } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { onlyDigits } from '../../utils/format';
 import type { Lead } from '../../types';
 import type { Conversa } from '../../services/whatsapp';
@@ -64,20 +65,28 @@ export const VincularLead: React.FC<Props> = ({
       .slice(0, TETO);
   }, [busca, leads, conversa.telefone]);
 
+  /*
+   * As classes `modal-*` sozinhas só valem no celular (folha de tela cheia);
+   * no desktop não havia regra nenhuma e este modal saía sem fundo, sem
+   * posição e sem cartão. Agora ele carrega o mesmo desenho dos demais.
+   */
   return (
-    <div className="modal-overlay" onClick={onFechar}>
-      <div className="modal-painel max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-cabecalho">
-          <h2 className="flex items-center gap-2">
-            <Link2 className="w-5 h-5 text-[#FFD100]" />
-            Vincular a um lead
-          </h2>
-          <button onClick={onFechar} aria-label="Fechar">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <div
+      className="modal-overlay modal-entrada-fundo fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onFechar}
+    >
+      <div
+        className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ModalCabecalho
+          icone={Link2}
+          titulo="Vincular a um lead"
+          subtitulo={conversa.lead ? `Hoje: ${conversa.lead.nome}` : 'Conversa ainda sem cadastro'}
+          onFechar={onFechar}
+        />
 
-        <div className="modal-corpo space-y-3">
+        <div className="modal-corpo campos-modal p-5 space-y-3">
           <p className="text-xs text-slate-500">
             A conversa passa a aparecer na timeline do lead, e o nome do cadastro
             substitui o nome do WhatsApp na lista.
@@ -118,7 +127,7 @@ export const VincularLead: React.FC<Props> = ({
           </div>
         </div>
 
-        <div className="barra-acoes">
+        <div className="rodape-modal barra-acoes px-5 pb-5">
           {conversa.lead && (
             <button
               onClick={() => onVincular(null)}

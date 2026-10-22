@@ -16,11 +16,18 @@ interface LeadsKanbanViewProps {
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
 
+// Ordem do funil — o kanban, o filtro da lista, a folha "mover para" do celular
+// e o botão "avançar etapa" do LeadDetailView saem todos daqui.
+//
+// "Proposta enviada" vem ANTES de "Visita técnica": o comercial manda o
+// orçamento a partir da conta de luz e só agenda a visita quando o cliente
+// demonstra interesse — visitar antes de ter proposta na mesa é deslocar
+// técnico para quem talvez nem responda.
 export const STAGES: LeadStage[] = [
   'Novo lead',
   'Contato feito',
-  'Visita técnica',
   'Proposta enviada',
+  'Visita técnica',
   'Negociação',
   'Fechado'
 ];

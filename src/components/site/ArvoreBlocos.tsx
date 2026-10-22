@@ -13,10 +13,11 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  LayoutTemplate,
   Plus,
   Trash2,
-  X,
 } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { REGISTRO_BLOCOS, TIPOS_EM_ORDEM, definicao } from '../../site/blocos/registro';
 import type { TipoBloco } from '../../site/blocos/tipos';
 import type { BlocoAdmin } from '../../services/site';
@@ -200,18 +201,15 @@ export const ArvoreBlocos: React.FC<Props> = ({
       </ul>
 
       {catalogoAberto && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
-            <div className="bg-[#004276] text-white p-4 flex items-center justify-between sticky top-0">
-              <h3 className="font-bold text-base">Adicionar bloco</h3>
-              <button
-                onClick={() => setCatalogoAberto(false)}
-                className="text-slate-300 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4 grid gap-2 sm:grid-cols-2">
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <ModalCabecalho
+              icone={LayoutTemplate}
+              titulo="Adicionar bloco"
+              subtitulo="Escolha o tipo de seção para a página"
+              onFechar={() => setCatalogoAberto(false)}
+            />
+            <div className="modal-corpo p-4 grid gap-2 sm:grid-cols-2 overflow-y-auto">
               {TIPOS_EM_ORDEM.map((tipo) => {
                 const def = REGISTRO_BLOCOS[tipo];
                 return (

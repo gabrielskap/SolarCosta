@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, MessageCircle, Paperclip, Send, X } from 'lucide-react';
+import { Loader2, MessageCircle, Paperclip, Send } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { ErroApi } from '../../services/http';
 import { WhatsApp, type ModeloMensagem } from '../../services/whatsapp';
 import { maskPhone } from '../../utils/format';
@@ -92,21 +93,16 @@ export const EnviarPorWhatsApp: React.FC<Props> = ({
   const podeEnviar = !enviando && (usandoModelo || textoLivre.trim().length > 0);
 
   return (
-    <div className="modal-overlay fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <MessageCircle className="w-5 h-5 text-[#FFD100]" />
-            <h2 className="font-bold text-sm">
-              Enviar {referencia.tipo === 'proposta' ? 'proposta' : 'contrato'} por WhatsApp
-            </h2>
-          </div>
-          <button onClick={onFechar} className="text-blue-200 hover:text-white p-1" aria-label="Fechar">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <ModalCabecalho
+          icone={MessageCircle}
+          titulo={`Enviar ${referencia.tipo === 'proposta' ? 'proposta' : 'contrato'} por WhatsApp`}
+          subtitulo="Mensagem e link do documento para o cliente"
+          onFechar={onFechar}
+        />
 
-        <div className="modal-corpo p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <div className="modal-corpo campos-modal p-5 space-y-4 max-h-[80vh] overflow-y-auto">
           <div>
             <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
               WhatsApp do cliente

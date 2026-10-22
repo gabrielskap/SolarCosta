@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Users, UserPlus, Shield, CheckCircle2, XCircle, Edit2, Trash2, X } from 'lucide-react';
+import { Users, UserPlus, Shield, CheckCircle2, XCircle, Edit2, Trash2, UserCog } from 'lucide-react';
+import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { User, UserPermissions, UserRole } from '../types';
 import { isValidEmail } from '../utils/format';
 
@@ -251,18 +252,18 @@ export const UsersView: React.FC<UsersViewProps> = ({
 
       {/* Modal Novo/Editar Usuário */}
       {isModalOpen && (
-        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel-rolante bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-              <h3 className="font-bold text-base">{editingUser ? 'Editar Usuário' : 'Novo Usuário do Sistema'}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel-rolante modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <ModalCabecalho
+              icone={UserCog}
+              titulo={editingUser ? 'Editar usuário' : 'Novo usuário do sistema'}
+              subtitulo={editingUser ? editingUser.email : 'Acesso ao CRM e permissões'}
+              onFechar={() => setIsModalOpen(false)}
+            />
 
-            <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
+            <form onSubmit={handleSubmit} className="campos-modal p-5 space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-slate-600 mb-1 uppercase">Nome Completo</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Nome Completo</label>
                 <input
                   type="text"
                   required
@@ -274,7 +275,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-600 mb-1 uppercase">E-mail corporativo</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">E-mail corporativo</label>
                 <input
                   type="email"
                   required
@@ -286,7 +287,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-600 mb-1 uppercase">Senha de acesso</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Senha de acesso</label>
                 <input
                   type="password"
                   required={!editingUser}
@@ -299,7 +300,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Cargo / Perfil</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Cargo / Perfil</label>
                   <select
                     value={cargo}
                     onChange={(e: any) => handleTrocarCargo(e.target.value)}
@@ -314,7 +315,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Status de acesso</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Status de acesso</label>
                   <select
                     value={status}
                     onChange={(e: any) => setStatus(e.target.value)}
@@ -373,19 +374,19 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="rodape-modal barra-acoes">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border rounded-xl font-bold"
+                  className="btn-modal-cancelar"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow"
+                  className="btn-modal-salvar"
                 >
-                  Salvar Usuário
+                  Salvar usuário
                 </button>
               </div>
             </form>

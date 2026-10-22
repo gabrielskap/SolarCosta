@@ -9,7 +9,8 @@
 // site saem da mesma URL.
 
 import React, { useRef, useState } from 'react';
-import { Check, ImageIcon, Loader2, Trash2, Upload, X } from 'lucide-react';
+import { Check, ImageIcon, Loader2, Trash2, Upload } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { Site } from '../../services/site';
 import { ErroApi } from '../../services/http';
 import { urlMidia, type MidiaSite } from '../../site/blocos/tipos';
@@ -220,15 +221,15 @@ export const BibliotecaMidia: React.FC<Props> = ({
   if (!seletor) return <div>{grade}</div>;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto">
-        <div className="bg-[#004276] text-white p-4 flex items-center justify-between sticky top-0 z-10">
-          <h3 className="font-bold text-base">Escolher imagem</h3>
-          <button onClick={aoFechar} className="text-slate-300 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="p-5">{grade}</div>
+    <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+        <ModalCabecalho
+          icone={ImageIcon}
+          titulo="Escolher imagem"
+          subtitulo="Biblioteca de mídia do site"
+          onFechar={aoFechar}
+        />
+        <div className="modal-corpo p-5 overflow-y-auto">{grade}</div>
       </div>
     </div>
   );

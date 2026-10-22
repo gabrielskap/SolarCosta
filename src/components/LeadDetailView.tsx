@@ -1,11 +1,30 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeft, FileText, Upload, Folder, Download, Trash2, Plus, Pencil,
-  MessageSquare, FileCheck, DollarSign, Calendar, ChevronRight, CheckCircle2, X
+  MessageSquare, FileCheck, DollarSign, Calendar, ChevronRight, CheckCircle2
 } from 'lucide-react';
-import { Lead, LeadStage, DocumentoItem, Proposta, Contrato, Boleto, User } from '../types';
+import { Lead, LeadStage, PastaDocumento, Proposta, Contrato, Boleto, User } from '../types';
+import { Api } from '../services/api';
 import { AcoesContato } from './comuns/AcoesContato';
+import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { LeadFormModal } from './leads/LeadFormModal';
+import { STAGES } from './LeadsKanbanView';
+
+/**
+ * Extensões aceitas. A mesma lista existe em documentos.routes.ts e é LÁ que
+ * ela vale — aqui serve para recusar cedo, sem subir 10 MB para receber 409.
+ */
+const EXTENSOES_ACEITAS = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'dwg', 'xlsx', 'xls', 'docx', 'doc'];
+
+/** Espelha o client_max_body_size do Nginx e o CHECK da V015. */
+const TAMANHO_MAXIMO = 10 * 1024 * 1024;
+
+const ACCEPT = EXTENSOES_ACEITAS.map((e) => `.${e}`).join(',');
+
+function extensaoDe(nome: string): string {
+  const partes = nome.split('.');
+  return partes.length > 1 ? partes.pop()!.toLowerCase() : '';
+}
 
 interface LeadDetailViewProps {
   lead: Lead;
@@ -22,6 +41,8 @@ interface LeadDetailViewProps {
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
   onUpdateLead: (updatedLead: Lead) => void;
   onDeleteLead: (id: string) => void;
+  /** Relê o lead do servidor. Documento e interação são gravados aqui, direto na API. */
+  onReloadLead: () => void;
 }
 
 export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
@@ -38,87 +59,186 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
   currentUser,
   showToast,
   onUpdateLead,
-  onDeleteLead
+  onDeleteLead,
+  onReloadLead
 }) => {
   const [activeTab, setActiveTab] = useState<'documentos' | 'historico' | 'propostas' | 'contratos' | 'financeiro'>('documentos');
-  const [selectedFolder, setSelectedFolder] = useState<string>('Documentos pessoais');
   const [novaInteracao, setNovaInteracao] = useState('');
   const [isRegistrarContatoOpen, setIsRegistrarContatoOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [salvandoContato, setSalvandoContato] = useState(false);
+
+  // Pastas e contagens vêm de SolarCosta_vw_PastasDocumentos — uma view que
+  // existia desde a V004 e nunca tinha sido consultada. Até aqui, a grade era
+  // um array literal com contadores fixos, iguais para todo lead.
+  const [pastas, setPastas] = useState<PastaDocumento[]>([]);
+  const [totalArquivos, setTotalArquivos] = useState(0);
+  const [pastaSelecionada, setPastaSelecionada] = useState<number | null>(null);
+  const [enviando, setEnviando] = useState<string | null>(null);
+  const [arrastando, setArrastando] = useState(false);
 
   // Linked proposal details
   const linkedProposal = propostas.find(p => p.leadId === lead.id || p.id === lead.propostaVinculadaId);
   const linkedContract = contratos.find(c => c.leadId === lead.id);
   const clientBoletos = boletos.filter(b => b.clienteNome.toLowerCase().includes(lead.nome.toLowerCase()));
 
-  // Folders list
-  const folderNames = [
-    { name: 'Documentos pessoais', count: 4, date: '22/07/2026' },
-    { name: 'Conta de energia', count: 12, date: '18/07/2026' },
-    { name: 'Proposta assinada', count: 2, date: '24/07/2026' },
-    { name: 'Contrato', count: 1, date: '26/07/2026' },
-    { name: 'Projeto e ART', count: 5, date: '27/07/2026' },
-    { name: 'Fotos do local / telhado', count: 18, date: '12/07/2026' },
-    { name: 'Financiamento / banco', count: 6, date: '28/07/2026' },
-  ];
+  const podeAnexar = currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.anexarDocumentos;
+  const ehAdministrador = currentUser.cargo === 'Administrador';
 
-  const handleUploadSimulate = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const carregarPastas = useCallback(async () => {
+    try {
+      const { pastas: lista, total } = await Api.getPastasLead(lead.id);
+      setPastas(lista);
+      setTotalArquivos(total);
+      // Primeira carga (ou pasta que deixou de existir): cai na primeira.
+      setPastaSelecionada((atual) =>
+        atual != null && lista.some((p) => p.id === atual) ? atual : lista[0]?.id ?? null,
+      );
+    } catch (erro) {
+      showToast('Não foi possível carregar as pastas', 'error', (erro as Error).message);
+    }
+  }, [lead.id, showToast]);
+
+  useEffect(() => {
+    void carregarPastas();
+  }, [carregarPastas]);
+
+  const pastaAtual = pastas.find((p) => p.id === pastaSelecionada);
+
+  /** Recusa o que o servidor recusaria, sem gastar o upload para descobrir. */
+  const arquivoValido = (f: File): boolean => {
+    if (!EXTENSOES_ACEITAS.includes(extensaoDe(f.name))) {
+      showToast('Formato não suportado', 'error', `${f.name} — envie ${EXTENSOES_ACEITAS.join(', ')}.`);
+      return false;
+    }
+    if (f.size > TAMANHO_MAXIMO) {
+      showToast('Arquivo muito grande', 'error', `${f.name} passa de 10 MB.`);
+      return false;
+    }
+    if (f.size === 0) {
+      showToast('Arquivo vazio', 'error', `${f.name} não tem conteúdo.`);
+      return false;
+    }
+    return true;
+  };
+
+  const enviarArquivos = async (lista: FileList | File[]) => {
+    const arquivos = Array.from(lista);
+    if (arquivos.length === 0) return;
+
+    if (pastaSelecionada == null) {
+      showToast('Escolha uma pasta', 'info', 'Selecione onde o arquivo deve ficar.');
+      return;
+    }
+
+    const aceitos = arquivos.filter(arquivoValido);
+    if (aceitos.length === 0) return;
+
+    // Sequencial, e não Promise.all: dez arquivos de 10 MB em paralelo seguram
+    // os dois lados na memória ao mesmo tempo, do browser ao container.
+    let enviados = 0;
+    try {
+      for (const arquivo of aceitos) {
+        setEnviando(arquivo.name);
+        await Api.enviarDocumento(lead.id, pastaSelecionada, arquivo);
+        enviados += 1;
+      }
+      showToast('Documento anexado', 'success',
+        `${enviados} arquivo(s) em ${pastaAtual?.nome ?? 'pasta'}.`);
+    } catch (erro) {
+      showToast('Falha ao enviar', 'error', (erro as Error).message);
+    } finally {
+      setEnviando(null);
+      // Mesmo com erro no meio: o que já subiu precisa aparecer.
+      await carregarPastas();
+      onReloadLead();
+    }
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
-    const newDocs: DocumentoItem[] = (Array.from(files) as File[]).map((f, index) => ({
-      id: `doc-${Date.now()}-${index}`,
-      nome: f.name,
-      pasta: selectedFolder,
-      tipo: f.name.split('.').pop()?.toUpperCase() || 'PDF',
-      tamanho: `${(f.size / 1024).toFixed(0)} KB`,
-      enviadoPor: currentUser.nome,
-      dataEnvio: new Date().toLocaleDateString('pt-BR')
-    }));
-
-    const updatedLead = {
-      ...lead,
-      documentos: [...(lead.documentos || []), ...newDocs]
-    };
-
-    onUpdateLead(updatedLead);
-    showToast('Documento anexado', 'success', `${files.length} arquivo(s) adicionado(s) em ${selectedFolder}.`);
+    await enviarArquivos(files);
+    // Zera o input: sem isso, reenviar o mesmo arquivo não dispara onChange.
+    e.target.value = '';
   };
 
-  const handleDeleteDoc = (docId: string) => {
-    const updatedDocs = (lead.documentos || []).filter(d => d.id !== docId);
-    onUpdateLead({ ...lead, documentos: updatedDocs });
-    showToast('Arquivo excluído', 'info', 'Documento removido da pasta.');
+  const handleDrop = async (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    setArrastando(false);
+    if (!podeAnexar) return;
+    await enviarArquivos(e.dataTransfer.files);
   };
 
-  const handleAddContato = () => {
-    if (!novaInteracao.trim()) return;
+  const handleDownloadDoc = async (docId: string, nome: string) => {
+    try {
+      // A rota exige Authorization, então um <a href> direto viria 401: os
+      // bytes chegam por fetch e viram object URL por um clique sintético.
+      const blob = await Api.baixarDocumento(lead.id, docId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = nome;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (erro) {
+      showToast('Não foi possível baixar', 'error', (erro as Error).message);
+    }
+  };
 
-    const newHist = {
-      id: `h-${Date.now()}`,
-      data: new Date().toLocaleDateString('pt-BR'),
-      descricao: novaInteracao.trim(),
-      usuario: currentUser.nome
-    };
+  const handleDeleteDoc = async (docId: string, nome: string) => {
+    if (!window.confirm(`Excluir o arquivo "${nome}"?`)) return;
+    try {
+      await Api.excluirDocumento(lead.id, docId);
+      showToast('Arquivo excluído', 'info', `${nome} removido da pasta.`);
+      await carregarPastas();
+      onReloadLead();
+    } catch (erro) {
+      showToast('Não foi possível excluir', 'error', (erro as Error).message);
+    }
+  };
 
-    const updatedLead = {
-      ...lead,
-      historico: [newHist, ...(lead.historico || [])]
-    };
+  const handleNovaPasta = async () => {
+    const nome = window.prompt('Nome da nova pasta:')?.trim();
+    if (!nome) return;
+    try {
+      await Api.criarPastaDocumento(nome);
+      showToast('Pasta criada', 'success', `"${nome}" disponível para todos os leads.`);
+      await carregarPastas();
+    } catch (erro) {
+      showToast('Não foi possível criar a pasta', 'error', (erro as Error).message);
+    }
+  };
 
-    onUpdateLead(updatedLead);
-    setNovaInteracao('');
-    setIsRegistrarContatoOpen(false);
-    showToast('Interação registrada', 'success', 'Novo contato adicionado ao histórico.');
+  const handleAddContato = async () => {
+    const descricao = novaInteracao.trim();
+    if (!descricao || salvandoContato) return;
+
+    setSalvandoContato(true);
+    try {
+      // Api.registrarInteracao e POST /api/leads/:id/historico já existiam e
+      // nunca tinham sido chamados: a tela montava o item em memória e ele
+      // sumia no F5.
+      await Api.registrarInteracao(lead.id, descricao);
+      setNovaInteracao('');
+      setIsRegistrarContatoOpen(false);
+      showToast('Interação registrada', 'success', 'Novo contato adicionado ao histórico.');
+      onReloadLead();
+    } catch (erro) {
+      showToast('Não foi possível registrar', 'error', (erro as Error).message);
+    } finally {
+      setSalvandoContato(false);
+    }
   };
 
   const handleAvancarEtapa = () => {
-    const stages: LeadStage[] = [
-      'Novo lead', 'Contato feito', 'Visita técnica', 'Proposta enviada', 'Negociação', 'Fechado'
-    ];
-    const currentIndex = stages.indexOf(lead.etapa);
-    if (currentIndex < stages.length - 1) {
-      const nextStage = stages[currentIndex + 1];
+    // Ordem vem de STAGES (LeadsKanbanView) — a cópia local que existia aqui
+    // saía de sincronia com o kanban a cada mudança no funil.
+    const currentIndex = STAGES.indexOf(lead.etapa);
+    if (currentIndex < STAGES.length - 1) {
+      const nextStage = STAGES[currentIndex + 1];
       onUpdateLeadStage(lead.id, nextStage);
       showToast('Etapa atualizada', 'success', `Lead movido para "${nextStage}".`);
     } else {
@@ -132,7 +252,9 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
     showToast('Lead excluído', 'info', `${lead.nome} removido.`);
   };
 
-  const currentFolderDocs = (lead.documentos || []).filter(d => d.pasta === selectedFolder);
+  // Filtra por pastaId, e não pelo nome: renomear uma pasta no banco deixaria
+  // os arquivos órfãos numa comparação de string.
+  const currentFolderDocs = (lead.documentos || []).filter(d => d.pastaId === pastaSelecionada);
 
   return (
     <div className="space-y-6">
@@ -390,25 +512,31 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-slate-800 text-base">Pastas do cliente</h3>
-                  <p className="text-xs text-slate-500">48 arquivos armazenados na nuvem</p>
+                  <p className="text-xs text-slate-500">
+                    {totalArquivos === 1 ? '1 arquivo armazenado' : `${totalArquivos} arquivos armazenados`}
+                  </p>
                 </div>
-                <button
-                  onClick={() => showToast('Nova pasta', 'info', 'Criar nova pasta de arquivos.')}
-                  className="text-xs font-bold text-[#004276] hover:underline flex items-center gap-1"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Nova pasta</span>
-                </button>
+                {/* Pasta é global: criar uma muda a tela de TODO lead. Por isso
+                    só o Administrador vê o botão — ver documentos.routes.ts. */}
+                {ehAdministrador && (
+                  <button
+                    onClick={handleNovaPasta}
+                    className="text-xs font-bold text-[#004276] hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Nova pasta</span>
+                  </button>
+                )}
               </div>
 
               {/* Folder Cards Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {folderNames.map((folder) => {
-                  const isSelected = selectedFolder === folder.name;
+                {pastas.map((pasta) => {
+                  const isSelected = pastaSelecionada === pasta.id;
                   return (
                     <button
-                      key={folder.name}
-                      onClick={() => setSelectedFolder(folder.name)}
+                      key={pasta.id}
+                      onClick={() => setPastaSelecionada(pasta.id)}
                       className={`p-3.5 rounded-xl text-left border transition flex flex-col justify-between h-24 ${
                         isSelected
                           ? 'bg-blue-50/80 border-[#004276] ring-2 ring-blue-200'
@@ -417,11 +545,13 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
                     >
                       <div className="flex items-center gap-2">
                         <Folder className={`w-5 h-5 ${isSelected ? 'text-[#004276] fill-[#FFD100]' : 'text-amber-500'}`} />
-                        <span className="font-bold text-xs text-slate-900 line-clamp-1">{folder.name}</span>
+                        <span className="font-bold text-xs text-slate-900 line-clamp-1">{pasta.nome}</span>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-500">{folder.count} arquivos</p>
-                        <p className="text-[9px] text-slate-400">{folder.date}</p>
+                        <p className="text-[10px] text-slate-500">
+                          {pasta.qtdArquivos === 1 ? '1 arquivo' : `${pasta.qtdArquivos} arquivos`}
+                        </p>
+                        <p className="text-[9px] text-slate-400">{pasta.ultimoEnvio ?? '—'}</p>
                       </div>
                     </button>
                   );
@@ -431,12 +561,25 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
               {/* Selected Folder Files Table */}
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-bold text-slate-900 text-sm">{selectedFolder}</h4>
-                  <label className="cursor-pointer bg-[#004276] hover:bg-[#003159] text-white font-bold text-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>+ Enviar arquivo</span>
-                    <input type="file" multiple onChange={handleUploadSimulate} className="hidden" />
-                  </label>
+                  <h4 className="font-bold text-slate-900 text-sm">{pastaAtual?.nome ?? 'Pastas'}</h4>
+                  {podeAnexar && (
+                    <label
+                      className={`bg-[#004276] text-white font-bold text-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition ${
+                        enviando ? 'opacity-60 cursor-wait' : 'cursor-pointer hover:bg-[#003159]'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{enviando ? 'Enviando…' : '+ Enviar arquivo'}</span>
+                      <input
+                        type="file"
+                        multiple
+                        accept={ACCEPT}
+                        disabled={!!enviando || pastaSelecionada == null}
+                        onChange={handleUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
                 </div>
 
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -464,24 +607,28 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
                             <td data-label="Enviado por" className="p-3 text-slate-600">{doc.enviadoPor} - {doc.dataEnvio}</td>
                             <td data-label="Ações" className="p-3 text-right font-bold space-x-2">
                               <button
-                                onClick={() => showToast('Download iniciado', 'info', `Baixando ${doc.nome}...`)}
+                                onClick={() => void handleDownloadDoc(doc.id, doc.nome)}
                                 className="text-blue-600 hover:underline"
                               >
                                 Baixar
                               </button>
-                              <button
-                                onClick={() => handleDeleteDoc(doc.id)}
-                                className="text-rose-600 hover:underline"
-                              >
-                                Excluir
-                              </button>
+                              {podeAnexar && (
+                                <button
+                                  onClick={() => void handleDeleteDoc(doc.id, doc.nome)}
+                                  className="text-rose-600 hover:underline"
+                                >
+                                  Excluir
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
                           <td colSpan={5} className="p-6 text-center text-slate-400 italic">
-                            Nenhum arquivo nesta pasta. Arraste ou clique em enviar arquivo abaixo.
+                            {podeAnexar
+                              ? 'Nenhum arquivo nesta pasta. Arraste ou clique em enviar arquivo abaixo.'
+                              : 'Nenhum arquivo nesta pasta.'}
                           </td>
                         </tr>
                       )}
@@ -490,13 +637,39 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
                 </div>
               </div>
 
-              {/* Dropzone Container */}
-              <label className="border-2 border-dashed border-slate-300 hover:border-[#004276] bg-slate-50 hover:bg-blue-50/50 p-8 rounded-2xl text-center block cursor-pointer transition">
-                <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                <p className="font-bold text-slate-800 text-sm">Arraste arquivos aqui para enviar</p>
-                <p className="text-xs text-slate-400 mt-0.5">PDF, JPG, PNG, DWG ou XLSX · até 25 MB por arquivo</p>
-                <input type="file" multiple onChange={handleUploadSimulate} className="hidden" />
-              </label>
+              {/* Dropzone — agora com onDrop de verdade. Antes era só um label
+                  com input escondido: arrastar um arquivo aqui fazia o browser
+                  abri-lo numa aba nova. */}
+              {podeAnexar && (
+                <label
+                  onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
+                  onDragLeave={() => setArrastando(false)}
+                  onDrop={(e) => void handleDrop(e)}
+                  className={`border-2 border-dashed p-8 rounded-2xl text-center block transition ${
+                    enviando
+                      ? 'border-slate-300 bg-slate-100 cursor-wait'
+                      : arrastando
+                        ? 'border-[#004276] bg-blue-50 cursor-copy'
+                        : 'border-slate-300 hover:border-[#004276] bg-slate-50 hover:bg-blue-50/50 cursor-pointer'
+                  }`}
+                >
+                  <Upload className={`w-8 h-8 mx-auto mb-2 ${arrastando ? 'text-[#004276]' : 'text-slate-400'}`} />
+                  <p className="font-bold text-slate-800 text-sm">
+                    {enviando ? `Enviando ${enviando}…` : 'Arraste arquivos aqui para enviar'}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    PDF, JPG, PNG, WEBP, DWG, XLS(X) ou DOC(X) · até 10 MB por arquivo
+                  </p>
+                  <input
+                    type="file"
+                    multiple
+                    accept={ACCEPT}
+                    disabled={!!enviando || pastaSelecionada == null}
+                    onChange={handleUpload}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
           )}
 
@@ -664,17 +837,17 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
 
       {/* Modal Registrar Contato */}
       {isRegistrarContatoOpen && (
-        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-              <h3 className="font-bold text-base">Registrar Novo Contato</h3>
-              <button onClick={() => setIsRegistrarContatoOpen(false)} className="text-slate-300 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="modal-corpo p-5 space-y-4">
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <ModalCabecalho
+              icone={MessageSquare}
+              titulo="Registrar novo contato"
+              subtitulo={lead.nome}
+              onFechar={() => setIsRegistrarContatoOpen(false)}
+            />
+            <div className="modal-corpo campos-modal p-5 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                   Descrição da Interação
                 </label>
                 <textarea
@@ -686,18 +859,21 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
                 />
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="rodape-modal barra-acoes text-xs">
                 <button
+                  type="button"
                   onClick={() => setIsRegistrarContatoOpen(false)}
-                  className="px-4 py-2 border rounded-xl text-xs font-bold text-slate-600"
+                  className="btn-modal-cancelar"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={handleAddContato}
-                  className="px-4 py-2 bg-[#004276] text-white rounded-xl text-xs font-bold shadow"
+                  type="button"
+                  onClick={() => void handleAddContato()}
+                  disabled={salvandoContato || !novaInteracao.trim()}
+                  className="btn-modal-salvar"
                 >
-                  Salvar Histórico
+                  {salvandoContato ? 'Salvando…' : 'Salvar histórico'}
                 </button>
               </div>
             </div>

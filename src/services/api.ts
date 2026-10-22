@@ -8,16 +8,16 @@
 // o App agora faz `const lista = await Api.saveX(x); setX(lista)`.
 
 import {
-  Agendamento, AuditEntry, Boleto, Contrato, Fornecedor, LancamentoFinanceiro,
-  Lead, LeadStage, Obra, Produto, Proposta, User,
+  Agendamento, AuditEntry, Boleto, Contrato, Fornecedor, Kit, LancamentoFinanceiro,
+  Lead, LeadStage, Obra, PastaDocumento, Produto, Proposta, User,
 } from '../types';
 import { definirTokens, http, limparTokens, obterRefreshToken, temSessaoSalva } from './http';
 import {
-  deAgendamento, deBoleto, deContrato, deFornecedor, deHomologacao, deLancamento,
+  deAgendamento, deBoleto, deContrato, deFornecedor, deHomologacao, deKit, deLancamento,
   deLead, deObra, deProduto, deProposta, deUser,
   paraAgendamento, paraAuditEntry, paraBoleto, paraContrato, paraDocumento,
-  paraFornecedor, paraHistorico, paraLancamento, paraLead, paraObra, paraProduto,
-  paraProposta, paraUser, paraUserAutenticado,
+  paraFornecedor, paraHistorico, paraKit, paraLancamento, paraLead, paraObra,
+  paraPastaDocumento, paraProduto, paraProposta, paraUser, paraUserAutenticado,
 } from './mappers';
 
 /* ============================================================== SESSÃO === */
@@ -135,6 +135,36 @@ export const Api = {
     return listarLeads();
   },
 
+  /* ------------------------------------------ documentos do lead -- */
+
+  /** Pastas com a contagem REAL do lead. `total` é a soma, calculada no servidor. */
+  getPastasLead: async (leadId: string): Promise<{ pastas: PastaDocumento[]; total: number }> => {
+    const r = await http.get<any>(`/api/leads/${leadId}/pastas`);
+    return { pastas: (r.pastas ?? []).map(paraPastaDocumento), total: r.total ?? 0 };
+  },
+
+  /**
+   * Sobe o arquivo CRU, sem multipart e sem base64 — mesmo caminho do upload de
+   * imagem do CMS. Nome e pasta vão na query porque o corpo inteiro são os bytes.
+   */
+  enviarDocumento: async (leadId: string, pastaId: number, arquivo: File): Promise<void> => {
+    const busca = new URLSearchParams({ nome: arquivo.name, pasta_id: String(pastaId) });
+    await http.postBinario(`/api/leads/${leadId}/documentos?${busca}`, arquivo);
+  },
+
+  /** Blob porque a rota exige Authorization — um <a href> direto viria 401. */
+  baixarDocumento: (leadId: string, docId: string): Promise<Blob> =>
+    http.getBlob(`/api/leads/${leadId}/documentos/${docId}/arquivo`),
+
+  excluirDocumento: async (leadId: string, docId: string): Promise<void> => {
+    await http.delete(`/api/leads/${leadId}/documentos/${docId}`);
+  },
+
+  /** Pasta é global (vale para todos os leads) e só o Administrador cria. */
+  criarPastaDocumento: async (nome: string): Promise<void> => {
+    await http.post('/api/leads/pastas', { nome });
+  },
+
   /* ---------------------------------------------------- fornecedores -- */
 
   getFornecedores: async (): Promise<Fornecedor[]> => {
@@ -195,6 +225,28 @@ export const Api = {
       observacao: observacao ?? null,
     });
     return Api.getProdutos();
+  },
+
+  /* ------------------------------------------------------------ kits -- */
+
+  getKits: async (): Promise<Kit[]> => {
+    const r = await http.get<any>('/api/catalogo/kits');
+    return (r.kits ?? []).map(paraKit);
+  },
+
+  saveKit: async (k: Kit): Promise<Kit[]> => {
+    const corpo = deKit(k);
+    if (k.id && !k.id.startsWith('novo-')) {
+      await http.patch(`/api/catalogo/kits/${k.id}`, corpo);
+    } else {
+      await http.post('/api/catalogo/kits', corpo);
+    }
+    return Api.getKits();
+  },
+
+  deleteKit: async (id: string): Promise<Kit[]> => {
+    await http.delete(`/api/catalogo/kits/${id}`);
+    return Api.getKits();
   },
 
   /* -------------------------------------------------------- propostas -- */
@@ -467,7 +519,7 @@ export function paramNum(config: ConfigApp | null, chave: string, padrao: number
 export async function carregarTudo() {
   const [
     leads, propostas, contratos, boletos, lancamentos,
-    agendamentos, produtos, fornecedores, usuarios, obras, config,
+    agendamentos, produtos, fornecedores, kits, usuarios, obras, config,
   ] = await Promise.all([
     Api.getLeads(),
     Api.getPropostas(),
@@ -477,6 +529,7 @@ export async function carregarTudo() {
     Api.getAgendamentos(),
     Api.getProdutos(),
     Api.getFornecedores(),
+    Api.getKits(),
     Api.getUsuarios(),
     Api.getObras(),
     Api.getConfig(),
@@ -492,7 +545,7 @@ export async function carregarTudo() {
 
   return {
     leads, propostas, contratos, boletos, lancamentos,
-    agendamentos, produtos, fornecedores, usuarios, obras, auditoria, config,
+    agendamentos, produtos, fornecedores, kits, usuarios, obras, auditoria, config,
   };
 }
 

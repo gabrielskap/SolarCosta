@@ -14,11 +14,23 @@ import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../
 export const propostasRouter = Router();
 propostasRouter.use(exigirLogin);
 
+// Produto que compõe um kit dentro da proposta. Não tem valor_unit: o preço
+// do kit é fechado e mora na linha-pai (ver V018).
+const componenteSchema = z.object({
+  produto_id: z.string().uuid(),
+  descricao: z.string().min(1, 'Descreva o item.').max(300),
+  qtd: z.coerce.number().positive('Quantidade deve ser maior que zero.'),
+});
+
 const itemSchema = z.object({
   produto_id: z.string().uuid().nullish(),
+  kit_id: z.string().uuid().nullish(),
   descricao: z.string().min(1, 'Descreva o item.').max(300),
   qtd: z.coerce.number().positive('Quantidade deve ser maior que zero.'),
   valor_unit: z.coerce.number().min(0),
+  // Aninhado, e não uma lista plana com índice do pai: assim a hierarquia
+  // chega íntegra sem o payload depender da ordem do array.
+  componentes: z.array(componenteSchema).default([]),
 });
 
 const propostaSchema = z.object({
@@ -79,6 +91,12 @@ const propostaSchema = z.object({
   logo_customizada_url: z.string().nullish(),
   validade_dias: z.coerce.number().int().positive().default(10),
 
+  // Responsável técnico da folha de equipamentos (V017), escolhido na
+  // calculadora. Nulo/vazio é dado útil, não omissão: significa "use o
+  // cadastro da empresa", que é como toda proposta anterior à V017 imprime.
+  responsavel_tecnico: z.string().max(200).nullish(),
+  crea: z.string().max(60).nullish(),
+
   // Localização e layout do telhado (V005). Opcionais: proposta sem busca por
   // satélite continua válida, só não imprime a página do telhado.
   latitude: z.coerce.number().min(-90).max(90).nullish(),
@@ -129,6 +147,10 @@ const propostaSchema = z.object({
     .nullish(),
 
   itens: z.array(itemSchema).min(1, 'A proposta precisa de pelo menos um item.'),
+
+  // Valor negociado. NULL = usa a soma dos itens. `valor_total` continua fora
+  // do schema de propósito: quem o escreve é o trigger, a partir deste campo.
+  valor_total_ajustado: z.coerce.number().min(0).nullish(),
 });
 
 /** jsonb via node-postgres: sem stringify o driver manda array literal do PG. */
@@ -177,8 +199,10 @@ async function carregarProposta(id: string) {
   );
   if (!proposta) throw naoEncontrado('Proposta');
 
+  // Volta plano e ordenado; quem remonta a hierarquia kit -> componentes é o
+  // mapper do front, a partir de item_pai_id.
   const itens = await consultar(
-    `SELECT id, produto_id, descricao, qtd, valor_unit, total, ordem
+    `SELECT id, produto_id, kit_id, item_pai_id, descricao, qtd, valor_unit, total, ordem
        FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1 ORDER BY ordem`,
     [id],
   );
@@ -255,7 +279,8 @@ propostasRouter.post(
             layout_modulos, layout_segmentos,
             cep, numero_endereco,
             layout_ajuste_manual, layout_modulo,
-            iluminacao_publica_sem_sfcr, custo_disponibilidade, iluminacao_publica_com_sfcr
+            iluminacao_publica_sem_sfcr, custo_disponibilidade, iluminacao_publica_com_sfcr,
+            responsavel_tecnico, crea, valor_total_ajustado
          ) VALUES (
             $1,$2,$3,$4,NULLIF($5,'')::citext,$6,$7,
             COALESCE($8::int, (SELECT id FROM "SolarCosta_Concessionarias" WHERE nome = $9)),
@@ -271,7 +296,11 @@ propostasRouter.post(
             $47::jsonb,$48::jsonb,
             $49,$50,
             COALESCE($51, false),$52::jsonb,
-            COALESCE($53,0),COALESCE($54,0),COALESCE($55,0)
+            COALESCE($53,0),COALESCE($54,0),COALESCE($55,0),
+            -- NULLIF(btrim(...)) e não o valor cru: campo apagado na tela chega
+            -- como '', e '' gravado seria um responsável técnico EM BRANCO na
+            -- folha — enquanto NULL devolve a proposta ao cadastro da empresa.
+            NULLIF(btrim($56),''),NULLIF(btrim($57),''),$58
          ) RETURNING id`,
         [
           d.lead_id ?? null, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null,
@@ -298,6 +327,8 @@ propostasRouter.post(
           d.layout_ajuste_manual ?? false, paraJsonb(d.layout_modulo),
           d.iluminacao_publica_sem_sfcr ?? 0, d.custo_disponibilidade ?? 0,
           d.iluminacao_publica_com_sfcr ?? 0,
+          d.responsavel_tecnico ?? null, d.crea ?? null,
+          d.valor_total_ajustado ?? null,
         ],
       );
       const novoId = rows[0]!.id as string;
@@ -364,7 +395,15 @@ propostasRouter.put(
             lead_id = $52::uuid,
             iluminacao_publica_sem_sfcr = COALESCE($53,0),
             custo_disponibilidade       = COALESCE($54,0),
-            iluminacao_publica_com_sfcr = COALESCE($55,0)
+            iluminacao_publica_com_sfcr = COALESCE($55,0),
+            -- Atribuição direta, sem COALESCE com a coluna atual: APAGAR o
+            -- responsável técnico tem que funcionar, e é assim que a proposta
+            -- volta a seguir o cadastro da empresa.
+            responsavel_tecnico = NULLIF(btrim($56),''),
+            crea                = NULLIF(btrim($57),''),
+            -- Também atribuição direta: limpar o campo na tela tem que devolver
+            -- o total à soma dos itens, e é o NULL que sinaliza isso ao trigger.
+            valor_total_ajustado = $58
           WHERE id = $1`,
         [
           id, d.cliente_nome, d.cpf_cnpj ?? null, d.telefone ?? null, d.email ?? null,
@@ -391,6 +430,8 @@ propostasRouter.put(
           d.lead_id ?? null,
           d.iluminacao_publica_sem_sfcr ?? 0, d.custo_disponibilidade ?? 0,
           d.iluminacao_publica_com_sfcr ?? 0,
+          d.responsavel_tecnico ?? null, d.crea ?? null,
+          d.valor_total_ajustado ?? null,
         ],
       );
 
@@ -467,17 +508,45 @@ propostasRouter.delete(
 // -------------------------------------------------------------- INTERNOS ---
 type ItemProposta = z.infer<typeof itemSchema>;
 
+/**
+ * Grava os itens da proposta preservando a hierarquia kit -> componentes.
+ *
+ * Dois passos porque o filho precisa do id do pai: insere a linha de topo com
+ * RETURNING id e só então os componentes, apontando item_pai_id para ela.
+ * Componente vai com valor_unit = 0 — o preço do kit é fechado e está na
+ * linha-pai, então SUM(total) continua sendo o total da proposta.
+ *
+ * `ordem` é um contador contínuo (pai, seus filhos, próximo pai), porque é por
+ * ele que o PDF imprime a lista de equipamentos na sequência certa.
+ */
 async function inserirItens(
   cliente: import('../db.js').Cliente,
   propostaId: string,
   itens: ItemProposta[],
 ): Promise<void> {
-  for (const [i, item] of itens.entries()) {
-    await cliente.query(
+  let ordem = 0;
+
+  for (const item of itens) {
+    ordem += 1;
+    const { rows } = await cliente.query(
       `INSERT INTO "SolarCosta_PropostaItens"
-          (proposta_id, produto_id, descricao, qtd, valor_unit, ordem)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [propostaId, item.produto_id ?? null, item.descricao, item.qtd, item.valor_unit, i + 1],
+          (proposta_id, produto_id, kit_id, descricao, qtd, valor_unit, ordem)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id`,
+      [propostaId, item.produto_id ?? null, item.kit_id ?? null,
+       item.descricao, item.qtd, item.valor_unit, ordem],
     );
+    const paiId = rows[0]!.id as string;
+
+    for (const componente of item.componentes ?? []) {
+      ordem += 1;
+      await cliente.query(
+        `INSERT INTO "SolarCosta_PropostaItens"
+            (proposta_id, produto_id, kit_id, item_pai_id, descricao, qtd, valor_unit, ordem)
+         VALUES ($1,$2,$3,$4,$5,$6,0,$7)`,
+        [propostaId, componente.produto_id, item.kit_id ?? null, paiId,
+         componente.descricao, componente.qtd, ordem],
+      );
+    }
   }
 }

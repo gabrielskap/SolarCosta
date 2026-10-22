@@ -6,7 +6,8 @@
 // meia edição no ar (lembrando que salvar aqui publica direto no site).
 
 import React, { useState } from 'react';
-import { Info, Loader2, X } from 'lucide-react';
+import { Info, LayoutTemplate, Loader2 } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { camposDe } from '../../site/blocos/campos';
 import { definicao } from '../../site/blocos/registro';
 import type { MidiaSite } from '../../site/blocos/tipos';
@@ -58,21 +59,16 @@ export const EditorBloco: React.FC<Props> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-          <div className="bg-[#004276] text-white p-4 flex items-center justify-between shrink-0">
-            <div>
-              <h3 className="font-bold text-base">{def?.rotulo ?? bloco.tipo}</h3>
-              {def?.descricao && (
-                <p className="text-[11px] text-blue-200 mt-0.5">{def.descricao}</p>
-              )}
-            </div>
-            <button onClick={onFechar} className="text-slate-300 hover:text-white shrink-0">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+      <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+          <ModalCabecalho
+            icone={LayoutTemplate}
+            titulo={def?.rotulo ?? bloco.tipo}
+            subtitulo={def?.descricao}
+            onFechar={onFechar}
+          />
 
-          <div className="p-5 space-y-4 overflow-y-auto">
+          <div className="modal-corpo campos-modal p-5 space-y-4 overflow-y-auto">
             {def?.usaDadosDoSistema && (
               <div className="flex items-start gap-2 rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-[#004276] leading-relaxed">
                 <Info className="w-4 h-4 mt-0.5 shrink-0" />
@@ -100,19 +96,15 @@ export const EditorBloco: React.FC<Props> = ({
             )}
           </div>
 
-          <div className="flex justify-end gap-2 p-4 border-t border-slate-100 shrink-0">
-            <button
-              type="button"
-              onClick={onFechar}
-              className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-50"
-            >
+          <div className="rodape-modal barra-acoes shrink-0 px-5 pb-5 text-sm">
+            <button type="button" onClick={onFechar} className="btn-modal-cancelar">
               Cancelar
             </button>
             <button
               type="button"
               onClick={() => void salvar()}
               disabled={salvando}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[#004276] hover:bg-[#003158] disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow"
+              className="btn-modal-salvar inline-flex items-center gap-2"
             >
               {salvando && <Loader2 className="w-4 h-4 animate-spin" />}
               Salvar e publicar

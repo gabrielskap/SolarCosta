@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
-  CheckCheck, Clock, FileText, History, Loader2, RefreshCw, ScrollText, X, XCircle,
+  CheckCheck, Clock, FileText, History, Loader2, RefreshCw, ScrollText, XCircle,
 } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { ErroApi } from '../../services/http';
 import {
   WhatsApp,
@@ -225,28 +226,21 @@ export const AbaHistorico: React.FC<Props> = ({ showToast, recarregarEm }) => {
       {/* ------------------------------------------------------ detalhe -- */}
       {detalhe && (
         <div
-          className="modal-overlay fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="modal-overlay modal-entrada-fundo fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setDetalhe(null)}
         >
           <div
-            className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+            className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <History className="w-5 h-5 text-[#FFD100]" />
-                <h2 className="font-bold text-sm">Detalhes do envio</h2>
-              </div>
-              <button
-                onClick={() => setDetalhe(null)}
-                className="text-blue-200 hover:text-white p-1"
-                aria-label="Fechar"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            <ModalCabecalho
+              icone={History}
+              titulo="Detalhes do envio"
+              subtitulo={detalhe.lead?.nome ?? detalhe.nomeExibicao ?? undefined}
+              onFechar={() => setDetalhe(null)}
+            />
 
-            <div className="modal-corpo p-5 space-y-3 max-h-[80vh] overflow-y-auto text-sm">
+            <div className="modal-corpo campos-modal p-5 space-y-3 max-h-[80vh] overflow-y-auto text-sm">
               <p className="text-slate-700">
                 <span className="text-slate-400">Para:</span>{' '}
                 {detalhe.lead?.nome ?? detalhe.nomeExibicao ?? '—'}{' '}

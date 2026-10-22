@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
-  DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, Download, Plus, Copy, CheckCircle2, Printer, Trash2, X, FileSpreadsheet, ChevronDown,
+  DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, Download, Plus, Copy, CheckCircle2, Printer, Trash2, FileSpreadsheet, ChevronDown,
   LayoutGrid, Landmark, Receipt
 } from 'lucide-react';
+import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { Boleto, Contrato, LancamentoFinanceiro, User } from '../types';
 import { maskCPFCNPJ, docLabel } from '../utils/format';
 
@@ -38,14 +39,14 @@ const ResultadoEmissaoBB: React.FC<{
   onCopyPix: (codigo: string) => void;
   onConcluir: () => void;
 }> = ({ boleto, onCopyLinha, onCopyPix, onConcluir }) => (
-  <div className="modal-corpo p-5 space-y-4 text-xs">
+  <div className="modal-corpo campos-modal p-5 space-y-4 text-xs">
     <div className="flex items-center gap-2 text-emerald-700 font-bold">
       <CheckCircle2 className="w-5 h-5" />
       Boleto emitido no Banco do Brasil
     </div>
 
     <div>
-      <label className="block font-bold text-slate-600 mb-1 uppercase">Linha digitável</label>
+      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Linha digitável</label>
       <div className="flex gap-2">
         <input
           readOnly
@@ -65,7 +66,7 @@ const ResultadoEmissaoBB: React.FC<{
 
     {boleto.pixQrcode && (
       <div>
-        <label className="block font-bold text-slate-600 mb-1 uppercase">Pix copia e cola</label>
+        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Pix copia e cola</label>
         <div className="flex gap-2">
           <input
             readOnly
@@ -88,7 +89,7 @@ const ResultadoEmissaoBB: React.FC<{
       <button
         type="button"
         onClick={onConcluir}
-        className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow"
+        className="btn-modal-salvar"
       >
         Concluir
       </button>
@@ -1112,21 +1113,25 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
       {/* Modal Novo Lançamento */}
       {isNovoLancamentoOpen && (
-        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-              <h3 className="font-bold text-base">Novo Lançamento Financeiro</h3>
-              <button onClick={() => setIsNovoLancamentoOpen(false)} className="text-slate-300 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleFormLancamentoSubmit} className="modal-corpo p-5 space-y-4 text-xs">
-              <div className="flex gap-2">
+        <div className="modal-overlay modal-entrada-fundo modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel modal-entrada-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 w-full max-w-md overflow-hidden">
+            <ModalCabecalho
+              icone={DollarSign}
+              titulo="Novo lançamento financeiro"
+              subtitulo="Entrada ou saída do caixa"
+              onFechar={() => setIsNovoLancamentoOpen(false)}
+            />
+            <form onSubmit={handleFormLancamentoSubmit} className="modal-corpo campos-modal campos-modal p-5 space-y-4 text-xs">
+              {/* Receita x despesa é a primeira decisão do lançamento — fica como
+                  um par de botões grandes, não como mais um <select>. */}
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setTipoLancamento('receita')}
-                  className={`flex-1 py-2 font-bold rounded-xl border ${
-                    tipoLancamento === 'receita' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50'
+                  className={`py-2.5 font-bold rounded-xl border transition ${
+                    tipoLancamento === 'receita'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/25'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   Receita / Entrada
@@ -1134,8 +1139,10 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTipoLancamento('despesa')}
-                  className={`flex-1 py-2 font-bold rounded-xl border ${
-                    tipoLancamento === 'despesa' ? 'bg-rose-600 text-white border-rose-600' : 'bg-slate-50'
+                  className={`py-2.5 font-bold rounded-xl border transition ${
+                    tipoLancamento === 'despesa'
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-lg shadow-rose-600/25'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   Despesa / Saída
@@ -1143,61 +1150,74 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-600 mb-1 uppercase">Descrição</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Descrição <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
                   value={descricao}
                   onChange={(e) => setDescricao(e.target.value)}
                   placeholder="Ex: Pagamento fornecedor Aldo Solar"
-                  className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
+                  className="w-full px-3.5 py-2.5 text-[13px] font-semibold"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Categoria</label>
-                  <select
-                    value={categoria}
-                    onChange={(e) => setCategoria(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
-                  >
-                    <option value="Venda de sistema">Venda de sistema</option>
-                    <option value="Equipamentos">Equipamentos</option>
-                    <option value="Mão de obra">Mão de obra</option>
-                    <option value="Logística">Logística</option>
-                    <option value="Impostos">Impostos</option>
-                    <option value="Marketing">Marketing</option>
-                  </select>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Categoria
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={categoria}
+                      onChange={(e) => setCategoria(e.target.value)}
+                      className="w-full px-3.5 py-2.5 pr-10 text-[13px] font-semibold appearance-none cursor-pointer"
+                    >
+                      <option value="Venda de sistema">Venda de sistema</option>
+                      <option value="Equipamentos">Equipamentos</option>
+                      <option value="Mão de obra">Mão de obra</option>
+                      <option value="Logística">Logística</option>
+                      <option value="Impostos">Impostos</option>
+                      <option value="Marketing">Marketing</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Valor (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={valorLancamento}
-                    onChange={(e) => setValorLancamento(e.target.value)}
-                    placeholder="0,00"
-                    className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold"
-                  />
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Valor <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[13px] font-black text-slate-400">
+                      R$
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={valorLancamento}
+                      onChange={(e) => setValorLancamento(e.target.value)}
+                      placeholder="0,00"
+                      className={`w-full pl-10 pr-3.5 py-2.5 text-[15px] font-black ${
+                        tipoLancamento === 'receita' ? 'text-emerald-700' : 'text-rose-700'
+                      }`}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="rodape-modal barra-acoes">
                 <button
                   type="button"
                   onClick={() => setIsNovoLancamentoOpen(false)}
-                  className="px-4 py-2 border rounded-xl font-bold"
+                  className="btn-modal-cancelar"
                 >
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow"
-                >
-                  Salvar Lançamento
+                <button type="submit" className="btn-modal-salvar">
+                  Salvar lançamento
                 </button>
               </div>
             </form>
@@ -1207,14 +1227,14 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
       {/* Modal Emitir Boleto Banco do Brasil */}
       {isEmitirBoletoOpen && (
-        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-              <h3 className="font-bold text-base">Emitir Boleto Banco do Brasil</h3>
-              <button onClick={handleFecharModalEmitirBoleto} className="text-slate-300 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <ModalCabecalho
+              icone={Landmark}
+              titulo="Emitir boleto Banco do Brasil"
+              subtitulo={boletoEmitido ? 'Boleto registrado' : 'Registro direto na API do BB'}
+              onFechar={handleFecharModalEmitirBoleto}
+            />
 
             {boletoEmitido ? (
               <ResultadoEmissaoBB
@@ -1224,10 +1244,10 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                 onConcluir={handleFecharModalEmitirBoleto}
               />
             ) : (
-              <form onSubmit={handleFormEmitirBoletoSubmit} className="modal-corpo p-5 space-y-4 text-xs">
+              <form onSubmit={handleFormEmitirBoletoSubmit} className="modal-corpo campos-modal p-5 space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="col-span-1 sm:col-span-2">
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">Cliente / Sacado</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Cliente / Sacado</label>
                     <input
                       type="text"
                       required
@@ -1238,7 +1258,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">{docLabel(boletoCpf)}</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">{docLabel(boletoCpf)}</label>
                     <input
                       type="text"
                       required
@@ -1250,7 +1270,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">Valor (R$)</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Valor (R$)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1262,7 +1282,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">Parcela</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Parcela</label>
                     <input
                       type="text"
                       value={boletoParcela}
@@ -1273,7 +1293,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">Vencimento</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Vencimento</label>
                     <input
                       type="text"
                       required
@@ -1298,19 +1318,19 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="rodape-modal barra-acoes">
                   <button
                     type="button"
                     onClick={handleFecharModalEmitirBoleto}
                     disabled={emitindoBoleto}
-                    className="px-4 py-2 border rounded-xl font-bold disabled:opacity-50"
+                    className="btn-modal-cancelar"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={emitindoBoleto}
-                    className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow disabled:opacity-50"
+                    className="btn-modal-salvar"
                   >
                     {emitindoBoleto ? 'Emitindo...' : 'Gerar Boleto Banco do Brasil'}
                   </button>
@@ -1323,14 +1343,14 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
       {/* Modal Emitir Cobrança (a partir de um contrato assinado) */}
       {isEmitirCobrancaOpen && (
-        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-              <h3 className="font-bold text-base">Emitir Cobrança</h3>
-              <button onClick={handleFecharModalCobranca} className="text-slate-300 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <ModalCabecalho
+              icone={Receipt}
+              titulo="Emitir cobrança"
+              subtitulo={cobrancaEmitida ? 'Cobrança registrada' : 'A partir de um contrato assinado'}
+              onFechar={handleFecharModalCobranca}
+            />
 
             {cobrancaEmitida ? (
               <ResultadoEmissaoBB
@@ -1340,9 +1360,9 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                 onConcluir={handleFecharModalCobranca}
               />
             ) : (
-              <form onSubmit={handleFormEmitirCobrancaSubmit} className="modal-corpo p-5 space-y-4 text-xs">
+              <form onSubmit={handleFormEmitirCobrancaSubmit} className="modal-corpo campos-modal p-5 space-y-4 text-xs">
                 <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Contrato</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Contrato</label>
                   <select
                     required
                     value={contratoSelecionadoId}
@@ -1367,7 +1387,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">Valor (R$)</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Valor (R$)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1379,7 +1399,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">Parcela</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Parcela</label>
                     <input
                       type="text"
                       value={cobrancaParcela}
@@ -1390,7 +1410,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                   </div>
 
                   <div className="col-span-1 sm:col-span-2">
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">Vencimento</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Vencimento</label>
                     <input
                       type="text"
                       required
@@ -1403,7 +1423,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-600 mb-1 uppercase">Forma de pagamento</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Forma de pagamento</label>
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -1426,19 +1446,19 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="rodape-modal barra-acoes">
                   <button
                     type="button"
                     onClick={handleFecharModalCobranca}
                     disabled={emitindoCobranca}
-                    className="px-4 py-2 border rounded-xl font-bold disabled:opacity-50"
+                    className="btn-modal-cancelar"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={emitindoCobranca || !contratoSelecionadoId}
-                    className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow disabled:opacity-50"
+                    className="btn-modal-salvar"
                   >
                     {emitindoCobranca ? 'Emitindo...' : 'Emitir cobrança'}
                   </button>

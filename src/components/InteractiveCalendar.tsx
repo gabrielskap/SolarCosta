@@ -22,6 +22,7 @@ import {
   Check
 } from 'lucide-react';
 import { AcoesContato } from './comuns/AcoesContato';
+import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { ehCelular } from './comuns/useEhCelular';
 import { Agendamento, Lead, User as UserType, TipoAgendamento, StatusAgendamento } from '../types';
 
@@ -773,25 +774,18 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
 
       {/* Modal: Agendar Novo Compromisso */}
       {isNewModalOpen && (
-        <div className="modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="modal-painel bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
             
-            {/* Header */}
-            <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-[#FFD100]" />
-                <h3 className="font-black text-base">Agendar Visita ou Reunião</h3>
-              </div>
-              <button
-                onClick={() => setIsNewModalOpen(false)}
-                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            <ModalCabecalho
+              icone={CalendarIcon}
+              titulo="Agendar visita ou reunião"
+              subtitulo="Entra na agenda e no histórico do lead"
+              onFechar={() => setIsNewModalOpen(false)}
+            />
 
             {/* Form */}
-            <form onSubmit={handleSubmitNewAgendamento} className="modal-corpo p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+            <form onSubmit={handleSubmitNewAgendamento} className="modal-corpo campos-modal p-6 space-y-4 overflow-y-auto flex-1 text-xs">
               
               {/* Tipo de Agendamento */}
               <div>
@@ -1015,23 +1009,20 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
 
       {/* Modal: Detalhes do Compromisso */}
       {selectedEventDetails && (
-        <div className="modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="modal-painel bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
             
-            {/* Header */}
-            <div className="modal-cabecalho bg-slate-900 text-white p-5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {getTipoBadge(selectedEventDetails.tipo)}
-              </div>
-              <button
-                onClick={() => setSelectedEventDetails(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            {/* Tom escuro: aqui o modal é de leitura, o azul da marca competiria
+                com o conteúdo em vez de emoldurá-lo. */}
+            <ModalCabecalho
+              icone={Clock}
+              titulo="Detalhes do compromisso"
+              subtitulo={getTipoBadge(selectedEventDetails.tipo)}
+              tom="escuro"
+              onFechar={() => setSelectedEventDetails(null)}
+            />
 
-            <div className="modal-corpo p-6 space-y-4 text-xs">
+            <div className="modal-corpo campos-modal p-6 space-y-4 text-xs">
               <div>
                 <h3 className="font-extrabold text-slate-900 text-base mb-1">
                   {selectedEventDetails.titulo}

@@ -324,6 +324,163 @@ catalogoRouter.get(
   }),
 );
 
+/* ================================================================= KITS == */
+
+// Kit de instalação: um nome, UM preço fechado e a composição de produtos.
+// O preço não é a soma dos componentes — embute serviço e margem —, por isso
+// é campo próprio e não cálculo.
+
+const kitSchema = z.object({
+  nome: z.string().min(1, 'Informe o nome do kit.').max(200),
+  descricao: z.string().max(2000).nullish(),
+  preco: z.coerce.number().min(0).default(0),
+  ativo: z.boolean().default(true),
+  itens: z
+    .array(
+      z.object({
+        produto_id: z.string().uuid(),
+        qtd: z.coerce.number().positive('Quantidade deve ser maior que zero.'),
+      }),
+    )
+    .min(1, 'O kit precisa de pelo menos um produto.'),
+});
+
+// Derivado do schema, e não escrito à mão: o tsconfig da RAIZ também compila
+// este diretório, mas sem `strict`, e sob ele a inferência do zod devolve os
+// campos como opcionais. Um tipo literal aqui passaria no lint do server e
+// quebraria no da raiz.
+type ItemKit = z.infer<typeof kitSchema>['itens'][number];
+
+/** Regrava a composição por inteiro — mesma estratégia dos itens da proposta. */
+async function gravarItensKit(
+  cliente: import('../db.js').Cliente,
+  kitId: string,
+  itens: ItemKit[],
+): Promise<void> {
+  await cliente.query(`DELETE FROM "SolarCosta_KitItens" WHERE kit_id = $1`, [kitId]);
+  for (const [i, item] of itens.entries()) {
+    await cliente.query(
+      `INSERT INTO "SolarCosta_KitItens" (kit_id, produto_id, qtd, ordem)
+       VALUES ($1,$2,$3,$4)`,
+      [kitId, item.produto_id, item.qtd, i + 1],
+    );
+  }
+}
+
+catalogoRouter.get(
+  '/kits',
+  asyncHandler(async (req, res) => {
+    const f = z.object({ busca: z.string().trim().min(1).optional() }).parse(req.query);
+
+    const cond: string[] = ['ativo'];
+    const params: unknown[] = [];
+
+    if (f.busca) {
+      params.push(f.busca);
+      cond.push(`("SolarCosta_fn_sem_acento"(nome) LIKE '%' || "SolarCosta_fn_sem_acento"($${params.length}) || '%'
+                  OR codigo ILIKE '%' || $${params.length} || '%')`);
+    }
+
+    const kits = await consultar(
+      `SELECT * FROM "SolarCosta_vw_Kits" WHERE ${cond.join(' AND ')} ORDER BY nome`,
+      params,
+    );
+    res.json({ kits });
+  }),
+);
+
+catalogoRouter.post(
+  '/kits',
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const d = kitSchema.parse(req.body);
+
+    const kit = await emTransacao(async (cliente) => {
+      // `codigo` vem da sequência serializada da V003, e não do cliente: a
+      // coluna é UNIQUE e um contador derivado do tamanho da lista colide
+      // assim que um kit é excluído.
+      const { rows } = await cliente.query(
+        `INSERT INTO "SolarCosta_Kits" (codigo, nome, descricao, preco, ativo)
+         VALUES ("SolarCosta_fn_proximo_numero"('kit'),$1,$2,$3,$4)
+         RETURNING id`,
+        [d.nome, d.descricao ?? null, d.preco, d.ativo],
+      );
+      const id = rows[0]!.id as string;
+
+      await gravarItensKit(cliente, id, d.itens);
+
+      // Entidade 'Produto' porque o enum SolarCosta_EntidadeAuditoria não tem
+      // 'Kit' e ALTER TYPE não cabe numa migration transacionada (ver V018).
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('criar','Produto',$1,$2,NULL)`,
+        [`Kit: ${d.nome}`, id],
+      );
+
+      const { rows: view } = await cliente.query(
+        `SELECT * FROM "SolarCosta_vw_Kits" WHERE id = $1`, [id]);
+      return view[0];
+    }, ator(req));
+
+    res.status(201).json({ kit });
+  }),
+);
+
+catalogoRouter.patch(
+  '/kits/:id',
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const d = kitSchema.partial().parse(req.body);
+
+    const kit = await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query(
+        `UPDATE "SolarCosta_Kits" SET
+            nome          = COALESCE($2, nome),
+            descricao     = COALESCE($3, descricao),
+            preco         = COALESCE($4, preco),
+            ativo         = COALESCE($5, ativo),
+            atualizado_em = now()
+          WHERE id = $1
+          RETURNING nome`,
+        [id, d.nome ?? null, d.descricao ?? null, d.preco ?? null, d.ativo ?? null],
+      );
+      if (rows.length === 0) throw naoEncontrado('Kit');
+
+      // Só regrava a composição se ela veio no corpo — um PATCH de preço
+      // sozinho não pode esvaziar o kit.
+      if (d.itens) await gravarItensKit(cliente, id, d.itens);
+
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('editar','Produto',$1,$2,NULL)`,
+        [`Kit: ${rows[0]!.nome}`, id],
+      );
+
+      const { rows: view } = await cliente.query(
+        `SELECT * FROM "SolarCosta_vw_Kits" WHERE id = $1`, [id]);
+      return view[0];
+    }, ator(req));
+
+    res.json({ kit });
+  }),
+);
+
+catalogoRouter.delete(
+  '/kits/:id',
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+
+    await emTransacao(async (cliente) => {
+      const { rows } = await cliente.query(
+        `UPDATE "SolarCosta_Kits" SET ativo = false WHERE id = $1 RETURNING nome`, [id]);
+      if (rows.length === 0) throw naoEncontrado('Kit');
+      await cliente.query(
+        `SELECT "SolarCosta_fn_auditar"('excluir','Produto',$1,$2,NULL)`,
+        [`Kit: ${rows[0]!.nome}`, id],
+      );
+    }, ator(req));
+
+    res.status(204).end();
+  }),
+);
+
 /* ================================================== TABELAS DE APOIO ===== */
 
 catalogoRouter.get(

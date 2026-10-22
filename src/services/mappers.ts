@@ -7,8 +7,8 @@
 
 import {
   Agendamento, AuditEntry, Boleto, Contrato, DocumentoItem, Fornecedor,
-  HistoricoItem, LancamentoFinanceiro, Lead, Obra, Produto, Proposta,
-  PropostaItem, TipoProdutoSlug, User,
+  HistoricoItem, Kit, KitItem, LancamentoFinanceiro, Lead, Obra, PastaDocumento,
+  Produto, Proposta, PropostaItem, TipoProdutoSlug, User,
 } from '../types';
 
 /* ============================================================== DATAS === */
@@ -144,10 +144,24 @@ export function paraDocumento(linha: any): DocumentoItem {
     id: linha.id,
     nome: linha.nome_arquivo,
     pasta: linha.pasta ?? 'Outros',
-    tipo: (linha.extensao ?? 'PDF').toUpperCase(),
+    pastaId: linha.pasta_id ?? null,
+    // O fallback é o NOME do arquivo, e não 'PDF'. A coluna extensao sempre
+    // vem preenchida no upload, mas carimbar "PDF" num .jpg porque um SELECT
+    // esqueceu a coluna foi exatamente o bug que esta tela teve por meses.
+    tipo: (linha.extensao || linha.nome_arquivo?.split('.').pop() || '?').toUpperCase(),
     tamanho: formatarTamanho(linha.tamanho_bytes),
+    tamanhoBytes: num(linha.tamanho_bytes),
     enviadoPor: linha.enviado_por ?? 'Sistema',
     dataEnvio: paraDataBR(linha.enviado_em),
+  };
+}
+
+export function paraPastaDocumento(linha: any): PastaDocumento {
+  return {
+    id: Number(linha.pasta_id),
+    nome: linha.pasta,
+    qtdArquivos: num(linha.qtd_arquivos),
+    ultimoEnvio: linha.ultimo_envio ? paraDataBR(linha.ultimo_envio) : undefined,
   };
 }
 
@@ -316,17 +330,80 @@ export function deProduto(p: Partial<Produto> & { estoque?: number }): Record<st
   };
 }
 
+/* ================================================================ KIT === */
+
+export function paraKit(linha: any): Kit {
+  return {
+    id: linha.id,
+    codigo: linha.codigo,
+    nome: linha.nome,
+    descricao: linha.descricao ?? undefined,
+    preco: num(linha.preco),
+    potenciaWpTotal: num(linha.potencia_wp_total),
+    // A view devolve a composição já agregada em json_agg; '[]' quando vazia.
+    itens: (linha.itens ?? []).map((i: any): KitItem => ({
+      id: i.id,
+      produtoId: i.produto_id,
+      produtoNome: txt(i.produto_nome),
+      qtd: num(i.qtd),
+      produtoAtivo: i.produto_ativo ?? true,
+    })),
+  };
+}
+
+export function deKit(k: Partial<Kit>): Record<string, unknown> {
+  return {
+    nome: k.nome,
+    descricao: k.descricao || null,
+    preco: k.preco ?? 0,
+    itens: (k.itens ?? []).map((i) => ({ produto_id: i.produtoId, qtd: i.qtd })),
+  };
+}
+
 /* =========================================================== PROPOSTA === */
 
 function paraPropostaItem(linha: any): PropostaItem {
   return {
     id: linha.id,
     produtoId: linha.produto_id ?? undefined,
+    kitId: linha.kit_id ?? undefined,
     descricao: linha.descricao,
     qtd: num(linha.qtd),
     valorUnit: num(linha.valor_unit),
     total: num(linha.total),
   };
+}
+
+/**
+ * Remonta a hierarquia kit -> componentes a partir das linhas planas da API.
+ *
+ * O banco guarda tudo numa tabela só, ligada por `item_pai_id` (V018), e a
+ * rota devolve plano e ordenado. Aninhar aqui é o que faz a soma dos itens
+ * continuar sendo um reduce sobre o topo da lista — componente tem valor 0,
+ * mas somá-lo junto obrigaria todo consumidor a saber disso.
+ */
+function aninharItens(linhas: any[]): PropostaItem[] {
+  const topo: PropostaItem[] = [];
+  const porId = new Map<string, PropostaItem>();
+
+  for (const linha of linhas) {
+    const item = paraPropostaItem(linha);
+    porId.set(item.id, item);
+
+    const pai = linha.item_pai_id ? porId.get(linha.item_pai_id) : undefined;
+    if (!pai) {
+      topo.push(item);
+      continue;
+    }
+    // qtdUnitaria é o que permite reescalar o componente se a quantidade do
+    // kit mudar na tela; guardada aqui para o rascunho reabrir coerente.
+    pai.componentes = [
+      ...(pai.componentes ?? []),
+      { ...item, qtdUnitaria: pai.qtd > 0 ? item.qtd / pai.qtd : item.qtd },
+    ];
+  }
+
+  return topo;
 }
 
 export function paraProposta(linha: any): Proposta {
@@ -357,8 +434,13 @@ export function paraProposta(linha: any): Proposta {
     areaEstimadaM2: num(linha.area_estimada_m2),
     geracaoMediaKwh: num(linha.geracao_media_kwh),
     coberturaPct: num(linha.cobertura_pct),
-    kitItens: (linha.itens ?? []).map(paraPropostaItem),
+    kitItens: aninharItens(linha.itens ?? []),
     valorTotal: num(linha.valor_total),
+    // numOpc e não num: 0 é um valor negociado legítimo (brinde, bonificação),
+    // e confundi-lo com "não negociado" devolveria o total para a soma.
+    valorTotalAjustado: linha.valor_total_ajustado == null
+      ? null
+      : num(linha.valor_total_ajustado),
     economiaMensal: num(linha.economia_mensal),
     economiaAnual: num(linha.economia_anual),
     economia25Anos: num(linha.economia_25_anos),
@@ -376,6 +458,10 @@ export function paraProposta(linha: any): Proposta {
     status: linha.status === 'recusada' || linha.status === 'expirada' ? 'enviada' : linha.status,
     observacoes: linha.observacoes ?? undefined,
     customLogoUrl: linha.logo_customizada_url ?? undefined,
+    // Responsável técnico da proposta (V017). Ausente continua ausente — é
+    // esse undefined que faz o PDF cair no cadastro da empresa.
+    responsavelTecnico: linha.responsavel_tecnico ?? undefined,
+    crea: linha.crea ?? undefined,
     // Endereço em partes (V006). numero_endereco, não numero: este último é o
     // número da proposta e já foi mapeado lá em cima.
     cep: linha.cep ?? undefined,
@@ -438,6 +524,8 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     juros_financiamento_mes_pct: p.jurosFinanciamentoMesPct ?? null,
     observacoes: p.observacoes ?? null,
     logo_customizada_url: p.customLogoUrl ?? null,
+    responsavel_tecnico: p.responsavelTecnico ?? null,
+    crea: p.crea ?? null,
     cep: p.cep ?? null,
     numero_endereco: p.numeroEndereco ?? null,
     latitude: p.latitude ?? null,
@@ -454,10 +542,26 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     layout_modulo: p.layoutModulo ?? null,
     itens: p.kitItens.map((i) => ({
       produto_id: i.produtoId ?? null,
+      kit_id: i.kitId ?? null,
       descricao: i.descricao,
       qtd: i.qtd,
       valor_unit: i.valorUnit,
+      // Componentes vão aninhados; a rota é que os grava apontando para o pai
+      // e com valor_unit 0 — o preço do kit está na linha de cima.
+      //
+      // O filtro não é defensivo à toa: componente sem produto_id é rejeitado
+      // pelo zod da rota (lá o campo é obrigatório, porque é dele que a baixa
+      // de estoque da obra depende), e o erro apareceria como "falha ao
+      // salvar" genérica, depois de o PDF já ter sido gerado.
+      componentes: (i.componentes ?? [])
+        .filter((c) => !!c.produtoId)
+        .map((c) => ({
+          produto_id: c.produtoId,
+          descricao: c.descricao,
+          qtd: c.qtd,
+        })),
     })),
+    valor_total_ajustado: p.valorTotalAjustado ?? null,
   };
 }
 

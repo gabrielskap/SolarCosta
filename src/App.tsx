@@ -4,7 +4,7 @@ import { Api, Auth, carregarTudo, type ConfigApp } from './services/api';
 import { aoExpirarSessao, ErroApi } from './services/http';
 import {
   Lead, Proposta, Contrato, Boleto, LancamentoFinanceiro, Produto, Fornecedor,
-  User, LeadStage, Agendamento, AuditEntry, Obra, AppNotification,
+  Kit, User, LeadStage, Agendamento, AuditEntry, Obra, AppNotification,
 } from './types';
 import { Sidebar } from './components/Sidebar';
 import { LoginView } from './components/LoginView';
@@ -91,6 +91,9 @@ const LeadDetailRoute: React.FC<LeadDetailRouteProps> = ({ leads, onFetchDetalhe
       onBack={() => navigate('/sistema/leads')}
       onNavigateToProposal={(id) => navigate(`/sistema/propostas/nova?leadId=${encodeURIComponent(id)}`)}
       onNavigateToContract={() => navigate('/sistema/contratos')}
+      // Documento e interação são gravados pela própria tela, direto na API, e
+      // não passam pelo estado de leads daqui. Isto é como ela pede a releitura.
+      onReloadLead={() => onFetchDetalhe(leadId)}
       {...rest}
     />
   );
@@ -99,6 +102,7 @@ const LeadDetailRoute: React.FC<LeadDetailRouteProps> = ({ leads, onFetchDetalhe
 interface NovaPropostaRouteProps {
   propostas: Proposta[];
   produtos: Produto[];
+  kits: Kit[];
   leads: Lead[];
   config: ConfigApp | null;
   onSaveProposal: (proposta: Proposta) => void;
@@ -182,6 +186,7 @@ export default function App() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [kits, setKits] = useState<Kit[]>([]);
   const [usuarios, setUsuarios] = useState<User[]>([]);
   const [obras, setObras] = useState<Obra[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
@@ -287,6 +292,7 @@ export default function App() {
       setAgendamentos(dados.agendamentos);
       setProdutos(dados.produtos);
       setFornecedores(dados.fornecedores);
+      setKits(dados.kits);
       setUsuarios(dados.usuarios);
       setObras(dados.obras);
       setAuditLog(dados.auditoria);
@@ -508,6 +514,26 @@ export default function App() {
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível excluir o fornecedor');
+    }
+  };
+
+  const handleSaveKit = async (kit: Kit) => {
+    try {
+      const novo = !kit.id || kit.id.startsWith('novo-');
+      setKits(await Api.saveKit(kit));
+      showToast(novo ? 'Kit cadastrado' : 'Kit atualizado', 'success', `${kit.nome} gravado no catálogo.`);
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar o kit');
+    }
+  };
+
+  const handleDeleteKit = async (id: string) => {
+    try {
+      setKits(await Api.deleteKit(id));
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir o kit');
     }
   };
 
@@ -878,6 +904,7 @@ export default function App() {
                     <NovaPropostaRoute
                       propostas={propostas}
                       produtos={produtos}
+                      kits={kits}
                       leads={leads}
                       config={config}
                       onSaveProposal={handleSaveProposal}
@@ -894,6 +921,7 @@ export default function App() {
                     <EditarPropostaRoute
                       propostas={propostas}
                       produtos={produtos}
+                      kits={kits}
                       leads={leads}
                       config={config}
                       onSaveProposal={handleSaveProposal}
@@ -944,10 +972,13 @@ export default function App() {
                     <SuppliersProductsView
                       produtos={produtos}
                       fornecedores={fornecedores}
+                      kits={kits}
                       onSaveProduto={handleSaveProduto}
                       onDeleteProduto={handleDeleteProduto}
                       onSaveFornecedor={handleSaveFornecedor}
                       onDeleteFornecedor={handleDeleteFornecedor}
+                      onSaveKit={handleSaveKit}
+                      onDeleteKit={handleDeleteKit}
                       currentUser={currentUser}
                       showToast={showToast}
                     />

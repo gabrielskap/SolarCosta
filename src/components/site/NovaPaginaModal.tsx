@@ -5,7 +5,8 @@
 // fixo — trocar depois quebraria um link do menu ou uma busca já indexada.
 
 import React, { useState } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { FilePlus2, Loader2 } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { CAMINHO_VALIDO, slugificar } from '../../services/site';
 import { ErroApi } from '../../services/http';
 
@@ -53,16 +54,16 @@ export const NovaPaginaModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="bg-[#004276] text-white p-4 flex items-center justify-between rounded-t-2xl">
-          <h3 className="font-bold text-base">Nova página</h3>
-          <button onClick={onFechar} className="text-slate-300 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <ModalCabecalho
+          icone={FilePlus2}
+          titulo="Nova página"
+          subtitulo="Entra no site com o endereço que você escolher"
+          onFechar={onFechar}
+        />
 
-        <div className="p-5 space-y-4">
+        <div className="modal-corpo campos-modal p-5 space-y-4">
           <div>
             <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
               Nome
@@ -105,19 +106,15 @@ export const NovaPaginaModal: React.FC<Props> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onFechar}
-            className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 rounded-xl transition"
-          >
+        <div className="rodape-modal barra-acoes px-5 pb-5 text-sm">
+          <button type="button" onClick={onFechar} className="btn-modal-cancelar">
             Cancelar
           </button>
           <button
             type="button"
             onClick={() => void enviar()}
             disabled={!valido || enviando}
-            className="inline-flex items-center gap-2 bg-[#004276] hover:bg-[#003158] disabled:bg-slate-300 text-white font-bold text-sm px-4 py-2 rounded-xl shadow-sm transition"
+            className="btn-modal-salvar inline-flex items-center gap-2"
           >
             {enviando && <Loader2 className="w-4 h-4 animate-spin" />}
             Criar página

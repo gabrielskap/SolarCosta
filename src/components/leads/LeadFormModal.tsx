@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Loader2, MapPinned } from 'lucide-react';
+import { Loader2, MapPinned, UserPlus } from 'lucide-react';
+import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { Lead, User as UserType } from '../../types';
 import {
   maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel,
@@ -115,22 +116,19 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
   const errBorder = 'border-rose-300 focus:border-rose-500 bg-rose-50/40';
 
   return (
-    <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in">
-        <div className="modal-cabecalho bg-[#004276] text-white p-5 flex items-center justify-between">
-          <h3 className="font-bold text-lg">{lead ? 'Editar Lead' : 'Novo Lead de Energia Solar'}</h3>
-          <button
-            onClick={onClose}
-            className="text-slate-300 hover:text-white p-1"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in">
+        <ModalCabecalho
+          icone={UserPlus}
+          titulo={lead ? 'Editar lead' : 'Novo lead de energia solar'}
+          subtitulo={lead ? lead.nome : 'Cadastro do cliente e da conta de energia'}
+          onFechar={onClose}
+        />
 
-        <form onSubmit={handleFormSubmit} className="modal-corpo p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleFormSubmit} className="modal-corpo campos-modal p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="col-span-1 sm:col-span-2">
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Nome Completo / Razão Social *
               </label>
               <input
@@ -145,7 +143,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 {docLabel(cpfCnpj)}
               </label>
               <input
@@ -160,7 +158,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Telefone / WhatsApp
               </label>
               <input
@@ -175,7 +173,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 E-mail
               </label>
               <input
@@ -189,7 +187,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 CEP
               </label>
               <div className="relative">
@@ -214,7 +212,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Cidade / UF
               </label>
               <input
@@ -227,7 +225,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div className="col-span-1 sm:col-span-2">
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Endereço Completo
               </label>
               <input
@@ -240,7 +238,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Consumo Médio (kWh/mês)
               </label>
               <input
@@ -253,7 +251,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Tipo de Telhado
               </label>
               <select
@@ -270,7 +268,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Origem do Lead
               </label>
               <select
@@ -287,7 +285,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Vendedor Responsável
               </label>
               <select
@@ -302,19 +300,12 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
             </div>
           </div>
 
-          <div className="barra-acoes bg-white pt-4 border-t flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-xl text-sm hover:bg-slate-100"
-            >
+          <div className="rodape-modal barra-acoes text-sm">
+            <button type="button" onClick={onClose} className="btn-modal-cancelar">
               Cancelar
             </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow"
-            >
-              {lead ? 'Salvar Alterações' : 'Cadastrar Lead'}
+            <button type="submit" className="btn-modal-salvar">
+              {lead ? 'Salvar alterações' : 'Cadastrar lead'}
             </button>
           </div>
         </form>

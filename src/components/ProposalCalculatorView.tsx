@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2, MapPinned, ArrowLeft } from 'lucide-react';
-import { Proposta, PropostaItem, Produto, Lead, User } from '../types';
+import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2, MapPinned, ArrowLeft, Boxes } from 'lucide-react';
+import { ModalCabecalho } from './comuns/ModalCabecalho';
+import { Proposta, PropostaItem, Produto, Kit, Lead, User } from '../types';
 import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ } from '../utils/format';
 import {
   fetchAddressByCep,
@@ -10,6 +11,7 @@ import {
   type EnderecoViaCEP,
 } from '../services/cep';
 import { paramNum, type ConfigApp } from '../services/api';
+import { slugDoTipoProduto } from '../services/mappers';
 import { dimensionar, projetarEconomia, parcelaFinanciamento } from '../utils/solar';
 import {
   PainelTelhado,
@@ -20,6 +22,7 @@ import {
 interface ProposalCalculatorViewProps {
   propostas: Proposta[];
   produtos: Produto[];
+  kits: Kit[];
   leads: Lead[];
   currentLeadId?: string;
   /**
@@ -74,6 +77,7 @@ function telhadoDaProposta(p?: Proposta): DadosTelhadoProposta | null {
 export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   propostas,
   produtos,
+  kits,
   leads,
   currentLeadId,
   propostaExistente,
@@ -230,6 +234,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // rascunho, vem o kit que já estava montado.
   const [kitItens, setKitItens] = useState<PropostaItem[]>(propostaExistente?.kitItens ?? []);
 
+  // Valor negociado: null = não negociado, vale a soma dos itens. Não é 0 por
+  // padrão porque 0 é um valor negociado legítimo (bonificação) e os dois
+  // precisam ser distinguíveis até o banco.
+  const [valorNegociado, setValorNegociado] = useState<number | null>(
+    propostaExistente?.valorTotalAjustado ?? null,
+  );
+
   // Payment Options
   const [formaPagamento, setFormaPagamento] = useState<'avista' | 'cartao' | 'financiamento'>(propostaExistente?.formaPagamento ?? 'avista');
   const [descontoAvistaPct, setDescontoAvistaPct] = useState(() => propostaExistente?.descontoAvistaPct ?? paramNum(config, 'proposta.desconto_avista_pct', 7));
@@ -244,6 +255,20 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // Observações da proposta: em branco. Os textos prontos ficam em
   // SolarCosta_ObservacaoPresets e são inseridos com um clique.
   const [observacoes, setObservacoes] = useState<string>(propostaExistente?.observacoes ?? '');
+
+  /*
+   * Responsável técnico impresso na folha de equipamentos (V017).
+   *
+   * Nasce vazio e é semeado pelo cadastro da empresa no efeito abaixo, junto
+   * dos outros padrões — `config` só chega depois da carga inicial. Retomando
+   * um rascunho vale o que foi GRAVADO, inclusive o vazio: proposta anterior à
+   * V017 não tem responsável próprio e tem que continuar imprimindo o da
+   * empresa, não o que o cadastro mostrar no dia em que for reaberta.
+   */
+  const [responsavelTecnico, setResponsavelTecnico] = useState(
+    propostaExistente?.responsavelTecnico ?? '',
+  );
+  const [crea, setCrea] = useState(propostaExistente?.crea ?? '');
 
   // A configuração chega uma vez, depois da carga inicial. Quando chega, os
   // defaults numéricos se ajustam ao que está cadastrado no banco.
@@ -264,6 +289,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setParcelasFinanciamento(paramNum(config, 'financiamento.parcelas_padrao', 60));
     setJurosFinanciamentoMesPct(paramNum(config, 'financiamento.juros_mes_pct', 1.45));
     if (config.bancos.length > 0) setBancoFinanciamento(config.bancos[0].nome);
+    // Responsável técnico padrão: o da empresa, como a ContractsView já faz.
+    // Fica editável logo abaixo — é proposta a proposta que o engenheiro muda.
+    setResponsavelTecnico(config.empresa?.responsavel_tecnico ?? '');
+    setCrea(config.empresa?.crea ?? '');
   }, [config, editando]);
 
   /*
@@ -369,7 +398,22 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * como sempre.
    */
   const [secaoVisivel, setSecaoVisivel] = useState(1);
-  const [selectedCatalogProdutoId, setSelectedCatalogProdutoId] = useState(produtos[0]?.id || '');
+
+  /*
+   * Seleção do modal de adicionar item.
+   *
+   * Começa vazia de propósito. Inicializar com `produtos[0]?.id` parecia
+   * conveniente, mas `produtos` chega por fetch: na primeira renderização a
+   * lista está vazia, o estado congela em '' e o <select> mostrava o primeiro
+   * produto sem que ele estivesse selecionado de fato. Com '' há uma opção
+   * "Selecione…" explícita, e o handler simplesmente não acha nada se ninguém
+   * escolheu.
+   */
+  const [abaCatalogo, setAbaCatalogo] = useState<'kit' | 'produto'>('kit');
+  const [selectedCatalogKitId, setSelectedCatalogKitId] = useState('');
+  const [selectedCatalogProdutoId, setSelectedCatalogProdutoId] = useState('');
+  const [qtdAvulso, setQtdAvulso] = useState(1);
+  const [valorAvulso, setValorAvulso] = useState(0);
 
   // Dimensionamento e economia moram em utils/solar.ts — o simulador público
   // do site chama exatamente as mesmas funções, então os dois nunca divergem.
@@ -381,8 +425,14 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     coberturaPct,                       // ~ 100.3%
   } = dimensionar({ consumoKwh, hsp, perdasPct, moduloWp });
 
-  // Total investment from items
-  const valorTotalInvestimento = kitItens.reduce((acc, item) => acc + item.total, 0);
+  // Soma dos itens. Só o topo da lista entra: componente de kit tem valor 0,
+  // porque o preço do kit está na linha-pai.
+  const somaDosItens = kitItens.reduce((acc, item) => acc + item.total, 0);
+
+  // O valor negociado, quando existe, SUBSTITUI a soma — e tudo o que vem
+  // depois (payback, entrada, parcela, PDF) consome esta constante, então
+  // manter o nome é o que faz o ajuste se propagar sem mais nenhuma mudança.
+  const valorTotalInvestimento = valorNegociado ?? somaDosItens;
 
   // Financial ROI calculations
   const {
@@ -409,66 +459,127 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   });
 
   /*
-   * Sync kit item 1 (modulos) with sizing if modulosQtd changes.
+   * Acompanha o dimensionamento: mudou a quantidade de placas, muda a
+   * quantidade das linhas de módulo.
+   *
+   * O critério é o TIPO do produto, e não a posição na lista. Antes era
+   * "índice 0", o que já estava errado (o próprio comentário admitia que a
+   * primeira linha "nem sempre é o módulo") e piorou com os kits: a linha de
+   * topo passou a poder ser um kit inteiro, e reescrever a quantidade dele com
+   * a contagem de placas multiplicaria o preço fechado por 12.
+   *
+   * Componente de kit é deliberadamente intocado: a composição do kit é fixa,
+   * foi ela que o preço fechado comprou.
    *
    * O primeiro disparo é sempre na montagem, e num rascunho retomado ele
-   * reescreveria a quantidade do primeiro item do kit — que nem sempre é o
-   * módulo — com a contagem de placas. Como na proposta nova o kit começa
-   * vazio, pular a montagem não muda nada por lá.
+   * reescreveria quantidades que o consultor já tinha ajustado à mão. Como na
+   * proposta nova o kit começa vazio, pular a montagem não muda nada por lá.
    */
   const montagemDoKit = useRef(editando);
+
+  const ehLinhaDeModulo = (item: PropostaItem) =>
+    !item.kitId &&
+    !!item.produtoId &&
+    slugDoTipoProduto(produtos.find(p => p.id === item.produtoId)?.tipo) === 'modulo';
 
   useEffect(() => {
     if (montagemDoKit.current) {
       montagemDoKit.current = false;
       return;
     }
-    setKitItens(prev => prev.map((item, idx) => {
-      if (idx === 0) {
-        return {
-          ...item,
-          qtd: modulosQtdCalculada,
-          total: modulosQtdCalculada * item.valorUnit
-        };
-      }
-      return item;
-    }));
+    setKitItens(prev => prev.map(item => (
+      ehLinhaDeModulo(item)
+        ? { ...item, qtd: modulosQtdCalculada, total: modulosQtdCalculada * item.valorUnit }
+        : item
+    )));
   }, [modulosQtdCalculada]);
 
   const handleUpdateItemQtd = (id: string, newQtd: number) => {
     if (newQtd <= 0) return;
     setKitItens(prev => prev.map(item => {
-      if (item.id === id) {
-        return {
-          ...item,
-          qtd: newQtd,
-          total: newQtd * item.valorUnit
-        };
-      }
-      return item;
+      if (item.id !== id) return item;
+      return {
+        ...item,
+        qtd: newQtd,
+        total: newQtd * item.valorUnit,
+        // Dobrar a quantidade de kits dobra o que vai ser instalado — e é
+        // disso que a baixa de estoque da obra depende. Reescala a partir da
+        // quantidade unitária, e não do valor atual, para não acumular erro a
+        // cada ajuste.
+        componentes: item.componentes?.map(c => ({
+          ...c,
+          qtd: (c.qtdUnitaria ?? c.qtd) * newQtd,
+        })),
+      };
     }));
+  };
+
+  const handleUpdateItemValor = (id: string, novoValor: number) => {
+    if (novoValor < 0) return;
+    setKitItens(prev => prev.map(item => (
+      item.id === id ? { ...item, valorUnit: novoValor, total: item.qtd * novoValor } : item
+    )));
   };
 
   const handleRemoveItem = (id: string) => {
     setKitItens(prev => prev.filter(item => item.id !== id));
   };
 
+  const handleAddCatalogKit = () => {
+    const kit = kits.find(k => k.id === selectedCatalogKitId);
+    if (!kit) return;
+
+    const base = Date.now();
+    const novoItem: PropostaItem = {
+      id: `i-${base}`,
+      kitId: kit.id,
+      descricao: kit.nome,
+      qtd: 1,
+      valorUnit: kit.preco,
+      total: kit.preco,
+      // Os componentes entram com valor 0: o preço está na linha do kit. Eles
+      // existem para o PDF listar o equipamento e para a obra baixar estoque.
+      componentes: kit.itens.map((i, idx) => ({
+        id: `i-${base}-${idx}`,
+        produtoId: i.produtoId,
+        kitId: kit.id,
+        descricao: i.produtoNome,
+        qtd: i.qtd,
+        qtdUnitaria: i.qtd,
+        valorUnit: 0,
+        total: 0,
+      })),
+    };
+
+    setKitItens(prev => [...prev, novoItem]);
+    setIsAddItemOpen(false);
+    setSelectedCatalogKitId('');
+    showToast('Kit adicionado', 'success', `${kit.nome} incluído na proposta.`);
+  };
+
   const handleAddCatalogItem = () => {
     const prod = produtos.find(p => p.id === selectedCatalogProdutoId);
     if (!prod) return;
 
+    const total = qtdAvulso * valorAvulso;
     const newItem: PropostaItem = {
       id: `i-${Date.now()}`,
       produtoId: prod.id,
       descricao: prod.nome,
-      qtd: 1,
-      valorUnit: prod.preco,
-      total: prod.preco
+      qtd: qtdAvulso,
+      // Produto não tem mais preço de cadastro: o valor é o digitado aqui.
+      valorUnit: valorAvulso,
+      total,
     };
 
     setKitItens(prev => [...prev, newItem]);
     setIsAddItemOpen(false);
-    showToast('Item adicionado', 'success', `${prod.nome} incluído no kit.`);
+    // Zera a seleção: sem isso o próximo item abriria com a quantidade e o
+    // valor do anterior já preenchidos, e é fácil salvar sem reparar.
+    setSelectedCatalogProdutoId('');
+    setQtdAvulso(1);
+    setValorAvulso(0);
+    showToast('Item adicionado', 'success', `${prod.nome} incluído na proposta.`);
   };
 
   // Espelha os requisitos mínimos do backend (propostaSchema): sem isso, o
@@ -538,6 +649,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     coberturaPct,
     kitItens,
     valorTotal: valorTotalInvestimento,
+    valorTotalAjustado: valorNegociado,
     economiaMensal,
     economiaAnual,
     economia25Anos,
@@ -557,6 +669,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     status,
     observacoes,
     customLogoUrl,
+    // Vazio vira undefined de propósito: é o que diz ao PDF para usar o
+    // responsável técnico do cadastro da empresa em vez de imprimir em branco.
+    responsavelTecnico: responsavelTecnico.trim() || undefined,
+    crea: crea.trim() || undefined,
     // Endereço em partes: é o CEP que dispara a busca por satélite e o número
     // que a faz cair sobre a edificação. Sem persistir, reabrir a proposta
     // recomeçaria pelo ponto aproximado.
@@ -1023,10 +1139,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsAddItemOpen(true)}
+                onClick={() => {
+                  setAbaCatalogo(kits.length > 0 ? 'kit' : 'produto');
+                  setIsAddItemOpen(true);
+                }}
                 className="text-xs font-bold text-[#004276] hover:underline flex items-center gap-1"
               >
-                + Adicionar item do catálogo
+                + Adicionar kit ou produto
               </button>
             </div>
 
@@ -1044,41 +1163,116 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {kitItens.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50">
-                      <td data-label="DESCRIÇÃO" className="p-3 font-semibold text-slate-900">{item.descricao}</td>
-                      <td data-label="QTD." className="p-3 text-center">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.qtd}
-                          onChange={(e) => handleUpdateItemQtd(item.id, Number(e.target.value))}
-                          className="w-16 p-1 text-center bg-slate-50 border border-slate-200 rounded font-bold"
-                        />
-                      </td>
-                      <td data-label="VALOR UNIT." className="p-3 text-right text-slate-600">
-                        R$ {item.valorUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td data-label="TOTAL" className="p-3 text-right font-bold text-slate-900">
-                        R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td data-label="" className="p-3 text-center">
-                        <button
-                          onClick={() => handleRemoveItem(item.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
+                    <React.Fragment key={item.id}>
+                      <tr className="hover:bg-slate-50">
+                        <td data-label="DESCRIÇÃO" className="p-3 font-semibold text-slate-900">
+                          {item.kitId && (
+                            <span className="bg-blue-50 text-[#004276] font-bold px-1.5 py-0.5 rounded text-[9px] mr-1.5 align-middle">
+                              KIT
+                            </span>
+                          )}
+                          {item.descricao}
+                        </td>
+                        <td data-label="QTD." className="p-3 text-center">
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.qtd}
+                            onChange={(e) => handleUpdateItemQtd(item.id, Number(e.target.value))}
+                            className="w-16 p-1 text-center bg-slate-50 border border-slate-200 rounded font-bold"
+                          />
+                        </td>
+                        <td data-label="VALOR UNIT." className="p-3 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.valorUnit}
+                            onChange={(e) => handleUpdateItemValor(item.id, Number(e.target.value))}
+                            className="w-28 p-1 text-right bg-slate-50 border border-slate-200 rounded font-bold"
+                          />
+                        </td>
+                        <td data-label="TOTAL" className="p-3 text-right font-bold text-slate-900">
+                          R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td data-label="" className="p-3 text-center">
+                          <button
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* Composição do kit: vai no PDF e na baixa de estoque da
+                          obra, mas sem valor — o preço está na linha acima. */}
+                      {(item.componentes ?? []).map((c) => (
+                        <tr key={c.id} className="bg-slate-50/60 text-slate-500">
+                          <td data-label="DESCRIÇÃO" className="p-2 pl-8 text-[11px]">↳ {c.descricao}</td>
+                          <td data-label="QTD." className="p-2 text-center text-[11px] font-bold">
+                            {c.qtd.toLocaleString('pt-BR')}
+                          </td>
+                          <td data-label="VALOR UNIT." className="p-2 text-right text-[11px] italic">incluso no kit</td>
+                          <td data-label="TOTAL" className="p-2 text-right text-[11px]">—</td>
+                          <td className="p-2"></td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
 
-              <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-500">Total do investimento</span>
-                <span className="text-xl font-extrabold text-[#004276]">
-                  R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </span>
+              <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-500">Soma dos itens</span>
+                  <span className="text-sm font-bold text-slate-700">
+                    R$ {somaDosItens.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center gap-3">
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-slate-500">Valor negociado</span>
+                    <p className="text-[10px] text-slate-400">Em branco, vale a soma dos itens.</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={valorNegociado ?? ''}
+                      placeholder={somaDosItens.toFixed(2)}
+                      onChange={(e) => setValorNegociado(
+                        e.target.value === '' ? null : Number(e.target.value),
+                      )}
+                      className="w-36 p-2 text-right bg-white border border-slate-300 rounded-lg font-bold"
+                    />
+                    {valorNegociado !== null && (
+                      <button
+                        type="button"
+                        onClick={() => setValorNegociado(null)}
+                        className="text-[10px] font-bold text-slate-500 hover:text-rose-600 underline"
+                      >
+                        limpar
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center border-t border-slate-200 pt-3">
+                  <span className="text-xs font-bold text-slate-500">
+                    Total do investimento
+                    {valorNegociado !== null && (
+                      <span className="ml-1.5 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                        NEGOCIADO
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-xl font-extrabold text-[#004276]">
+                    R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1269,6 +1463,44 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 />
               </div>
 
+              {/*
+                Responsável técnico DESTA proposta (V017). Vem preenchido com o
+                do cadastro da empresa; trocar aqui vale só para a proposta em
+                edição — antes, mudar o engenheiro exigia editar o cadastro, o
+                que reescrevia a folha de toda proposta já emitida.
+              */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
+                    RESPONSÁVEL TÉCNICO
+                  </label>
+                  <input
+                    type="text"
+                    value={responsavelTecnico}
+                    onChange={(e) => setResponsavelTecnico(e.target.value)}
+                    placeholder="Nome do engenheiro"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-[#004276]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
+                    CREA
+                  </label>
+                  <input
+                    type="text"
+                    value={crea}
+                    onChange={(e) => setCrea(e.target.value)}
+                    placeholder="MG0000023481D"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-[#004276]"
+                  />
+                </div>
+                <p className="sm:col-span-2 text-[11px] text-slate-400 -mt-1">
+                  Sai impresso na folha de equipamentos como “CREA RESPONSÁVEL: {crea.trim() || '—'}
+                  {responsavelTecnico.trim() ? ` — ${responsavelTecnico.trim()}` : ''}”. Em branco, a
+                  proposta usa o responsável técnico do cadastro da empresa.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
                   URL DE LOGO CUSTOMIZADA (OPCIONAL)
@@ -1389,46 +1621,164 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
         </div>
       </div>
 
-      {/* Modal Add Catalog Product */}
+      {/* Modal Add Catalog Kit / Product */}
       {isAddItemOpen && (
-        <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="modal-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="modal-cabecalho bg-[#004276] text-white p-4 flex items-center justify-between">
-              <h3 className="font-bold text-base">Adicionar produto do catálogo</h3>
-              <button onClick={() => setIsAddItemOpen(false)} className="text-slate-300 hover:text-white">✕</button>
-            </div>
-            <div className="modal-corpo p-5 space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-600 mb-1.5">Selecione o produto</label>
-                <select
-                  value={selectedCatalogProdutoId}
-                  onChange={(e) => setSelectedCatalogProdutoId(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+        <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <ModalCabecalho
+              icone={Boxes}
+              titulo="Adicionar à proposta"
+              subtitulo="Kit de instalação ou produto avulso"
+              onFechar={() => setIsAddItemOpen(false)}
+            />
+
+            <div className="modal-corpo campos-modal p-5 space-y-4 text-xs">
+              <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAbaCatalogo('kit')}
+                  className={`flex-1 py-2 rounded-lg font-bold transition ${
+                    abaCatalogo === 'kit' ? 'bg-white text-[#004276] shadow' : 'text-slate-500'
+                  }`}
                 >
-                  {produtos.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.nome} — R$ {p.preco.toLocaleString('pt-BR')} ({p.fornecedorNome})
-                    </option>
-                  ))}
-                </select>
+                  Kit de instalação
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAbaCatalogo('produto')}
+                  className={`flex-1 py-2 rounded-lg font-bold transition ${
+                    abaCatalogo === 'produto' ? 'bg-white text-[#004276] shadow' : 'text-slate-500'
+                  }`}
+                >
+                  Produto avulso
+                </button>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddItemOpen(false)}
-                  className="px-4 py-2 border rounded-xl font-bold text-slate-600"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddCatalogItem}
-                  className="px-4 py-2 bg-[#004276] text-white font-bold rounded-xl shadow"
-                >
-                  Adicionar ao Kit
-                </button>
-              </div>
+              {abaCatalogo === 'kit' ? (
+                <>
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1.5">Selecione o kit</label>
+                    <select
+                      value={selectedCatalogKitId}
+                      onChange={(e) => setSelectedCatalogKitId(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                    >
+                      <option value="">Selecione…</option>
+                      {kits.map(k => (
+                        <option key={k.id} value={k.id}>
+                          {k.nome} — R$ {k.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </option>
+                      ))}
+                    </select>
+                    {kits.length === 0 && (
+                      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 mt-2">
+                        Nenhum kit cadastrado. Monte os kits em Fornecedores e produtos.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Prévia da composição: o que vai ser listado no PDF e
+                      baixado do estoque quando a obra for executada. */}
+                  {(() => {
+                    const kit = kits.find(k => k.id === selectedCatalogKitId);
+                    if (!kit) return null;
+                    return (
+                      <div className="border border-slate-200 rounded-xl p-3 space-y-1 bg-slate-50">
+                        <p className="font-bold text-slate-600 uppercase text-[10px]">Composição</p>
+                        {kit.itens.map(i => (
+                          <div key={i.id} className="flex justify-between text-slate-600">
+                            <span className="truncate">{i.produtoNome}</span>
+                            <span className="font-bold shrink-0 ml-2">{i.qtd.toLocaleString('pt-BR')} un</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  <div className="rodape-modal barra-acoes">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddItemOpen(false)}
+                      className="btn-modal-cancelar"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!selectedCatalogKitId}
+                      onClick={handleAddCatalogKit}
+                      className="btn-modal-salvar"
+                    >
+                      Adicionar Kit
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1.5">Selecione o produto</label>
+                    <select
+                      value={selectedCatalogProdutoId}
+                      onChange={(e) => setSelectedCatalogProdutoId(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                    >
+                      <option value="">Selecione…</option>
+                      {produtos.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.nome} ({p.fornecedorNome})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1.5">Quantidade</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={qtdAvulso}
+                        onChange={(e) => setQtdAvulso(Number(e.target.value))}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1.5">Valor unitário (R$)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={valorAvulso}
+                        onChange={(e) => setValorAvulso(Number(e.target.value))}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-right"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500">
+                    O valor é digitado aqui: o cadastro de produto não guarda preço de venda.
+                    Também dá para ajustar depois, na tabela.
+                  </p>
+
+                  <div className="rodape-modal barra-acoes">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddItemOpen(false)}
+                      className="btn-modal-cancelar"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!selectedCatalogProdutoId}
+                      onClick={handleAddCatalogItem}
+                      className="btn-modal-salvar"
+                    >
+                      Adicionar Produto
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

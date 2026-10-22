@@ -13,6 +13,7 @@ import { agendaRouter } from './routes/agenda.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { catalogoRouter } from './routes/catalogo.routes.js';
 import { contratosRouter } from './routes/contratos.routes.js';
+import { documentosRouter } from './routes/documentos.routes.js';
 import { financeiroRouter } from './routes/financeiro.routes.js';
 import { leadsRouter } from './routes/leads.routes.js';
 import { obrasRouter } from './routes/obras.routes.js';
@@ -150,6 +151,10 @@ export function criarApp(): express.Express {
 
   app.use('/api/auth', authRouter);
   app.use('/api/leads', leadsRouter);
+  // Dois routers no MESMO prefixo, como em /api/whatsapp logo abaixo: o CRUD do
+  // lead num arquivo, tudo que mexe com arquivo anexado no outro. Os caminhos
+  // não colidem — ver o cabeçalho de documentos.routes.ts.
+  app.use('/api/leads', documentosRouter);
   app.use('/api/propostas', propostasRouter);
   app.use('/api/contratos', contratosRouter);
   app.use('/api/obras', obrasRouter);

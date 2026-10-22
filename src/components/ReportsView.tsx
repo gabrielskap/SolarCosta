@@ -23,8 +23,11 @@ interface ReportsViewProps {
 
 type ReportKey = 'vendedores' | 'funil' | 'dre';
 
+// Mesma ordem do kanban (STAGES em LeadsKanbanView): proposta antes da visita.
+// O funil calcula a conversão de cada etapa contra a anterior — fora de ordem,
+// os percentuais passam a comparar etapas que não se sucedem.
 const STAGES_ORDER: LeadStage[] = [
-  'Novo lead', 'Contato feito', 'Visita técnica', 'Proposta enviada', 'Negociação', 'Fechado',
+  'Novo lead', 'Contato feito', 'Proposta enviada', 'Visita técnica', 'Negociação', 'Fechado',
 ];
 
 const STAGE_COLORS: Record<string, string> = {
