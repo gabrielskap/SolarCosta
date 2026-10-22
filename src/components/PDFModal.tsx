@@ -180,7 +180,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
 
   const [observacoesEspecificas, setObservacoesEspecificas] = useState<string>(defaultObservacoes);
 
-  const [consultorNome, setConsultorNome] = useState<string>('Giselle Alonso');
+  const [consultorNome, setConsultorNome] = useState<string>('Giselle Costa');
   const [consultorCargo, setConsultorCargo] = useState<string>('Consultora Especialista em Soluções Fotovoltaicas');
   const [consultorTelefone, setConsultorTelefone] = useState<string>('(31) 98658-8456');
   const [consultorEmail, setConsultorEmail] = useState<string>('solarcostamg@gmail.com');
