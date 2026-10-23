@@ -73,8 +73,8 @@ export function novoLevantamento(potenciaWp:number):LevantamentoTelhado {
   return {versao:1,origem:'manual',larguraM:30,alturaM:20,norte:0,tipologia:'Não informado',escalaConfirmada:false,aguas:[],obstaculos:[],modulo:{modelo:'Informado manualmente',larguraM:1.3,alturaM:2.38,potenciaWp},espacamentoM:0.03,recuoM:0.3,placas:[]};
 }
 
-export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplicar,onCancelar,enderecoBusca='',coordenadaInicial,googleAtivo=true,chaveMaps,onSalvarVista,salvandoVista=false,leadId,projetoCaptura,podeAnexarCaptura=false}:{
-  valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;chaveMaps?:string|null;onSalvarVista?:(l:LevantamentoTelhado)=>void;salvandoVista?:boolean;leadId?:string;projetoCaptura?:string;podeAnexarCaptura?:boolean;
+export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplicar,onCancelar,enderecoBusca='',coordenadaInicial,googleAtivo=true,chaveMaps,onSalvarVista,salvandoVista=false,leadId,propostaId,podeAnexarCaptura=false}:{
+  valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;chaveMaps?:string|null;onSalvarVista?:(l:LevantamentoTelhado)=>void;salvandoVista?:boolean;leadId?:string;propostaId?:string;podeAnexarCaptura?:boolean;
 }) {
   const [d,setD]=useState<LevantamentoTelhado>(()=>structuredClone(valor??novoLevantamento(potenciaWp)));
   const areaMapa=useRef<HTMLDivElement>(null);
@@ -292,7 +292,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
             </>}
             {aba==='imagem'&&<>
             <details className="rounded-lg border bg-slate-50 text-xs"><summary className="cursor-pointer px-3 py-2 font-semibold">Capturar imagem do mapa</summary>
-          <CapturarMapa alvo={areaMapa} leadId={leadId} projeto={projetoCaptura} modo={vista} podeAnexar={podeAnexarCaptura} temPontos={!!(d.aguas.length||d.obstaculos.length||rascunho.length)}/>
+          <CapturarMapa alvo={areaMapa} leadId={leadId} propostaId={propostaId} modo={vista} podeAnexar={podeAnexarCaptura} dados={d} rascunho={!!rascunho.length} onSalva={capturado=>{setD(capturado);(onSalvarVista??onAplicar)(capturado);}}/>
             </details>
               <label className="block text-xs">Imagem própria (até 10 MB)<input type="file" accept="image/jpeg,image/png,image/webp" className="block w-full mt-1" disabled={carregando} onChange={e=>{void importar(e.target.files?.[0]);e.target.value='';}}/></label>
               <p className="text-xs text-slate-500">{d.satelite?'Google Static Maps, até 1280 × 1280 px. Ampliar com zoom não acrescenta detalhes à imagem.':d.imagemNome||'Imagem própria ou planta em metros.'}</p>

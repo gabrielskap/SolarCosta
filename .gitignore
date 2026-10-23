@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+services/telhado-ia/.venv/
+services/telhado-ia/weights/*.pth
+__pycache__/

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { consultarUm, emTransacao, pool, type Ator, type Cliente } from '../db.js';
-import { AppError, conflito, naoEncontrado } from '../errors.js';
+import { naoEncontrado } from '../errors.js';
 import type { CapturaTelhado } from '../domain/capturaTelhado.js';
 import { comporCaptura } from './imagemCaptura.js';
 
@@ -83,7 +83,11 @@ export function iniciarFilaCapturas() {
           e instanceof Error?e.message:'Não foi possível melhorar a imagem. O original foi preservado.';
         await emTransacao(db=>db.query(`UPDATE ${TABELA} SET estado='falhou',mensagem=$2,fundo=NULL,mascara=NULL,terminado_em=now()
           WHERE id=$1 AND estado='processando'`,[j.id,msg]),{id:j.usuario_id,nome:j.usuario_nome});
-      } finally {clearTimeout(timeout);clearInterval(vigiar);ativos.delete(j.id);c.removeListener('error',conexaoPerdida);}
+      } finally {
+        if(controller.signal.aborted&&process.env.TELHADO_IA_URL&&process.env.TELHADO_IA_TOKEN){
+          await fetch(new URL('/jobs/'+j.id,process.env.TELHADO_IA_URL),{method:'DELETE',headers:{Authorization:'Bearer '+process.env.TELHADO_IA_TOKEN},signal:AbortSignal.timeout(5000)}).catch(()=>{});
+        }
+        clearTimeout(timeout);clearInterval(vigiar);ativos.delete(j.id);c.removeListener('error',conexaoPerdida);}
     } catch(e){console.error('[capturas] fila indisponível:',e instanceof Error?e.message:e);}
     finally {if(bloqueado)await c.query('SELECT pg_advisory_unlock(723023)').catch(()=>{});c.release();ocupado=false;}
   };

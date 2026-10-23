@@ -1,0 +1,17 @@
+services:
+  telhado-ia:
+    build: .
+    environment:
+      TELHADO_IA_TOKEN: ${TELHADO_IA_TOKEN:?Configure a mesma credencial na API}
+      TORCH_THREADS: "2"
+    # Somente a rede interna do deploy; não adicionar ports.
+    expose:
+      - "8000"
+    restart: unless-stopped
+    mem_limit: 4g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8000/health',headers={'Authorization':'Bearer '+os.environ['TELHADO_IA_TOKEN']}))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

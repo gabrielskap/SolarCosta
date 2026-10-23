@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Api } from '../../services/api';
-import { enviarCaptura, cancelarCaptura } from '../../services/capturasTelhado';
+import { enviarCaptura, cancelarCaptura, listarCapturas, type CapturaTelhado } from '../../services/capturasTelhado';
 import type { PastaDocumento } from '../../types';
 import type { LevantamentoTelhado } from '../../utils/levantamentoTelhado';
 import { capturarMapaHD, type CapturaHD } from '../../utils/capturarMapaHD';
@@ -12,8 +12,9 @@ export function CapturarMapa({ alvo, leadId, propostaId, modo, podeAnexar, dados
 }) {
   const [pastas,setPastas]=useState<PastaDocumento[]>([]),[pasta,setPasta]=useState('');
   const [ia,setIA]=useState(false),[ocupado,setOcupado]=useState(false),[mensagem,setMensagem]=useState('');
+  const [jobs,setJobs]=useState<CapturaTelhado[]>([]);
   const [pendente,setPendente]=useState<Pendente>();
-  const vivo=useRef(true),trava=useRef(false),cancelado=useRef(false),ac=useRef<AbortController|null>(null),atual=useRef<Pendente>();
+  const vivo=useRef(true),trava=useRef(false),cancelado=useRef(false),ac=useRef<AbortController|null>(null),atual=useRef<Pendente|undefined>(undefined);
   useEffect(()=>{vivo.current=true;return()=>{vivo.current=false;ac.current?.abort();};},[]);
   useEffect(()=>{
     let ativo=true;setPastas([]);setPasta('');setPendente(undefined);atual.current=undefined;
@@ -21,6 +22,11 @@ export function CapturarMapa({ alvo, leadId, propostaId, modo, podeAnexar, dados
       .catch(()=>{if(ativo)setMensagem('Não foi possível carregar as pastas de Documentos.');});
     return()=>{ativo=false;};
   },[leadId,podeAnexar,propostaId]);
+  useEffect(()=>{
+    if(!propostaId)return;let ativo=true,timer:ReturnType<typeof setTimeout>;
+    const atualizar=async()=>{try{const r=await listarCapturas(propostaId);if(ativo)setJobs(r.capturas);}catch{}finally{if(ativo)timer=setTimeout(()=>void atualizar(),5000);}};
+    void atualizar();return()=>{ativo=false;clearTimeout(timer);};
+  },[propostaId]);
   const executar=async(repetir=false)=>{
     if(trava.current||!alvo.current||!propostaId||!leadId||!pasta||!podeAnexar)return;
     trava.current=true;cancelado.current=false;setOcupado(true);setMensagem('Selecione esta aba do sistema. Escape cancela a captura.');
@@ -58,6 +64,7 @@ export function CapturarMapa({ alvo, leadId, propostaId, modo, podeAnexar, dados
       {pendente&&!ocupado&&<button type="button" className="underline" onClick={()=>void executar(true)}>Tentar armazenar novamente</button>}
     </div>
     {impedimento&&<p className="text-slate-500">{impedimento}</p>}
+    {jobs.filter(j=>j.pronta&&['pendente','processando'].includes(j.estado)).map(j=><div key={j.id} className="rounded border p-2"><p role="status">{j.estado==='pendente'?'Aguardando IA':'Melhorando imagem'} — original preservado</p><button type="button" className="mt-1 underline" onClick={()=>void cancelarCaptura(j.proposta_id,j.id).then(()=>setJobs(js=>js.filter(v=>v.id!==j.id))).catch(e=>setMensagem(e.message))}>Cancelar melhoria</button></div>)}
     {mensagem&&<p role="status">{mensagem}</p>}
   </div>;
 }

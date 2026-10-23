@@ -9,7 +9,7 @@ export async function assinaturaCaptura(dados:LevantamentoTelhado) {
   return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 const caminho=(p:string,id?:string)=>`/api/propostas/${p}/capturas-telhado${id?'/'+id:''}`;
-export const listarCapturas=(p:string,assinatura:string)=>http.get<{capturas:CapturaTelhado[]}>(`${caminho(p)}?assinatura=${assinatura}`);
+export const listarCapturas=(p:string,assinatura?:string)=>http.get<{capturas:CapturaTelhado[]}>(`${caminho(p)}${assinatura?'?assinatura='+assinatura:''}`);
 export const cancelarCaptura=(p:string,id:string)=>http.post<{captura:CapturaTelhado}>(`${caminho(p,id)}/cancelar`);
 export const imagemCaptura=(p:string,id:string)=>http.getBlob(`${caminho(p,id)}/imagem`);
 
