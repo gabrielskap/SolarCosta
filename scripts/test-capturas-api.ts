@@ -60,6 +60,7 @@ try{
   assert.equal((await upload(id,'original',Buffer.from('invalido'))).status,422,'valida bytes reais');
   const errado=await sharp(png).resize(33,24).png().toBuffer();
   assert.equal((await upload(id,'original',errado)).status,422,'valida dimensões reais');
+  assert.equal((await upload(id,'original',Buffer.alloc(10*1024*1024+1))).status,413,'limita a 10 MB antes de decodificar');
   assert.equal((await upload(id,'original')).status,200);
   assert.equal((await upload(id,'original')).status,200,'upload do original é idempotente');
   const iniciado=await request(id,'/iniciar');assert.equal(iniciado.data.captura.estado,'concluido');

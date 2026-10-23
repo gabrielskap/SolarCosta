@@ -34,7 +34,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def authorized(self):
-        if len(TOKEN) < 32 or not hmac.compare_digest(self.headers.get('Authorization', ''), f'Bearer {TOKEN}'):
+        if len(TOKEN) < 32 or not hmac.compare_digest(self.headers.get('Authorization', '').encode(), f'Bearer {TOKEN}'.encode()):
             self.reply(401)
             return False
         return True

@@ -1,9 +1,9 @@
-import express, { Router } from 'express';
+import express, { Router, type RequestHandler } from 'express';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { exigirLogin, exigirPermissao, ator, type RequestAutenticado } from '../auth/middleware.js';
 import { consultar, consultarUm, emTransacao } from '../db.js';
-import { asyncHandler, conflito, naoEncontrado } from '../errors.js';
+import { AppError, asyncHandler, conflito, naoEncontrado } from '../errors.js';
 import { levantamentoTelhadoSchema } from '../schemas/levantamentoTelhado.js';
 import { chaveCaptura } from '../domain/capturaTelhado.js';
 import type { LevantamentoTelhado } from '../domain/levantamentoTelhado.js';
@@ -15,6 +15,9 @@ capturasTelhadoRouter.use(exigirLogin);
 const alterar=exigirPermissao('emitir_propostas','anexar_documentos');
 const params=z.object({id:z.string().uuid(),captura:z.string().uuid().optional()});
 const tabela='"SolarCosta_CapturasTelhado"';
+const lerBytes=express.raw({type:['image/png','image/webp'],limit:'10mb'});
+const receberImagem:RequestHandler=(req,res,next)=>lerBytes(req,res,err=>next(err?.type==='entity.too.large'
+  ?new AppError(413,'Cada camada da captura deve ter no máximo 10 MB.','captura_grande'):err));
 
 capturasTelhadoRouter.get('/:id/capturas-telhado',asyncHandler(async(req,res)=>{
   const {id}=params.parse(req.params);await propostaDaCaptura(id);
@@ -50,7 +53,7 @@ capturasTelhadoRouter.get('/:id/capturas-telhado/:captura',asyncHandler(async(re
 
 // Um arquivo por requisição mantém o limite de 10 MB do proxy, sem base64 ou multipart.
 capturasTelhadoRouter.post('/:id/capturas-telhado/:captura/arquivos/:tipo',alterar,
-  express.raw({type:['image/png','image/webp'],limit:'10mb'}),asyncHandler(async(req,res)=>{
+  receberImagem,asyncHandler(async(req,res)=>{
     const {id,captura}=params.parse(req.params);const p=await propostaDaCaptura(id);
     const tipo=z.enum(['original','fundo','mascara']).parse(req.params.tipo);
     const j=await obterCaptura(id,captura!);
