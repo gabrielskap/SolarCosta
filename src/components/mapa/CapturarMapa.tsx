@@ -44,6 +44,7 @@ export function CapturarMapa({ alvo, leadId, propostaId, modo, podeAnexar, dados
       }
       if(!vivo.current||cancelado.current)return;
       if(!repetir){setDestino(true);setMensagem('');return;}
+      atual.current=p;
       setEnviando(true);setMensagem('Armazenando o original e preparando a imagem…');
       const job=await enviarCaptura(p.propostaId,p.id,p.pastaId,p.ia,p.dados,p.pacote,()=>cancelado.current||!vivo.current);
       if(cancelado.current){await cancelarCaptura(p.propostaId,p.id);return;}

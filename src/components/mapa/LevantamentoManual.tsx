@@ -79,6 +79,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
   const [d,setD]=useState<LevantamentoTelhado>(()=>structuredClone(valor??novoLevantamento(potenciaWp)));
   const areaMapa=useRef<HTMLDivElement>(null);
   const [vista,setVista]=useState<'2d'|'satelite'|'3d'>(valor?.vistaGoogle?.modo??'2d');
+  const [revisaoLocal,setRevisaoLocal]=useState(0);
   const localVista=d.satelite??d.localizacao??d.vistaGoogle;
   const chaveSolar=JSON.stringify([d.satelite,d.localizacao]);
   const [analise,setAnalise]=useState<{chave:string;telhado?:TelhadoSolar}>();
@@ -157,7 +158,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
       setLatBusca(String(latitude));setLngBusca(String(longitude));
       setD({...d,...escala,norte:0,imagem:undefined,imagemNome:undefined,dataImagem:undefined,aguas:[],obstaculos:[],placas:[],escalaConfirmada:true,
         localizacao:{latitude,longitude,endereco},satelite:{latitude,longitude,zoom:zoomBusca,larguraPx:640,alturaPx:640},vistaGoogle:{modo:'3d',latitude,longitude}});
-      setConsulta(endereco);setVista('3d');
+      setConsulta(endereco);setRevisaoLocal(v=>v+1);setVista('3d');
     }catch(e){if(turno===rodada.current)setErro(e instanceof Error?e.message:'Falha ao buscar a imagem.');}
     finally{if(turno===rodada.current)setCarregando(false);}
   };
@@ -251,7 +252,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
             <div hidden={vista!=='2d'} className="h-full">
             <FiguraLevantamento carregarImagem={vista==='2d'} centroGoogle={analise?.chave===chaveSolar?analise.telhado?.centro:undefined} expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
             </div>
-            {vista!=='2d'&&localVista&&<GoogleVistaImovel key={vista+localVista.latitude+','+localVista.longitude} chave={chaveMaps} latitude={localVista.latitude} longitude={localVista.longitude} modo={vista} onVoltar={()=>setVista('2d')} edicao={{dados:d,rascunho,ferramenta,aguaSelecionada:agua?.id,onSelecionarAgua:id=>{setAguaSelecionada(id);setAba('telhado');},onPonto:pontoNoMapa,onRemover:id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false),onFechar:fecharPoligono,onAviso:setErro,onCamera:vistaGoogle=>setD(atual=>JSON.stringify(atual.vistaGoogle)===JSON.stringify(vistaGoogle)?atual:({...atual,localizacao:atual.localizacao??{latitude:localVista.latitude,longitude:localVista.longitude},vistaGoogle}))}} onSelecionarLocal={v=>void selecionarLocalGoogle(v)} salvando={salvandoVista||carregando} onSalvarVista={vistaGoogle=>{if(rascunho.length){setErro('Conclua o contorno antes de salvar a vista.');return;}if((d.aguas.length||d.obstaculos.length)&&!d.escalaConfirmada){setErro('Confirme a escala antes de salvar o desenho.');return;}(onSalvarVista??onAplicar)({...d,vistaGoogle});}}/>}
+            {vista!=='2d'&&localVista&&<GoogleVistaImovel key={revisaoLocal+vista+localVista.latitude+','+localVista.longitude} chave={chaveMaps} latitude={localVista.latitude} longitude={localVista.longitude} modo={vista} onVoltar={()=>setVista('2d')} edicao={{dados:d,rascunho,ferramenta,aguaSelecionada:agua?.id,onSelecionarAgua:id=>{setAguaSelecionada(id);setAba('telhado');},onPonto:pontoNoMapa,onRemover:id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false),onFechar:fecharPoligono,onAviso:setErro,onCamera:vistaGoogle=>setD(atual=>JSON.stringify(atual.vistaGoogle)===JSON.stringify(vistaGoogle)?atual:({...atual,localizacao:atual.localizacao??{latitude:localVista.latitude,longitude:localVista.longitude},vistaGoogle}))}} onSelecionarLocal={v=>void selecionarLocalGoogle(v)} salvando={salvandoVista||carregando} onSalvarVista={vistaGoogle=>{if(rascunho.length){setErro('Conclua o contorno antes de salvar a vista.');return;}if((d.aguas.length||d.obstaculos.length)&&!d.escalaConfirmada){setErro('Confirme a escala antes de salvar o desenho.');return;}(onSalvarVista??onAplicar)({...d,vistaGoogle});}}/>}
             {solAberto&&<div className="absolute bottom-2 right-2 z-10 w-[min(300px,calc(100%-16px))] max-h-[calc(100%-56px)] overflow-auto shadow-xl rounded-xl"><SimulacaoSolar compact dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/></div>}
           </div>
           <CapturarMapa alvo={areaMapa} leadId={leadId} propostaId={propostaId} modo={vista} podeAnexar={podeAnexarCaptura} dados={d} rascunho={!!rascunho.length} onSalva={capturado=>{setD(capturado);if(onSalvarVista)onSalvarVista(capturado,true);else onAplicar(capturado);}}/>
