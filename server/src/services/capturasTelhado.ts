@@ -98,6 +98,7 @@ export function iniciarFilaCapturas(opcoes:{conectar?:()=>Promise<Cliente>}={}) 
         },{id:j.usuario_id,nome:j.usuario_nome});
       } catch(e) {
         const msg=controller.signal.aborted?'Processamento cancelado ou limite de 15 minutos atingido. O original foi preservado.':
+          e instanceof TypeError?'O serviço local de IA está indisponível. O original foi preservado.':
           e instanceof Error?e.message:'Não foi possível melhorar a imagem. O original foi preservado.';
         await emTransacao(db=>db.query(`UPDATE ${TABELA} SET estado='falhou',mensagem=$2,fundo=NULL,mascara=NULL,terminado_em=now()
           WHERE id=$1 AND estado='processando'`,[j.id,msg]),{id:j.usuario_id,nome:j.usuario_nome});

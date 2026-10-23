@@ -58,6 +58,8 @@ try{
   const id=await criar();
   assert.equal((await request(id,'/iniciar')).status,409,'não inicia sem original');
   assert.equal((await upload(id,'original',Buffer.from('invalido'))).status,422,'valida bytes reais');
+  const errado=await sharp(png).resize(33,24).png().toBuffer();
+  assert.equal((await upload(id,'original',errado)).status,422,'valida dimensões reais');
   assert.equal((await upload(id,'original')).status,200);
   assert.equal((await upload(id,'original')).status,200,'upload do original é idempotente');
   const iniciado=await request(id,'/iniciar');assert.equal(iniciado.data.captura.estado,'concluido');
@@ -86,6 +88,23 @@ try{
   const lista=await (await fetch(url()+`?assinatura=${job.assinatura}`,{headers})).json();
   assert(lista.capturas.some((j:any)=>j.id===novo),'consulta da prévia encontra assinatura compatível');
   const vazia=await (await fetch(url()+`?assinatura=${'0'.repeat(64)}`,{headers})).json();assert.equal(vazia.capturas.length,0,'desenho diferente não reaproveita captura');
+  process.env.TELHADO_IA_URL='http://127.0.0.1:1';
+  const falho=await criar(true);await upload(falho,'original');await upload(falho,'fundo');await upload(falho,'mascara',mask);await request(falho,'/iniciar');
+  for(let i=0;i<80;i++){
+    job=(await (await fetch(url(falho),{headers})).json()).captura;
+    if(job.estado==='falhou')break;
+    await new Promise(r=>setTimeout(r,100));
+  }
+  assert.equal(job.estado,'falhou');assert(job.original_id&&!job.final_id,'falha da IA preserva original');
+  assert.equal((await fetch(url(falho,'/imagem'),{headers})).status,200,'original ainda disponível após falha');
+  const interrompido=await criar(true);await upload(interrompido,'original');
+  await query(`UPDATE "SolarCosta_CapturasTelhado" SET estado='processando',iniciado_em=now() WHERE id=$1`,[interrompido]);
+  for(let i=0;i<80;i++){
+    job=(await (await fetch(url(interrompido),{headers})).json()).captura;
+    if(job.estado==='falhou')break;
+    await new Promise(r=>setTimeout(r,100));
+  }
+  assert.equal(job.estado,'falhou');assert(job.original_id,'reinício não perde o original');
   console.log('OK API: autenticação, permissão, uploads, idempotência, fila IA, original/final, cancelamento e prévia. Todas as escritas serão revertidas.');
 } finally {
   parar?.();await new Promise<void>(r=>server.close(()=>r()));

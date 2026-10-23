@@ -74,6 +74,13 @@ class ServiceTests(unittest.TestCase):
                 self.assertEqual(self.request('/upscale', 'POST', b'background')[0], 429)
                 self.assertEqual(self.request('/jobs/12345678-1234-1234-1234-123456789012', 'DELETE')[0], 204)
                 self.assertEqual(pending.result()[0], 422)
+            class TimeoutProcess(FakeProcess):
+                def wait(self, timeout=None):
+                    if timeout is not None:
+                        raise server.subprocess.TimeoutExpired('inference', timeout)
+                    return super().wait()
+            with patch.object(server.subprocess, 'Popen', TimeoutProcess):
+                self.assertEqual(self.request('/upscale', 'POST', b'background')[0], 504)
         for _ in range(100):
             if not server.JOBS and not server.LOCK.locked():
                 break

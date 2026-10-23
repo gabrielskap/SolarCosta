@@ -13,11 +13,14 @@ export const listarCapturas=(p:string,assinatura?:string)=>http.get<{capturas:Ca
 export const cancelarCaptura=(p:string,id:string)=>http.post<{captura:CapturaTelhado}>(`${caminho(p,id)}/cancelar`);
 export const imagemCaptura=(p:string,id:string)=>http.getBlob(`${caminho(p,id)}/imagem`);
 
-export async function enviarCaptura(p:string,id:string,pastaId:number,melhorarIA:boolean,dados:LevantamentoTelhado,pacote:CapturaHD) {
+export async function enviarCaptura(p:string,id:string,pastaId:number,melhorarIA:boolean,dados:LevantamentoTelhado,pacote:CapturaHD,cancelado:()=>boolean=()=>false) {
+  const verificar=async()=>{if(cancelado()){await cancelarCaptura(p,id);throw new DOMException('Captura cancelada','AbortError');}};
   let {captura}=await http.post<{captura:CapturaTelhado}>(caminho(p),{id,pastaId,melhorarIA,dados,largura:pacote.largura,altura:pacote.altura});
+  await verificar();
   if(captura.estado!=='pendente'||captura.pronta)return captura;
   const arquivos:Array<['original'|'fundo'|'mascara',Blob]>= [['original',pacote.original]];
   if(melhorarIA)arquivos.push(['fundo',pacote.fundo],['mascara',pacote.mascara]);
-  for(const [tipo,bytes] of arquivos)await http.postBinario(`${caminho(p,id)}/arquivos/${tipo}`,bytes);
+  for(const [tipo,bytes] of arquivos){await verificar();await http.postBinario(`${caminho(p,id)}/arquivos/${tipo}`,bytes);}
+  await verificar();
   return (await http.post<{captura:CapturaTelhado}>(`${caminho(p,id)}/iniciar`)).captura;
 }

@@ -42,7 +42,7 @@ export function CapturarMapa({ alvo, leadId, propostaId, modo, podeAnexar, dados
       }
       if(!vivo.current||cancelado.current)return;
       setMensagem('Armazenando o original e preparando a imagem…');
-      const job=await enviarCaptura(p.propostaId,p.id,p.pastaId,p.ia,p.dados,p.pacote);
+      const job=await enviarCaptura(p.propostaId,p.id,p.pastaId,p.ia,p.dados,p.pacote,()=>cancelado.current||!vivo.current);
       if(cancelado.current){await cancelarCaptura(p.propostaId,p.id);return;}
       if(vivo.current){setPendente(undefined);setMensagem(job.mensagem??'Captura salva.');onSalva(p.dados);}
     }catch(e){if(vivo.current)setMensagem(cancelado.current||e instanceof DOMException&&['AbortError','NotAllowedError'].includes(e.name)

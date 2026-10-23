@@ -39,7 +39,9 @@ export async function capturarMapaHD(alvo:HTMLElement,signal?:AbortSignal):Promi
       const evento=new CustomEvent('solarcosta-preparar-captura',{detail:{resolve,reject,signal:combinado},cancelable:true});
       alvo.dispatchEvent(evento);if(!evento.defaultPrevented)reject(new Error('A captura HD está disponível na visualização 3D.'));
     });
-    const r=alvo.getBoundingClientRect(),fator=Math.min((window.innerWidth-16)/r.width,(window.innerHeight-16)/r.height);
+    const r=alvo.getBoundingClientRect();
+    if(r.width<=0||r.height<=0)throw new Error('Mantenha o mapa visível antes de capturar.');
+    const fator=Math.min((window.innerWidth-16)/r.width,(window.innerHeight-16)/r.height);
     const width=r.width*fator,height=r.height*fator;
     if(raiz)raiz.style.zIndex='10000';
     Object.assign(alvo.style,{position:'fixed',left:`${(window.innerWidth-width)/2}px`,top:`${(window.innerHeight-height)/2}px`,width:`${width}px`,height:`${height}px`,zIndex:'10000',background:'#f1f5f9',pointerEvents:'none'});
