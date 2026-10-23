@@ -4,7 +4,7 @@ O editor oferece Levantamento 2D, Satélite interativo e Google 3D. A busca por 
 
 As ferramentas de águas, obstáculos, módulos, remoção, calibração, histórico e luz solar usam a mesma geometria em metros nas três vistas. No 3D, polígonos e pontos são posicionados em relação à superfície visível (`RELATIVE_TO_MESH`), para não desaparecerem sob os edifícios; não são uma reconstrução física da superfície do telhado. Sombras são projeções aproximadas no plano, sem perdas energéticas em kWh.
 
-O clique nativo fornece as coordenadas de preferência. Quando o navegador não entrega o evento ou sua posição, um clique sem arrasto pode ser projetado no plano horizontal da câmera. Essa alternativa usa campo de visão, orientação, inclinação, distância e dimensões reais do elemento 3D. Cliques no horizonte são rejeitados. A projeção alternativa é aproximada e não equivale a uma medição sobre a malha inclinada do telhado.
+O clique nativo fornece as coordenadas sobre a malha do Google. Durante o desenho, a calibração e a inserção/remoção de placas, o movimento do ponteiro é interceptado para não arrastar a câmera junto com o clique; o duplo clique também não aproxima o mapa. Use **Mover mapa e selecionar água** para navegar. Os eventos de pressionar e soltar continuam chegando ao Google para obter a posição real do clique. Sem posição nativa, o editor informa o problema em vez de estimar um ponto no solo.
 
 Localize o imóvel primeiro e clique na vista desejada. O SDK e o mapa só são inicializados ao abrir uma vista Google. Alternar de volta ao 2D preserva a geometria e sua câmera. Cada nova abertura de uma vista Google pode gerar consumo do provedor.
 
@@ -14,7 +14,7 @@ Localize o imóvel primeiro e clique na vista desejada. O SDK e o mapa só são 
 2. Posicionar o centro da câmera no imóvel e clicar em **Usar centro como endereço do 2D**. O ponto escolhido torna-se a origem da imagem 2D e do desenho, com consulta reversa de endereço pelo servidor. Se ela falhar, manter as coordenadas e informar que o nome não está disponível; nunca reutilizar o endereço antigo como se fosse o novo.
 3. Quando já existe desenho, confirmar a substituição antes de reiniciar os contornos do imóvel anterior. O histórico mantém o estado anterior para desfazer.
 4. Desenhar dentro da moldura georreferenciada. Cliques fora dela mostram orientação para substituir o local, em vez de serem descartados silenciosamente. Os pontos do rascunho têm marcadores numerados.
-5. Clicar em **Salvar vista 3D e desenho**. O fluxo grava a proposta usando seu salvamento existente; dados obrigatórios da proposta continuam necessários. O editor só fecha após sucesso. Falhas mantêm o desenho disponível para nova tentativa.
+5. Clicar em **Salvar vista 3D e desenho**. O fluxo grava a proposta usando seu salvamento existente; dados obrigatórios da proposta continuam necessários. O editor permanece aberto após salvar para continuar o levantamento. Falhas mantêm o desenho disponível para nova tentativa.
 
 O JSON `levantamento_telhado` preserva `vistaGoogle` com modo, latitude, longitude, altitude, distância, inclinação e orientação da câmera; no satélite, preserva o zoom. Ao reabrir, a vista salva é restaurada. A geometria permanece no mesmo JSON. Não é necessário alterar a coluna do banco. É permitido guardar uma vista antes de distribuir módulos; isso não define a quantidade instalada como zero nem substitui o dimensionamento comercial. Geometria com escala não confirmada continua sendo rejeitada.
 
