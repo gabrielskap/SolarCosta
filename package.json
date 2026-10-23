@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev:server": "npm --prefix server run dev",
+    "dev:all": "concurrently -n 'front,api' -c 'cyan,magenta' \"npm run dev\" \"npm run dev:server\"",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
@@ -31,6 +33,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^10.0.6",
     "esbuild": "^0.25.12",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
