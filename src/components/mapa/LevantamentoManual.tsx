@@ -2,6 +2,7 @@ import { listarPlacas, type PlacaSolar } from '../../services/placas';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { areaPoligono, areaSuperficie, distribuir, escalaSatelite, inserirPlaca, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
 import { AnaliseSolar } from './AnaliseSolar';
+import { GoogleVistaImovel } from './GoogleVistaImovel';
 import { aplicarSegmento } from '../../utils/analiseSolar';
 import { geocodificar, imagemTelhado, type TelhadoSolar } from '../../services/solar';
 import { incidenciaDireta, posicaoSolar } from '../../utils/posicaoSolar';
@@ -67,10 +68,12 @@ export function novoLevantamento(potenciaWp:number):LevantamentoTelhado {
   return {versao:1,origem:'manual',larguraM:30,alturaM:20,norte:0,tipologia:'Não informado',escalaConfirmada:false,aguas:[],obstaculos:[],modulo:{modelo:'Informado manualmente',larguraM:1.3,alturaM:2.38,potenciaWp},espacamentoM:0.03,recuoM:0.3,placas:[]};
 }
 
-export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplicar,onCancelar,enderecoBusca='',coordenadaInicial,googleAtivo=true}:{
-  valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;
+export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplicar,onCancelar,enderecoBusca='',coordenadaInicial,googleAtivo=true,chaveMaps}:{
+  valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;chaveMaps?:string|null;
 }) {
   const [d,setD]=useState<LevantamentoTelhado>(()=>structuredClone(valor??novoLevantamento(potenciaWp)));
+  const [vista,setVista]=useState<'2d'|'satelite'|'3d'>('2d');
+  const localVista=d.satelite??d.localizacao??coordenadaInicial;
   const chaveSolar=JSON.stringify([d.satelite,d.localizacao]);
   const [analise,setAnalise]=useState<{chave:string;telhado?:TelhadoSolar}>();
   const [catalogo,setCatalogo]=useState<PlacaSolar[]>([]);
@@ -203,18 +206,25 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
       </div>
       <div className="flex-1 min-h-0 grid grid-rows-[minmax(180px,1fr)_minmax(0,30dvh)] md:grid-rows-1 md:grid-cols-[minmax(0,1fr)_300px]">
         <main className="min-h-0 min-w-0 flex flex-col gap-2 p-2 bg-slate-50">
-          <div className="shrink-0 flex flex-wrap gap-1.5 items-center">
+          <div className="shrink-0 flex flex-wrap gap-1.5 items-center" aria-label="Visualização do imóvel">
+            {(['2d','satelite','3d'] as const).map(v=><button type="button" key={v} aria-pressed={vista===v} disabled={v!=='2d'&&!localVista} onClick={()=>setVista(v)} className={`px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40 ${vista===v?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{({'2d':'Levantamento 2D',satelite:'Satélite interativo','3d':'Google 3D'})[v]}</button>)}
+            {!localVista&&<span className="text-xs text-slate-500">Localize o imóvel para abrir os mapas Google.</span>}
+          </div>
+          <div hidden={vista!=='2d'} className="shrink-0 flex flex-wrap gap-1.5 items-center">
             {(['agua','obstaculo','placa','remover','calibrar'] as const).map(t=><button type="button" key={t} aria-pressed={ferramenta===t} onClick={()=>{setFerramenta(t);setRevisaoFerramenta(v=>v+1);setRascunho([]);if(t==='placa')setAba('modulos');}} className={`px-2 py-1.5 rounded-lg text-xs font-bold ${ferramenta===t?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{({agua:'Desenhar água',obstaculo:'Obstáculo',placa:'Inserir placa',remover:'Remover placa',calibrar:'Calibrar'})[t]}</button>)}
             {(ferramenta==='agua'||ferramenta==='obstaculo')&&<button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" onClick={fecharPoligono} disabled={rascunho.length<3}>Concluir contorno</button>}
             <button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" disabled={!historico.length} onClick={()=>{setD(historico[historico.length-1]);setHistorico(h=>h.slice(0,-1));setRascunho([]);}}>Desfazer</button>
             <button type="button" aria-pressed={solAberto} className={`border rounded-lg px-2 py-1.5 text-xs font-bold ${solAberto?'bg-amber-200':'bg-white'}`} onClick={()=>setSolAberto(v=>!v)}>Luz solar</button>
           </div>
           <div className="flex-1 min-h-0 relative">
+            <div hidden={vista!=='2d'} className="h-full">
             <FiguraLevantamento centroGoogle={analise?.chave===chaveSolar?analise.telhado?.centro:undefined} expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
-            {solAberto&&<div className="absolute bottom-2 right-2 z-10 w-[min(300px,calc(100%-16px))] max-h-[calc(100%-56px)] overflow-auto shadow-xl rounded-xl"><SimulacaoSolar compact dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/></div>}
+            </div>
+            {vista!=='2d'&&localVista&&<GoogleVistaImovel key={vista+localVista.latitude+','+localVista.longitude} chave={chaveMaps} latitude={localVista.latitude} longitude={localVista.longitude} modo={vista} onVoltar={()=>setVista('2d')}/>}
+            {vista==='2d'&&solAberto&&<div className="absolute bottom-2 right-2 z-10 w-[min(300px,calc(100%-16px))] max-h-[calc(100%-56px)] overflow-auto shadow-xl rounded-xl"><SimulacaoSolar compact dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/></div>}
           </div>
           <div className="shrink-0 flex flex-wrap gap-2 items-center text-xs text-slate-600">
-            <p className="flex-1 min-w-40">{instrucao}</p>
+            <p className="flex-1 min-w-40">{vista==='2d'?instrucao:'Volte ao levantamento 2D para medir e editar as placas.'}</p>
             {rascunho.length>0&&<><span>{rascunho.length} pontos · {areaRascunho.toFixed(2)} m² em desenho</span><button type="button" className="underline" onClick={()=>setRascunho(r=>r.slice(0,-1))}>Retirar ponto</button></>}
             {ferramenta==='calibrar'&&<><label>Distância (m)<input type="number" min={0.1} step={0.1} className="border rounded w-20 px-1" value={distancia} onChange={e=>{if(e.target.valueAsNumber>0)setDistancia(e.target.valueAsNumber);}}/></label><button type="button" className="bg-sky-100 rounded px-2 py-1 disabled:opacity-40" disabled={rascunho.length!==2} onClick={calibrar}>Aplicar escala</button></>}
           </div>

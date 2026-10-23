@@ -82,6 +82,9 @@ export function criarApp(): express.Express {
             'https://viacep.com.br',
             'https://cloudflareinsights.com',
             ...hostsGoogleMaps,
+            // Streaming de imagens/terreno e malha da vista 3D Google.
+            'https://*.googleapis.com',
+            'https://*.gstatic.com',
           ],
           'img-src': [
             "'self'",
