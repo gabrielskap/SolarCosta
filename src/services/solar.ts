@@ -113,6 +113,13 @@ export interface ResultadoTelhado extends Resultado {
   telhado?: TelhadoSolar;
 }
 
+export async function enderecoPorCoordenada(latitude:number,longitude:number):Promise<ResultadoGeocoding> {
+  try {
+    const r=await http.get<{endereco:EnderecoGeocodificado}>(`/api/solar/endereco?lat=${latitude}&lng=${longitude}`);
+    return {ok:true,endereco:r.endereco};
+  } catch(e) {return mensagemDe(e,'Endereço indisponível para o ponto selecionado.');}
+}
+
 /** Coordenada -> análise de telhado do Google. */
 export async function buscarTelhado(
   latitude: number,

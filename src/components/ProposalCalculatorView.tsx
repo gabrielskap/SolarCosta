@@ -104,6 +104,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const editando = !!propostaExistente;
   const [levantamentoTelhado, setLevantamentoTelhado] = useState<LevantamentoTelhado | undefined>(propostaExistente?.levantamentoTelhado);
   const [editorManualAberto, setEditorManualAberto] = useState(false);
+  const [salvarVistaPendente,setSalvarVistaPendente] = useState(false);
 
   // Lead vinculado. Sem lead selecionado o formulário nasce em branco — antes
   // ele caía num lead fixo de demonstração ("Cristiano Duarte Almeida").
@@ -440,7 +441,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     areaEstimadaM2,                     // ~ 69.96 m²
     coberturaPct,                       // ~ 100.3%
   } = dimensionar({ consumoKwh, hsp, perdasPct, moduloWp,
-    quantidadeInstalada: levantamentoTelhado?.placas.length,
+    quantidadeInstalada: levantamentoTelhado?.placas.length || undefined,
     dimensoesModulo: levantamentoTelhado?.modulo ?? dadosTelhado?.layoutModulo,
   });
 
@@ -629,7 +630,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       showToast('Kit vazio', 'error', 'Adicione pelo menos um item do catálogo antes de gerar a proposta.');
       return false;
     }
-    if (!rascunho && levantamentoTelhado) {
+    if (!rascunho && levantamentoTelhado?.placas.length) {
       const contar = (itens: PropostaItem[]): number => itens.reduce((s,item)=>s+
         (item.componentes?.length ? contar(item.componentes) :
           (item.produtoId && slugDoTipoProduto(produtos.find(p=>p.id===item.produtoId)?.tipo)==='modulo' ? item.qtd : 0)),0);
@@ -721,15 +722,23 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       const salva = await onSaveProposal(montarProposta(
         gerarPDF ? 'enviada' : propostaSalva.current?.status ?? 'rascunho',
       ));
-      if (!salva) return;
+      if (!salva) return false;
       propostaSalva.current = salva;
       setUltimaVersaoSalva(new Date());
       if (gerarPDF) onOpenPDF('proposta', salva);
+      return true;
     } finally {
       salvando.current = false;
       setSalvamentoEmCurso(false);
     }
   };
+  useEffect(()=>{
+    if(!salvarVistaPendente)return;
+    void salvar(false,false).then(ok=>{
+      if(ok){setEditorManualAberto(false);showToast('Vista e desenho salvos','success','O levantamento reabrira no enquadramento salvo.');}
+      else showToast('Vista ainda nao gravada','error','Confira os dados obrigatorios da proposta e tente novamente.');
+    }).catch(()=>showToast('Falha ao salvar a vista','error','O desenho permanece no editor. Tente novamente.')).finally(()=>setSalvarVistaPendente(false));
+  },[salvarVistaPendente]);
   const salvarAutomaticamente = useRef(() => { void salvar(false, true); });
   salvarAutomaticamente.current = () => { void salvar(false, true); };
   useEffect(() => {
@@ -1195,7 +1204,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <button type="button" className="text-xs text-red-700 underline" onClick={()=>setLevantamentoTelhado(undefined)}>Remover levantamento manual</button>
             </>}
           </div>
-          {editorManualAberto&&<LevantamentoManual valor={levantamentoTelhado} potenciaWp={moduloWp} hsp={hsp} perdasPct={perdasPct} alvo={modulosQtdCalculada} enderecoBusca={consultaAuto||[endereco,numeroEndereco,cidade].filter(Boolean).join(', ')} coordenadaInicial={coordenadaLead??undefined} chaveMaps={config?.google_maps_browser_key} googleAtivo={config?.google_maps_ativo!==false} onCancelar={()=>setEditorManualAberto(false)} onAplicar={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);setDadosTelhado(null);setEditorManualAberto(false);showToast('Levantamento aplicado','success','Potência e geração recalculadas. Confira os equipamentos do kit.');}}/>}
+          {editorManualAberto&&<LevantamentoManual valor={levantamentoTelhado} potenciaWp={moduloWp} hsp={hsp} perdasPct={perdasPct} alvo={modulosQtdCalculada} enderecoBusca={consultaAuto||[endereco,numeroEndereco,cidade].filter(Boolean).join(', ')} coordenadaInicial={coordenadaLead??undefined} salvandoVista={salvamentoEmCurso||salvarVistaPendente} onSalvarVista={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);if(l.placas.length)setDadosTelhado(null);setSalvarVistaPendente(true);}} chaveMaps={config?.google_maps_browser_key} googleAtivo={config?.google_maps_ativo!==false} onCancelar={()=>setEditorManualAberto(false)} onAplicar={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);setDadosTelhado(null);setEditorManualAberto(false);showToast('Levantamento aplicado','success','Potência e geração recalculadas. Confira os equipamentos do kit.');}}/>}
           </div>
 
           {/* Section 3: Kit de equipamentos e serviços */}

@@ -8,6 +8,16 @@ export interface EdicaoGoogle {
   dados: LevantamentoTelhado; rascunho: PontoLocal[]; ferramenta: string;
   onPonto: (p: PontoLocal) => void; onRemover: (id: string) => void; onFechar: () => void;
   onCamera: (vista: NonNullable<LevantamentoTelhado['vistaGoogle']>) => void;
+  onAviso: (mensagem: string) => void;
+}
+
+export function lerCameraGoogle(modo: 'satelite' | '3d', mapa: any): NonNullable<LevantamentoTelhado['vistaGoogle']> | null {
+  if (modo === 'satelite') {
+    const centro = mapa.getCenter();
+    return centro ? { modo, latitude: centro.lat(), longitude: centro.lng(), zoom: mapa.getZoom() } : null;
+  }
+  const c = mapa.center;
+  return c ? { modo, latitude: c.lat, longitude: c.lng, altitude: c.altitude, distanciaM: mapa.range, inclinacao: mapa.tilt, azimute: ((mapa.heading ?? 0) % 360 + 360) % 360 } : null;
 }
 
 export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | null, modo: 'satelite' | '3d', edicao: EdicaoGoogle) {
@@ -18,12 +28,14 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     const clique = (e: any) => {
       const { dados, ferramenta, rascunho, onPonto, onRemover, onFechar } = atual.current;
       const geo = criarGeorreferencia(dados), pos = e.latLng ?? e.position;
-      if (!geo || !pos) return;
+      if (!geo) { atual.current.onAviso('Clique em Usar centro como endereço do 2D para fixar a área antes de desenhar.'); return; }
+      if (!pos) { atual.current.onAviso('Clique sobre o imóvel, evitando o horizonte e os controles do mapa.'); return; }
       const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
       const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       const p = geo.paraLocal(lat, lng);
-      if (p.x < 0 || p.y < 0 || p.x > dados.larguraM || p.y > dados.alturaM) return;
+      if (p.x < 0 || p.y < 0 || p.x > dados.larguraM || p.y > dados.alturaM) { atual.current.onAviso('Ponto fora da moldura do projeto. Use o centro como endereço do 2D para substituir a localização anterior.'); return; }
+      e.preventDefault?.();
       if (ferramenta === 'remover') {
         const placa = [...dados.placas].reverse().find(a => dentro(p, a.pontos));
         if (placa) onRemover(placa.id);
@@ -34,13 +46,8 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     const camera = () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        if (modo === 'satelite') {
-          const centro = mapa.getCenter();
-          if (centro) atual.current.onCamera({ modo, latitude: centro.lat(), longitude: centro.lng(), zoom: mapa.getZoom() });
-        } else if (mapa.center) {
-          const c = mapa.center;
-          atual.current.onCamera({ modo, latitude: c.lat, longitude: c.lng, altitude: c.altitude, distanciaM: mapa.range, inclinacao: mapa.tilt, azimute: ((mapa.heading ?? 0) % 360 + 360) % 360 });
-        }
+        const vista = lerCameraGoogle(modo, mapa);
+        if (vista) atual.current.onCamera(vista);
       }, 200);
     };
     if (modo === 'satelite') {
@@ -91,6 +98,16 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       o.pontos.forEach((p, i) => { const j = (i + 1) % o.pontos.length; desenhar([p, o.pontos[j], topo[j], topo[i]], '#334155'); });
     }
     desenhar(edicao.rascunho, '#d97706', true);
+    edicao.rascunho.forEach((p,i)=>{
+      if(modo==='satelite') {
+        const maps=(window as any).google.maps;
+        const marker=new maps.Marker({map:mapa,position:geo.paraGeo(p),label:String(i+1),clickable:false,icon:{path:maps.SymbolPath.CIRCLE,scale:7,fillColor:i===0?'#16a34a':'#d97706',fillOpacity:1,strokeWeight:1}});
+        remover.push(()=>marker.setMap(null));
+      }else{
+        const marker=new biblioteca.Marker3DElement({position:geo.paraGeo(p),label:String(i+1),altitudeMode:'CLAMP_TO_GROUND',drawsWhenOccluded:true});
+        mapa.append(marker);remover.push(()=>marker.remove());
+      }
+    });
     // Moldura delimita a área georreferenciada do projeto durante a navegação.
     desenhar([{ x: 0, y: 0 }, { x: d.larguraM, y: 0 }, { x: d.larguraM, y: d.alturaM }, { x: 0, y: d.alturaM }, { x: 0, y: 0 }], '#64748b', true);
     return () => remover.forEach(fn => fn());

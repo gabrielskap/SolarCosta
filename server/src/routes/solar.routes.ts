@@ -11,7 +11,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { exigirLogin, type RequestAutenticado } from '../auth/middleware.js';
 import { asyncHandler } from '../errors.js';
-import { geocodificar, imagemSatelite, telhadoPorCoordenada } from '../services/googleSolar.js';
+import { geocodificar, imagemSatelite, telhadoPorCoordenada, enderecoPorCoordenada } from '../services/googleSolar.js';
 
 export const solarRouter = Router();
 solarRouter.use(exigirLogin);
@@ -46,6 +46,11 @@ const coordenadaSchema = z.object({
 });
 
 /** Coordenada -> segmentos de telhado + máscara de área útil. */
+solarRouter.get('/endereco', limiteAnaliseSolar, asyncHandler(async(req,res)=>{
+  const {lat,lng}=coordenadaSchema.parse(req.query);
+  res.json({endereco:await enderecoPorCoordenada(lat,lng)});
+}));
+
 solarRouter.get(
   '/telhado',
   limiteAnaliseSolar,

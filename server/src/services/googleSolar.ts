@@ -118,6 +118,26 @@ export async function geocodificar(endereco: string): Promise<EnderecoGeocodific
 
 /* =========================================================== SOLAR API == */
 
+/** Endereço do ponto escolhido manualmente no mapa, sem reutilizar o endereço anterior. */
+export async function enderecoPorCoordenada(latitude: number, longitude: number): Promise<EnderecoGeocodificado> {
+  const chave = exigirChave();
+  return consultarCacheGoogle(`reverse:${latitude.toFixed(6)},${longitude.toFixed(6)}`, async () => {
+    let json;
+    try {
+      const r = await fetch(`${GEOCODING_URL}?latlng=${latitude},${longitude}&language=pt-BR&key=${chave}`, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) throw new Error('provider');
+      json = await r.json() as { status: string; results: Array<{ formatted_address: string; place_id: string; address_components: Array<{long_name:string;short_name:string;types:string[]}> }> };
+    } catch { throw new AppError(502, 'Não foi possível consultar o endereço deste ponto.', 'geocoding_falhou'); }
+    const r = json.results?.[0];
+    if (json.status !== 'OK' || !r) throw new AppError(404, 'Não há endereço disponível para este ponto. As coordenadas podem ser utilizadas.', 'endereco_nao_encontrado');
+    const comp = r.address_components;
+    return { latitude, longitude, precisao: 'APPROXIMATE', confiavel: false,
+      enderecoFormatado: r.formatted_address, placeId: r.place_id,
+      bairro: componente(comp, 'sublocality_level_1') ?? componente(comp, 'sublocality'),
+      cidade: componente(comp, 'administrative_area_level_2'), uf: componente(comp, 'administrative_area_level_1', true), cep: componente(comp, 'postal_code') };
+  });
+}
+
 export interface SegmentoTelhado {
   indice: number;
   /** Graus, 0 = norte, sentido horário. Define a rotação das fileiras. */
