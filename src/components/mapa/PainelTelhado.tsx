@@ -7,7 +7,7 @@
 // quantidade de módulos continua vindo de dimensionar(); esta tela só mostra
 // onde eles caberiam e avisa quando não cabem.
 //
-// A busca acontece SOZINHA quando o CEP é preenchido em Dados do cliente: o
+// A busca acontece SOZINHA quando o CEP e o número são preenchidos em Dados do cliente: o
 // pai monta a string `consultaAuto` e este componente decide quando gastar as
 // chamadas. Cada rodada custa três requisições faturadas ao Google (Geocoding,
 // Solar API e Static Maps), então quase tudo que parece paranoia aqui —
@@ -112,6 +112,7 @@ interface PainelTelhadoProps {
   cidade: string;
   /** Só para decidir se vale insistir num ponto aproximado; a consulta já vem montada. */
   numeroEndereco: string;
+  localizacaoPronta: boolean;
   /**
    * Endereço pronto para geocodificar, montado pelo pai a partir do ViaCEP.
    * Nulo = não há alvo automático (CEP ainda não consultado, ou CEP geral de
@@ -132,6 +133,7 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
   endereco,
   cidade,
   numeroEndereco,
+  localizacaoPronta,
   consultaAuto,
   coordenadaConhecida,
   modulosQtd,
@@ -485,6 +487,7 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
 
   /** Botão: parte do que estiver escrito no formulário, erros como toast. */
   const buscarManual = () => {
+    if (!localizacaoPronta) return;
     const consulta = [endereco, cidade].filter(Boolean).join(', ');
     if (!consulta.trim()) {
       showToast('Endereço vazio', 'error', 'Preencha o endereço da instalação antes de buscar.');
@@ -495,24 +498,24 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
 
   // O CEP (ou o número) mudou o alvo: o painel se vira sozinho.
   useEffect(() => {
-    if (!consultaAuto || autoBloqueada) return;
+    if (!localizacaoPronta || !consultaAuto || autoBloqueada) return;
     if (ultimaBusca.current === `end:${consultaAuto}`) return;
     const timer = setTimeout(() => void buscarPorEndereco(consultaAuto, 'auto'), ESPERA_AUTO_MS);
     return () => clearTimeout(timer);
     // Só o ALVO importa aqui. `buscarPorEndereco` é recriada a cada render e
     // nas deps dispararia a busca de novo a cada renderização do pai.
-  }, [consultaAuto, autoBloqueada]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [consultaAuto, autoBloqueada, localizacaoPronta]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lead com coordenada gravada: abre já localizado, sem geocodificar.
   useEffect(() => {
-    if (!coordenadaConhecida || autoBloqueada) return;
+    if (!localizacaoPronta || !coordenadaConhecida || autoBloqueada) return;
     const chave = `coord:${coordenadaConhecida.latitude.toFixed(6)},${coordenadaConhecida.longitude.toFixed(6)}`;
     // O pai recria o objeto a cada render; sem a chave em texto isto buscaria
     // a cada renderização.
     if (ultimaBusca.current === chave) return;
     ultimaBusca.current = chave;
     void buscarPorCoordenada(coordenadaConhecida);
-  }, [coordenadaConhecida, autoBloqueada]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [coordenadaConhecida, autoBloqueada, localizacaoPronta]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * O kit mudou depois da busca: reposiciona SEM gastar chamada e REGRAVA o
@@ -711,7 +714,8 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
             <button
               type="button"
               onClick={buscarManual}
-              disabled={buscando}
+              disabled={buscando || !localizacaoPronta}
+              title={!localizacaoPronta ? 'Preencha o CEP completo e o número da residência.' : undefined}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#004276] text-white text-[11px] font-bold hover:bg-[#003158] disabled:opacity-50 transition"
             >
               {buscando ? (

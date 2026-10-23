@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileCheck, Printer, Send, CheckCircle2, FileText, Search, Plus, Trash2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Send, FileText, Plus, MessageCircle } from 'lucide-react';
 import { Contrato, Lead, Proposta, User } from '../types';
 import { param, type ConfigApp } from '../services/api';
 import { EnviarPorWhatsApp } from './whatsapp/EnviarPorWhatsApp';
@@ -27,7 +27,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   currentUser,
   showToast
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'novo' | 'lista'>('novo');
+  const [activeSubTab, setActiveSubTab] = useState<'novo' | 'lista'>('lista');
 
   /** Contrato escolhido para envio; null com o modal fechado. */
   const [enviando, setEnviando] = useState<Contrato | null>(null);
@@ -38,6 +38,25 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   // Origem do contrato: escolher uma proposta preenche o formulário inteiro.
   // Antes, o formulário nascia com um cliente fixo de demonstração.
   const [propostaOrigemId, setPropostaOrigemId] = useState('');
+  const [buscaProposta, setBuscaProposta] = useState('');
+  const [propostasAbertas, setPropostasAbertas] = useState(false);
+  const [indiceProposta, setIndiceProposta] = useState(0);
+  const normalizarBusca = (texto: string) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const propostasFiltradas = propostas.filter((p) =>
+    normalizarBusca(`${p.numero} ${p.clienteNome}`).includes(normalizarBusca(buscaProposta)),
+  );
+  const opcoesProposta = [
+    { id: '', label: 'Nenhuma — preencher manualmente' },
+    ...propostasFiltradas.map((p) => ({
+      id: p.id,
+      label: `${p.numero} · ${p.clienteNome} · ${p.potenciaKwp} kWp`,
+    })),
+  ];
+  const selecionarProposta = (id: string) => {
+    setPropostaOrigemId(id);
+    setBuscaProposta('');
+    setPropostasAbertas(false);
+  };
 
   // Form State
   const [clienteNome, setClienteNome] = useState('');
@@ -265,33 +284,36 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#004276]">Contrato de prestação de serviço</h1>
+          <h1 className="text-2xl font-extrabold text-[#004276]">
+            {activeSubTab === 'lista' ? 'Contratos' : 'Contrato de prestação de serviço'}
+          </h1>
           <p className="text-xs text-slate-500 font-semibold mt-0.5">
-            {propostaOrigem
+            {activeSubTab === 'lista'
+              ? `${contratos.length} contrato(s) cadastrado(s)`
+              : propostaOrigem
               ? `Gerado a partir da proposta nº ${propostaOrigem.numero} · ${propostaOrigem.clienteNome}`
               : 'Novo contrato · número gerado ao emitir'}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 gap-y-2">
-          <div className="bg-slate-200 p-1 rounded-xl flex flex-wrap gap-1">
+          {activeSubTab === 'lista' ? (
             <button
               onClick={() => setActiveSubTab('novo')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeSubTab === 'novo' ? 'bg-[#004276] text-white' : 'text-slate-700'
-              }`}
+              className="inline-flex items-center gap-2 px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow transition"
             >
-              Emitir contrato
+              <Plus className="w-4 h-4" />
+              Cadastrar novo contrato
             </button>
+          ) : (
             <button
               onClick={() => setActiveSubTab('lista')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeSubTab === 'lista' ? 'bg-[#004276] text-white' : 'text-slate-700'
-              }`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition"
             >
-              Contratos emitidos ({contratos.length})
+              <ArrowLeft className="w-4 h-4" />
+              Voltar para contratos
             </button>
-          </div>
+          )}
 
           {activeSubTab === 'novo' && (
             <>
@@ -328,22 +350,67 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
               </div>
 
               {/* Escolher a proposta preenche cliente, sistema e condições. */}
-              <div>
-                <label className="block font-bold text-slate-500 uppercase mb-1 text-xs">
+              <div className="relative" onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setPropostasAbertas(false);
+                  setBuscaProposta('');
+                }
+              }}>
+                <label htmlFor="proposta-origem" className="block font-bold text-slate-500 uppercase mb-1 text-xs">
                   GERAR A PARTIR DA PROPOSTA
                 </label>
-                <select
-                  value={propostaOrigemId}
-                  onChange={(e) => setPropostaOrigemId(e.target.value)}
+                <input
+                  id="proposta-origem"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={propostasAbertas}
+                  aria-controls="opcoes-proposta"
+                  aria-activedescendant={propostasAbertas ? `opcao-proposta-${indiceProposta}` : undefined}
+                  autoComplete="off"
+                  placeholder="Buscar por número ou cliente"
+                  value={propostasAbertas ? buscaProposta : propostaOrigem
+                    ? `${propostaOrigem.numero} · ${propostaOrigem.clienteNome} · ${propostaOrigem.potenciaKwp} kWp`
+                    : ''}
+                  onFocus={() => { setPropostasAbertas(true); setIndiceProposta(0); }}
+                  onClick={() => { setPropostasAbertas(true); setIndiceProposta(0); }}
+                  onChange={(e) => {
+                    setBuscaProposta(e.target.value);
+                    setPropostasAbertas(true);
+                    setIndiceProposta(0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setPropostasAbertas(true);
+                      setIndiceProposta((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + opcoesProposta.length) % opcoesProposta.length);
+                    } else if (e.key === 'Enter' && propostasAbertas) {
+                      e.preventDefault();
+                      selecionarProposta(opcoesProposta[indiceProposta]?.id ?? '');
+                    } else if (e.key === 'Escape') {
+                      setPropostasAbertas(false);
+                      setBuscaProposta('');
+                    }
+                  }}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-                >
-                  <option value="">Nenhuma — preencher manualmente</option>
-                  {propostas.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.numero} · {p.clienteNome} · {p.potenciaKwp} kWp
-                    </option>
-                  ))}
-                </select>
+                />
+                {propostasAbertas && (
+                  <ul id="opcoes-proposta" role="listbox" aria-label="Propostas disponíveis"
+                    className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                    {opcoesProposta.map((opcao, indice) => (
+                      <li key={opcao.id} id={`opcao-proposta-${indice}`} role="option"
+                        aria-selected={opcao.id === propostaOrigemId}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setIndiceProposta(indice)}
+                        onClick={() => selecionarProposta(opcao.id)}
+                        className={`cursor-pointer px-3 py-2.5 text-xs font-semibold ${indice === indiceProposta ? 'bg-blue-50 text-[#004276]' : 'text-slate-700'}`}>
+                        {opcao.label}
+                      </li>
+                    ))}
+                    {propostasFiltradas.length === 0 && (
+                      <li className="px-3 py-2.5 text-xs text-slate-500">Nenhuma proposta encontrada.</li>
+                    )}
+                  </ul>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
@@ -730,7 +797,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
       ) : (
         /* LIST OF EMITTED CONTRACTS */
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <h3 className="font-bold text-slate-900 text-base">Contratos Emitidos</h3>
+          <h3 className="font-bold text-slate-900 text-base">Contratos cadastrados</h3>
           <div className="border border-slate-200 rounded-xl overflow-hidden">
             <table className="tabela-mobile w-full text-left text-xs">
               <thead>
@@ -746,6 +813,13 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
+                {contratos.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-slate-500">
+                      Nenhum contrato cadastrado. Clique em “Cadastrar novo contrato” para começar.
+                    </td>
+                  </tr>
+                )}
                 {contratos.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50">
                     <td data-label="Contrato" className="p-3 font-bold text-[#004276]">Nº {c.numero}</td>

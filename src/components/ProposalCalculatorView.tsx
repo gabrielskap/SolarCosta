@@ -103,6 +103,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     propostaExistente?.leadId || currentLeadId || '',
   );
   const linkedLead = leads.find(l => l.id === leadIdSelecionado);
+  const [buscaLead, setBuscaLead] = useState('');
+  const [listaLeadsAberta, setListaLeadsAberta] = useState(false);
+  const [indiceLead, setIndiceLead] = useState(0);
+  const rotuloLead = (lead: typeof leads[number]) => [lead.numero, lead.nome, lead.cidade].filter(Boolean).join(' · ');
+  const normalizarBusca = (valor: string) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const leadsFiltrados = leads.filter(lead => normalizarBusca(rotuloLead(lead)).includes(normalizarBusca(buscaLead)));
+  const escolherLead = (id: string) => { setLeadIdSelecionado(id); setListaLeadsAberta(false); setBuscaLead(''); };
 
   /*
    * Form states.
@@ -156,7 +163,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * responde 404 e as chamadas do Google saem da fatura à toa. Nesses casos o
    * consultor digita o endereço e usa o botão de busca manual.
    */
-  const consultaAuto = enderecoViaCep?.logradouro
+  const localizacaoPronta = onlyDigits(cep).length === 8 && !!numeroEndereco.trim();
+  const consultaAuto = localizacaoPronta && enderecoViaCep?.logradouro && onlyDigits(enderecoViaCep.cep) === onlyDigits(cep)
     ? buildEnderecoBusca(enderecoViaCep, numeroEndereco)
     : null;
 
@@ -790,23 +798,44 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </span>
             </div>
 
-            {/* Seletor de lead: preenche os campos com o cliente escolhido. */}
-            <div>
-              <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                LEAD VINCULADO
-              </label>
-              <select
-                value={leadIdSelecionado}
-                onChange={(e) => setLeadIdSelecionado(e.target.value)}
+            <div className="relative" onBlur={e => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setListaLeadsAberta(false);
+            }}>
+              <label htmlFor="lead-vinculado" className="block text-[11px] font-bold uppercase text-slate-500 mb-1">LEAD VINCULADO</label>
+              <input
+                id="lead-vinculado" role="combobox" aria-autocomplete="list"
+                aria-expanded={listaLeadsAberta} aria-controls="opcoes-lead"
+                aria-activedescendant={listaLeadsAberta ? 'opcao-lead-' + indiceLead : undefined}
+                autoComplete="off"
+                value={listaLeadsAberta ? buscaLead : linkedLead ? rotuloLead(linkedLead) : ''}
+                placeholder="Pesquisar por nome, número ou cidade"
+                onFocus={() => { setBuscaLead(''); setIndiceLead(0); setListaLeadsAberta(true); }}
+                onChange={e => { setBuscaLead(e.target.value); setIndiceLead(0); setListaLeadsAberta(true); }}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') setListaLeadsAberta(false);
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault(); setListaLeadsAberta(true);
+                    setIndiceLead(i => Math.max(0, Math.min(leadsFiltrados.length, i + (e.key === 'ArrowDown' ? 1 : -1))));
+                  }
+                  if (e.key === 'Enter' && listaLeadsAberta) {
+                    e.preventDefault(); escolherLead(indiceLead === 0 ? '' : leadsFiltrados[indiceLead - 1]?.id ?? '');
+                  }
+                }}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-              >
-                <option value="">Nenhum — preencher manualmente</option>
-                {leads.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.numero} · {l.nome} {l.cidade ? `· ${l.cidade}` : ''}
-                  </option>
-                ))}
-              </select>
+              />
+              {listaLeadsAberta && (
+                <div id="opcoes-lead" role="listbox" aria-label="Leads" className="absolute z-30 mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                  {[null, ...leadsFiltrados].map((lead, indice) => (
+                    <button key={lead?.id ?? 'nenhum'} id={'opcao-lead-' + indice} type="button" role="option"
+                      aria-selected={lead ? lead.id === leadIdSelecionado : !leadIdSelecionado}
+                      onMouseDown={e => e.preventDefault()} onMouseEnter={() => setIndiceLead(indice)}
+                      onClick={() => escolherLead(lead?.id ?? '')}
+                      className={'block w-full px-3 py-2.5 text-left text-xs ' + (indice === indiceLead ? 'bg-slate-100 text-[#004276]' : 'text-slate-700')}
+                    >{lead ? rotuloLead(lead) : 'Nenhum — preencher manualmente'}</button>
+                  ))}
+                  {leadsFiltrados.length === 0 && <p className="px-3 py-2.5 text-xs text-slate-500">Nenhum lead encontrado.</p>}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1118,6 +1147,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             endereco={endereco}
             cidade={cidade}
             numeroEndereco={numeroEndereco}
+            localizacaoPronta={localizacaoPronta}
             consultaAuto={consultaAuto}
             coordenadaConhecida={coordenadaLead}
             modulosQtd={modulosQtdCalculada}

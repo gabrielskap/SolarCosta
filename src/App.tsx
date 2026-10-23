@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
-import { Routes, Route, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useParams, useSearchParams, useMatch } from 'react-router-dom';
 import { Api, Auth, carregarTudo, type ConfigApp } from './services/api';
 import { aoExpirarSessao, ErroApi } from './services/http';
 import {
@@ -169,6 +169,7 @@ const EditarPropostaRoute: React.FC<NovaPropostaRouteProps> = (props) => {
 };
 
 export default function App() {
+  const isLeadsPage = useMatch('/sistema/leads');
   // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [verificandoSessao, setVerificandoSessao] = useState(true);
@@ -801,8 +802,8 @@ export default function App() {
             kanban, passos da calculadora — têm `overflow-x-auto` próprio e não
             dependem deste elemento.
           */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 lg:px-8 py-6 w-full min-h-0">
-            <div className="max-w-[1920px] mx-auto w-full">
+          <main className={`flex-1 ${isLeadsPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} px-4 sm:px-6 lg:px-8 py-6 w-full min-h-0`}>
+            <div className={`max-w-[1920px] mx-auto w-full ${isLeadsPage ? 'h-full min-h-0' : ''}`}>
               <Suspense
                 fallback={
                   <div className="flex items-center justify-center py-24">

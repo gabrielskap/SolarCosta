@@ -192,9 +192,9 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col flex-1 min-h-0 gap-6 overflow-hidden">
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div>
           <h1 className="text-2xl font-extrabold text-[#004276]">Leads</h1>
           <p className="text-xs font-semibold text-slate-500 mt-0.5">
@@ -234,7 +234,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-200 shrink-0">
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setFilterMode('todos')}
@@ -307,7 +307,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
         inteiro. Aqui as etapas viram abas e só a selecionada é montada; no
         desktop (md+) isto some e o quadro volta a ser um quadro.
       */}
-      <div className="md:hidden -mx-4 px-4 flex gap-2 overflow-x-auto pb-1">
+      <div className="md:hidden -mx-4 px-4 flex gap-2 overflow-x-auto pb-1 shrink-0">
         {STAGES.map((stage) => {
           const qtd = filteredLeads.filter((l) => l.etapa === stage).length;
           const ativa = stage === etapaVisivel;
@@ -335,7 +335,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
       </div>
 
       {/* KANBAN BOARD */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 overflow-x-auto pb-6">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4 flex-1 min-h-0 overflow-x-auto overflow-y-hidden pb-2">
         {STAGES.map((stage) => {
           const stageLeads = filteredLeads.filter(l => l.etapa === stage);
           const stageTotal = stageLeads.reduce((acc, l) => acc + l.valor, 0);
@@ -345,12 +345,12 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
               key={stage}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, stage)}
-              className={`bg-slate-100/90 rounded-2xl p-3 flex-col gap-3 min-w-[240px] border border-slate-200/80 ${
+              className={`bg-slate-100/90 rounded-2xl p-3 flex-col gap-3 min-h-0 min-w-[240px] border border-slate-200/80 ${
                 stage === etapaVisivel ? 'flex' : 'hidden md:flex'
               }`}
             >
               {/* Column Header */}
-              <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+              <div className="flex items-center justify-between pb-1 border-b border-slate-200 shrink-0">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
                   <h3 className="font-bold text-xs text-slate-800 truncate">{stage}</h3>
@@ -359,12 +359,12 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                   {stageLeads.length}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-bold text-left -mt-2">
+              <p className="text-[11px] text-slate-500 font-bold text-left -mt-2 shrink-0">
                 R$ {stageTotal.toLocaleString('pt-BR')}
               </p>
 
               {/* Cards List */}
-              <div className="flex-1 space-y-3 min-h-[400px]">
+              <div className="flex-1 min-h-0 space-y-3 overflow-y-auto overscroll-contain">
                 {stageLeads.map((lead) => (
                   <div
                     key={lead.id}

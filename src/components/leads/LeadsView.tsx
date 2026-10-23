@@ -31,8 +31,8 @@ export const LeadsView: React.FC<LeadsViewProps> = ({
     }`;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
+    <div className="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
+      <div className="flex items-center gap-2 shrink-0">
         <button type="button" onClick={() => setModo('kanban')} className={pill(modo === 'kanban')}>
           <Kanban className="w-3.5 h-3.5" /> Kanban
         </button>
@@ -52,6 +52,7 @@ export const LeadsView: React.FC<LeadsViewProps> = ({
           showToast={showToast}
         />
       ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto">
         <LeadsListView
           leads={leads}
           users={users}
@@ -62,6 +63,7 @@ export const LeadsView: React.FC<LeadsViewProps> = ({
           onDeleteLead={onDeleteLead}
           showToast={showToast}
         />
+        </div>
       )}
     </div>
   );
