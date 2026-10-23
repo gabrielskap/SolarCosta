@@ -760,8 +760,8 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
 
       {!telhado && !buscando && !avisoAuto && !recursoDesligado && (
         <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-4">
-          Preencha o <strong>CEP</strong> e o <strong>número</strong> em Dados do cliente — a
-          busca acontece sozinha. Quanto mais completo o endereço, maior a chance de o ponto
+          Preencha o <strong>CEP</strong> e o <strong>número</strong> em Dados do cliente e
+          clique em Buscar por Satélite. Quanto mais completo o endereço, maior a chance de o ponto
           cair sobre a edificação.
         </p>
       )}
@@ -881,8 +881,7 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
                 tom="atencao"
                 resumo={`Levantamento de ${Math.floor(idade)} anos atrás`}
               >
-                {descreverImagem(telhado)}. A foto ao lado é atualizada e em alta resolução,
-                mas o levantamento de inclinação/águas foi feito na data de referência.
+                {descreverImagem(telhado)}. A foto do mapa pode ter outra data de captura.
                 Confira se a disposição dos módulos bate com o telhado visível na foto.
               </Aviso>
             )}
@@ -894,7 +893,7 @@ export const PainelTelhado: React.FC<PainelTelhadoProps> = ({
               </summary>
               <p className="px-3 pb-3 text-[10px] leading-relaxed text-slate-500">
                 Endereço localizado: {geo?.enderecoFormatado}. {descreverImagem(telhado)}. Foto
-                de satélite atualizada via Google Maps em alta resolução. O posicionamento usa
+                via Google Maps com data de captura não informada. O posicionamento usa
                 o módulo de {modulo.larguraM.toFixed(2)} × {modulo.alturaM.toFixed(2)} m
                 {dimEditor ? ' definido no editor' : ' cadastrado nos parâmetros'}, com{' '}
                 {espacamentoM.toFixed(2)} m de espaçamento.

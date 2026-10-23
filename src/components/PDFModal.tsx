@@ -11,6 +11,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Line
 import logoFull from '../assets/logo-full.png';
 import logoIcon from '../assets/logo-icon.png';
 import { TelhadoSatelite } from './mapa/TelhadoSatelite';
+import { FiguraLevantamento } from './mapa/LevantamentoManual';
+import { areaSuperficie } from '../utils/levantamentoTelhado';
 import { imagemTelhado } from '../services/solar';
 import { enquadrar, rosaDosVentos } from '../utils/layoutModulos';
 import { formatarLinhaDigitavel, formatCurrencyBRL } from '../utils/format';
@@ -193,7 +195,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
   // não permite guardar a imagem indefinidamente. O que a proposta guarda é o
   // layout (dado nosso) e a coordenada — a foto é recomposta a cada impressão.
   const [imagemTelhadoUrl, setImagemTelhadoUrl] = useState<string | null>(null);
-  const temLayout = !!prop?.layoutModulos?.length;
+  const temLayout = !prop?.levantamentoTelhado && !!prop?.layoutModulos?.length;
 
   // O enquadramento sai dos MÓDULOS, não da coordenada do endereço: é o mesmo
   // cálculo que o TelhadoSatelite usa para desenhar o SVG. Centrar a imagem no
@@ -1169,7 +1171,26 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                       Só sai quando a proposta foi gerada com a busca por
                       satélite; sem layout a página inteira é omitida em vez
                       de imprimir um quadro vazio. */}
-                  {temLayout && enqTelhado && (
+                  {prop?.levantamentoTelhado && (
+                    <PageWrapper pageNum={5} title="Localização & Layout do Telhado">
+                      <div className="space-y-4">
+                        <h2 className="text-2xl font-black text-[#004276]">LEVANTAMENTO DO TELHADO</h2>
+                        <p>{prop.endereco}, {prop.cidade}</p>
+                        <FiguraLevantamento dados={prop.levantamentoTelhado}/>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <p>Módulos: {prop.levantamentoTelhado.placas.length} · {prop.levantamentoTelhado.modulo.potenciaWp} Wp</p>
+                          <p>Modelo: {prop.levantamentoTelhado.modulo.modelo}</p>
+                          <p>Superfície: {areaSuperficie(prop.levantamentoTelhado).toFixed(2)} m²</p>
+                          <p>Tipologia: {prop.levantamentoTelhado.tipologia}</p>
+                          <p>Geração estimada: {prop.geracaoMediaKwh} kWh/mês</p>
+                          <p>Geração anual estimada: {Math.round(prop.geracaoMediaKwh*12)} kWh</p>
+                        </div>
+                        <table className="w-full text-sm"><thead><tr><th className="text-left">Água</th><th>Inclinação</th><th>Azimute</th><th>Módulos</th></tr></thead><tbody>{prop.levantamentoTelhado.aguas.map(a=><tr key={a.id}><td>{a.nome}</td><td className="text-center">{a.inclinacao}°</td><td className="text-center">{a.azimute}°</td><td className="text-center">{prop.levantamentoTelhado!.placas.filter(p=>p.aguaId===a.id).length}</td></tr>)}</tbody></table>
+                        <p className="text-xs text-slate-500">Levantamento manual com escala confirmada pelo responsável. Data da imagem: {prop.levantamentoTelhado.dataImagem||'não informada'}. Geração estimada por HSP e perdas, sem modelagem de sombras. A imagem não verifica condições estruturais ou elétricas.</p>
+                      </div>
+                    </PageWrapper>
+                  )}
+                  {!prop?.levantamentoTelhado && temLayout && enqTelhado && (
                     <PageWrapper pageNum={5} title="Localização & Layout do Telhado">
                       <div className="space-y-5">
                         <div className="text-center space-y-1">

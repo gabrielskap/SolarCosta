@@ -616,7 +616,7 @@ export const EditorTelhado: React.FC<EditorTelhadoProps> = ({
   const foraDaMascara = modulos.filter((m) => !dentroDaMascara(ctx, m.centro)).length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col">
+    <div className="fixed inset-0 z-[80] bg-slate-950/80 backdrop-blur-sm flex flex-col">
       {/* Cabeçalho */}
       <div className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3 bg-[#004276] text-white shrink-0">
         <div className="min-w-0">

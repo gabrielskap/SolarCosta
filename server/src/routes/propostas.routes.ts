@@ -7,6 +7,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { levantamentoTelhadoSchema } from '../schemas/levantamentoTelhado.js';
 import { consultar, consultarUm, emTransacao } from '../db.js';
 import { asyncHandler, naoEncontrado, AppError } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
@@ -34,6 +35,7 @@ const itemSchema = z.object({
 });
 
 const propostaSchema = z.object({
+  levantamento_telhado: levantamentoTelhadoSchema.nullish(),
   lead_id: z.string().uuid().nullish(),
   cliente_nome: z.string().min(1, 'Informe o cliente.').max(200),
   cpf_cnpj: z.string().max(20).nullish(),
@@ -332,6 +334,7 @@ propostasRouter.post(
         ],
       );
       const novoId = rows[0]!.id as string;
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb WHERE id = $1`, [novoId, paraJsonb(d.levantamento_telhado)]);
 
       await inserirItens(cliente, novoId, d.itens);
       await propagarCoordenadaAoLead(cliente, d.lead_id, d);
@@ -436,6 +439,7 @@ propostasRouter.put(
       );
 
       // Itens são substituídos por inteiro; o trigger recalcula valor_total.
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb WHERE id = $1`, [id, paraJsonb(d.levantamento_telhado)]);
       await cliente.query(`DELETE FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1`, [id]);
       await inserirItens(cliente, id, d.itens);
       await propagarCoordenadaAoLead(cliente, d.lead_id, d);

@@ -22,6 +22,8 @@ export interface EntradaDimensionamento {
   perdasPct: number;
   /** Potência de um módulo, em Wp. */
   moduloWp: number;
+  quantidadeInstalada?: number;
+  dimensoesModulo?: { larguraM: number; alturaM: number };
 }
 
 export interface Dimensionamento {
@@ -61,6 +63,8 @@ export function dimensionar({
   hsp,
   perdasPct,
   moduloWp,
+  quantidadeInstalada,
+  dimensoesModulo,
 }: EntradaDimensionamento): Dimensionamento {
   const geracaoPorKwp = 30 * hsp * (1 - perdasPct / 100);
 
@@ -80,7 +84,8 @@ export function dimensionar({
   const geracaoPorModulo = (moduloWp / 1000) * geracaoPorKwp;
 
   // Quantidade de módulos necessária para suprir o consumo informado
-  const modulosQtd = Math.ceil(consumoKwh / geracaoPorModulo);
+  const modulosQtd = quantidadeInstalada != null && Number.isInteger(quantidadeInstalada) && quantidadeInstalada >= 0
+    ? quantidadeInstalada : Math.ceil(consumoKwh / geracaoPorModulo);
 
   // Potência real instalada do sistema (kWp) = Qtd Módulos · Potência do Módulo
   const potenciaKwp = Number(((modulosQtd * moduloWp) / 1000).toFixed(2));
@@ -90,7 +95,7 @@ export function dimensionar({
 
   // Área estimada ocupada pelo conjunto de placas (m²)
   const areaEstimadaM2 = Number(
-    (modulosQtd * MODULO_LARGURA_M * MODULO_ALTURA_M).toFixed(2),
+    (modulosQtd * (dimensoesModulo?.larguraM ?? MODULO_LARGURA_M) * (dimensoesModulo?.alturaM ?? MODULO_ALTURA_M)).toFixed(2),
   );
 
   // Percentual de cobertura do consumo pela geração dos módulos instalados

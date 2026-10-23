@@ -140,9 +140,7 @@ export function dataMaisRecente(t: TelhadoSolar): { ano: number; mes: number; di
  * Legenda profissional para o quadro de satélite, destacando a foto atual em alta resolução.
  */
 export function legendaSatelite(t?: TelhadoSolar | null): string {
-  const data = t ? (t.imagemProcessadaData || t.imagemData) : null;
-  const ano = data ? data.ano : new Date().getFullYear();
-  return `Satélite em alta resolução • Google Maps (${ano})`;
+  return 'Imagem Google Maps • data de captura não informada';
 }
 
 /**
@@ -150,19 +148,19 @@ export function legendaSatelite(t?: TelhadoSolar | null): string {
  */
 export function descreverImagem(t: TelhadoSolar): string {
   const data = dataMaisRecente(t);
-  if (!data) return 'Análise solar Google atualizada.';
+  if (!data) return 'Análise solar Google com data desconhecida';
   const { ano, mes, dia } = data;
   const d = String(dia).padStart(2, '0');
   const m = String(mes).padStart(2, '0');
   if (t.imagemProcessadaData) {
-    return `Análise do telhado atualizada em ${d}/${m}/${ano}`;
+    return `Dados do telhado processados em ${d}/${m}/${ano} (não é a data de captura da foto)`;
   }
   return `Análise do telhado baseada em levantamento de ${d}/${m}/${ano}`;
 }
 
 /** Quantos anos tem a análise — calculado pela data mais recente de processamento. */
 export function idadeImagemAnos(t: TelhadoSolar): number | null {
-  const data = dataMaisRecente(t);
+  const data = t.imagemData;
   if (!data) return null;
   const foto = new Date(data.ano, data.mes - 1, data.dia);
   return (Date.now() - foto.getTime()) / (365.25 * 24 * 60 * 60 * 1000);

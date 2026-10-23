@@ -13,6 +13,8 @@ import {
 import { paramNum, type ConfigApp } from '../services/api';
 import { slugDoTipoProduto } from '../services/mappers';
 import { dimensionar, projetarEconomia, parcelaFinanciamento } from '../utils/solar';
+import { FiguraLevantamento, LevantamentoManual } from './mapa/LevantamentoManual';
+import { areaSuperficie, type LevantamentoTelhado } from '../utils/levantamentoTelhado';
 import {
   PainelTelhado,
   type CoordenadaConhecida,
@@ -96,6 +98,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * já preenchido.
    */
   const editando = !!propostaExistente;
+  const [levantamentoTelhado, setLevantamentoTelhado] = useState<LevantamentoTelhado | undefined>(propostaExistente?.levantamentoTelhado);
+  const [editorManualAberto, setEditorManualAberto] = useState(false);
 
   // Lead vinculado. Sem lead selecionado o formulário nasce em branco — antes
   // ele caía num lead fixo de demonstração ("Cristiano Duarte Almeida").
@@ -431,7 +435,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     geracaoMediaKwh,                    // ~ 1003 kWh
     areaEstimadaM2,                     // ~ 69.96 m²
     coberturaPct,                       // ~ 100.3%
-  } = dimensionar({ consumoKwh, hsp, perdasPct, moduloWp });
+  } = dimensionar({ consumoKwh, hsp, perdasPct, moduloWp,
+    quantidadeInstalada: levantamentoTelhado?.placas.length,
+    dimensoesModulo: levantamentoTelhado?.modulo ?? dadosTelhado?.layoutModulo,
+  });
 
   // Soma dos itens. Só o topo da lista entra: componente de kit tem valor 0,
   // porque o preço do kit está na linha-pai.
@@ -617,6 +624,15 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       showToast('Kit vazio', 'error', 'Adicione pelo menos um item do catálogo antes de gerar a proposta.');
       return false;
     }
+    if (levantamentoTelhado) {
+      const contar = (itens: PropostaItem[]): number => itens.reduce((s,item)=>s+
+        (item.componentes?.length ? contar(item.componentes) :
+          (item.produtoId && slugDoTipoProduto(produtos.find(p=>p.id===item.produtoId)?.tipo)==='modulo' ? item.qtd : 0)),0);
+      if (contar(kitItens)!==levantamentoTelhado.placas.length) {
+        showToast('Equipamentos diferentes do layout', 'error', `O levantamento tem ${levantamentoTelhado.placas.length} módulos. Ajuste os itens/kit para a mesma quantidade antes de salvar.`);
+        return false;
+      }
+    }
     return true;
   };
 
@@ -689,6 +705,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     // Telhado por satélite: espalhado só quando a busca foi feita, para não
     // gravar um punhado de nulos em proposta que não usou o recurso.
     ...(dadosTelhado ?? {}),
+    levantamentoTelhado,
   });
 
   const handleSaveDraft = () => {
@@ -1143,18 +1160,31 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               Buscar de novo aqui embaixo substitui o que está guardado.
             </div>
           )}
-          <PainelTelhado
+          <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+            <h3 className="font-bold text-slate-800">LOCALIZAÇÃO E LAYOUT DO TELHADO</h3>
+            <p className="text-xs text-slate-600">Faça o levantamento sobre uma imagem própria ou uma planta em metros, sem serviços pagos.</p>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" className="bg-sky-800 text-white rounded-lg px-4 py-2 font-bold text-sm" onClick={()=>setEditorManualAberto(true)}>{levantamentoTelhado?'Editar levantamento manual':'Desenhar telhado / importar imagem'}</button>
+            </div>
+            {levantamentoTelhado&&<>
+              <FiguraLevantamento dados={levantamentoTelhado}/>
+              <p className="text-sm text-slate-700">{levantamentoTelhado.placas.length} módulos · {areaSuperficie(levantamentoTelhado).toFixed(1)} m² de superfície · {levantamentoTelhado.modulo.modelo} · {levantamentoTelhado.modulo.potenciaWp} Wp</p>
+              <p className="text-xs text-slate-500">A potência e a geração usam a quantidade aplicada. Confira os componentes e quantidades do kit antes de salvar; kits mantêm seu preço fechado.</p>
+              <button type="button" className="text-xs text-red-700 underline" onClick={()=>setLevantamentoTelhado(undefined)}>Remover levantamento manual</button>
+            </>}
+          </div>
+          {editorManualAberto&&<LevantamentoManual valor={levantamentoTelhado} potenciaWp={moduloWp} hsp={hsp} perdasPct={perdasPct} alvo={modulosQtdCalculada} onCancelar={()=>setEditorManualAberto(false)} onAplicar={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);setDadosTelhado(null);setEditorManualAberto(false);showToast('Levantamento aplicado','success','Potência e geração recalculadas. Confira os equipamentos do kit.');}} painelSatelite={<PainelTelhado
             endereco={endereco}
             cidade={cidade}
             numeroEndereco={numeroEndereco}
             localizacaoPronta={localizacaoPronta}
-            consultaAuto={consultaAuto}
-            coordenadaConhecida={coordenadaLead}
+            consultaAuto={null}
+            coordenadaConhecida={null}
             modulosQtd={modulosQtdCalculada}
             config={config}
-            onResultado={setDadosTelhado}
+            onResultado={r=>{setDadosTelhado(r);if(r)setLevantamentoTelhado(undefined);}}
             showToast={showToast}
-          />
+          />}/>}
           </div>
 
           {/* Section 3: Kit de equipamentos e serviços */}

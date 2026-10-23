@@ -483,6 +483,7 @@ export function paraProposta(linha: any): Proposta {
     // false, então proposta antiga chega como automática, que é o correto.
     layoutAjusteManual: linha.layout_ajuste_manual ?? undefined,
     layoutModulo: linha.layout_modulo ?? undefined,
+    levantamentoTelhado: linha.levantamento_telhado ?? undefined,
   };
 }
 
@@ -540,6 +541,7 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     layout_segmentos: p.layoutSegmentos ?? null,
     layout_ajuste_manual: p.layoutAjusteManual ?? false,
     layout_modulo: p.layoutModulo ?? null,
+    levantamento_telhado: p.levantamentoTelhado ?? null,
     itens: p.kitItens.map((i) => ({
       produto_id: i.produtoId ?? null,
       kit_id: i.kitId ?? null,

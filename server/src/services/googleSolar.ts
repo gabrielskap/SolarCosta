@@ -12,38 +12,12 @@
 
 import { config } from '../config.js';
 import { AppError } from '../errors.js';
+import { normalizarEndereco } from './cacheConsulta.js';
+import { consultarCacheGoogle } from './cacheGoogle.js';
 
 const GEOCODING_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 const SOLAR_URL = 'https://solar.googleapis.com/v1/buildingInsights:findClosest';
 const STATIC_URL = 'https://maps.googleapis.com/maps/api/staticmap';
-
-/**
- * Cache em memória. O ToS do Google permite cache temporário de conteúdo por
- * até 30 dias; o `place_id` é a única coisa que pode ser guardada para sempre
- * (e é o que persistimos no banco). 24h é folgado para o uso real: o consultor
- * abre o mesmo endereço várias vezes enquanto monta a proposta.
- *
- * `buildingInsights` é a chamada mais cara do conjunto — sem cache, cada
- * ajuste de kit na tela viraria uma cobrança.
- */
-const TTL_MS = 24 * 60 * 60 * 1000;
-const cache = new Map<string, { em: number; valor: unknown }>();
-
-function doCache<T>(chave: string): T | null {
-  const hit = cache.get(chave);
-  if (!hit) return null;
-  if (Date.now() - hit.em > TTL_MS) {
-    cache.delete(chave);
-    return null;
-  }
-  return hit.valor as T;
-}
-
-function guardar(chave: string, valor: unknown): void {
-  // Limite defensivo: sem isso o Map cresce para sempre num processo longo.
-  if (cache.size > 500) cache.clear();
-  cache.set(chave, { em: Date.now(), valor });
-}
 
 function exigirChave(): string {
   if (!config.GOOGLE_MAPS_SERVER_KEY) {
@@ -96,50 +70,49 @@ function componente(
 
 export async function geocodificar(endereco: string): Promise<EnderecoGeocodificado> {
   const chave = exigirChave();
-  const emCache = doCache<EnderecoGeocodificado>(`geo:${endereco}`);
-  if (emCache) return emCache;
+  return consultarCacheGoogle(`geo:${normalizarEndereco(endereco)}`, async () => {
 
-  const url = `${GEOCODING_URL}?address=${encodeURIComponent(endereco)}&region=br&language=pt-BR&key=${chave}`;
-  const resp = await fetch(url);
+    const url = `${GEOCODING_URL}?address=${encodeURIComponent(endereco)}&region=br&language=pt-BR&key=${chave}`;
+    const resp = await fetch(url);
 
-  // Atenção: o Geocoding devolve HTTP 200 mesmo quando recusa. O erro real
-  // vem no campo `status` do corpo — checar só resp.ok deixa passar.
-  const json = (await resp.json()) as {
-    status: string;
-    error_message?: string;
-    results: Array<{
-      formatted_address: string;
-      place_id: string;
-      geometry: { location: { lat: number; lng: number }; location_type: PrecisaoGeocoding };
-      address_components: Array<{ long_name: string; short_name: string; types: string[] }>;
-    }>;
-  };
+    // Atenção: o Geocoding devolve HTTP 200 mesmo quando recusa. O erro real
+    // vem no campo `status` do corpo — checar só resp.ok deixa passar.
+    const json = (await resp.json()) as {
+      status: string;
+      error_message?: string;
+      results: Array<{
+        formatted_address: string;
+        place_id: string;
+        geometry: { location: { lat: number; lng: number }; location_type: PrecisaoGeocoding };
+        address_components: Array<{ long_name: string; short_name: string; types: string[] }>;
+      }>;
+    };
 
-  if (json.status === 'ZERO_RESULTS') {
-    throw new AppError(404, 'Endereço não localizado no mapa.', 'endereco_nao_encontrado');
-  }
-  if (json.status !== 'OK' || !json.results[0]) {
-    console.error('[geocoding]', json.status, json.error_message);
-    throw new AppError(502, 'Falha ao consultar o mapa. Tente novamente.', 'geocoding_falhou');
-  }
+    if (json.status === 'ZERO_RESULTS') {
+      throw new AppError(404, 'Endereço não localizado no mapa.', 'endereco_nao_encontrado');
+    }
+    if (json.status !== 'OK' || !json.results[0]) {
+      console.error('[geocoding]', json.status, json.error_message);
+      throw new AppError(502, 'Falha ao consultar o mapa. Tente novamente.', 'geocoding_falhou');
+    }
 
-  const r = json.results[0];
-  const comp = r.address_components;
-  const resultado: EnderecoGeocodificado = {
-    latitude: r.geometry.location.lat,
-    longitude: r.geometry.location.lng,
-    precisao: r.geometry.location_type,
-    confiavel: r.geometry.location_type === 'ROOFTOP',
-    enderecoFormatado: r.formatted_address,
-    placeId: r.place_id,
-    bairro: componente(comp, 'sublocality_level_1') ?? componente(comp, 'sublocality'),
-    cidade: componente(comp, 'administrative_area_level_2'),
-    uf: componente(comp, 'administrative_area_level_1', true),
-    cep: componente(comp, 'postal_code'),
-  };
+    const r = json.results[0];
+    const comp = r.address_components;
+    const resultado: EnderecoGeocodificado = {
+      latitude: r.geometry.location.lat,
+      longitude: r.geometry.location.lng,
+      precisao: r.geometry.location_type,
+      confiavel: r.geometry.location_type === 'ROOFTOP',
+      enderecoFormatado: r.formatted_address,
+      placeId: r.place_id,
+      bairro: componente(comp, 'sublocality_level_1') ?? componente(comp, 'sublocality'),
+      cidade: componente(comp, 'administrative_area_level_2'),
+      uf: componente(comp, 'administrative_area_level_1', true),
+      cep: componente(comp, 'postal_code'),
+    };
 
-  guardar(`geo:${endereco}`, resultado);
-  return resultado;
+    return resultado;
+  });
 }
 
 /* =========================================================== SOLAR API == */
@@ -221,65 +194,64 @@ export async function telhadoPorCoordenada(
   const chave = exigirChave();
   // 6 casas ≈ 11 cm: agrupa cliques vizinhos no mesmo prédio sem perder precisão.
   const cacheKey = `solar:${latitude.toFixed(6)},${longitude.toFixed(6)}`;
-  const emCache = doCache<TelhadoSolar>(cacheKey);
-  if (emCache) return emCache;
+  return consultarCacheGoogle(cacheKey, async () => {
 
-  const url =
-    `${SOLAR_URL}?location.latitude=${latitude}&location.longitude=${longitude}` +
-    `&requiredQuality=HIGH&key=${chave}`;
-  const resp = await fetch(url);
+    const url =
+      `${SOLAR_URL}?location.latitude=${latitude}&location.longitude=${longitude}` +
+      `&requiredQuality=HIGH&key=${chave}`;
+    const resp = await fetch(url);
 
-  if (resp.status === 404) {
-    throw new AppError(
-      404,
-      'O Google não tem análise de telhado para este ponto. Ajuste o pino sobre a edificação e tente de novo.',
-      'telhado_sem_dados',
-    );
-  }
-  if (!resp.ok) {
-    const corpo = await resp.text();
-    console.error('[solar api]', resp.status, corpo.slice(0, 400));
-    throw new AppError(502, 'Falha ao consultar a análise de telhado.', 'solar_falhou');
-  }
+    if (resp.status === 404) {
+      throw new AppError(
+        404,
+        'O Google não tem análise de telhado para este ponto. Ajuste o pino sobre a edificação e tente de novo.',
+        'telhado_sem_dados',
+      );
+    }
+    if (!resp.ok) {
+      const corpo = await resp.text();
+      console.error('[solar api]', resp.status, corpo.slice(0, 400));
+      throw new AppError(502, 'Falha ao consultar a análise de telhado.', 'solar_falhou');
+    }
 
-  const j = (await resp.json()) as RespostaSolar;
-  const s = j.solarPotential;
+    const j = (await resp.json()) as RespostaSolar;
+    const s = j.solarPotential;
 
-  const resultado: TelhadoSolar = {
-    edificacaoId: j.name,
-    centro: j.center,
-    imagemData: j.imageryDate
-      ? { ano: j.imageryDate.year, mes: j.imageryDate.month, dia: j.imageryDate.day }
-      : null,
-    imagemProcessadaData: j.imageryProcessedDate
-      ? { ano: j.imageryProcessedDate.year, mes: j.imageryProcessedDate.month, dia: j.imageryProcessedDate.day }
-      : null,
-    imagemQualidade: j.imageryQuality ?? null,
-    areaTelhadoM2: s.wholeRoofStats.areaMeters2,
-    areaMaxArranjoM2: s.maxArrayAreaMeters2,
-    segmentos: s.roofSegmentStats.map((r, indice) => ({
-      indice,
-      azimuteGraus: r.azimuthDegrees,
-      inclinacaoGraus: r.pitchDegrees,
-      areaM2: r.stats.areaMeters2,
-      centro: r.center,
-      // O Google devolve 11 quantis (0%, 10%, ... 100%); o do meio é a mediana.
-      insolacaoMediaKwh: r.stats.sunshineQuantiles?.[5] ?? 0,
-    })),
-    placasGoogle: (s.solarPanels ?? []).map((p) => ({
-      centro: p.center,
-      orientacao: p.orientation,
-      segmentoIndice: p.segmentIndex,
-    })),
-    placaGoogle: {
-      potenciaWp: s.panelCapacityWatts,
-      alturaM: s.panelHeightMeters,
-      larguraM: s.panelWidthMeters,
-    },
-  };
+    const resultado: TelhadoSolar = {
+      edificacaoId: j.name,
+      centro: j.center,
+      imagemData: j.imageryDate
+        ? { ano: j.imageryDate.year, mes: j.imageryDate.month, dia: j.imageryDate.day }
+        : null,
+      imagemProcessadaData: j.imageryProcessedDate
+        ? { ano: j.imageryProcessedDate.year, mes: j.imageryProcessedDate.month, dia: j.imageryProcessedDate.day }
+        : null,
+      imagemQualidade: j.imageryQuality ?? null,
+      areaTelhadoM2: s.wholeRoofStats.areaMeters2,
+      areaMaxArranjoM2: s.maxArrayAreaMeters2,
+      segmentos: s.roofSegmentStats.map((r, indice) => ({
+        indice,
+        azimuteGraus: r.azimuthDegrees,
+        inclinacaoGraus: r.pitchDegrees,
+        areaM2: r.stats.areaMeters2,
+        centro: r.center,
+        // O Google devolve 11 quantis (0%, 10%, ... 100%); o do meio é a mediana.
+        insolacaoMediaKwh: r.stats.sunshineQuantiles?.[5] ?? 0,
+      })),
+      placasGoogle: (s.solarPanels ?? []).map((p) => ({
+        centro: p.center,
+        orientacao: p.orientation,
+        segmentoIndice: p.segmentIndex,
+      })),
+      placaGoogle: {
+        potenciaWp: s.panelCapacityWatts,
+        alturaM: s.panelHeightMeters,
+        larguraM: s.panelWidthMeters,
+      },
+    };
 
-  guardar(cacheKey, resultado);
-  return resultado;
+    return resultado;
+  });
 }
 
 /* ===================================================== IMAGEM ESTÁTICA == */

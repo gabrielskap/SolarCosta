@@ -247,6 +247,7 @@ export interface SegmentoLayout {
 }
 
 export interface Proposta {
+  levantamentoTelhado?: import('./utils/levantamentoTelhado').LevantamentoTelhado;
   id: string;
   numero: string;
   leadId: string;

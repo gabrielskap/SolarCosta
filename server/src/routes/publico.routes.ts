@@ -370,7 +370,7 @@ publicoRouter.get(
                 -- aberto pelo CRM é que estaria certo.
                 p.responsavel_tecnico, p.crea,
                 p.latitude, p.longitude, p.mapa_zoom, p.telhado_area_m2,
-                p.layout_modulos, p.layout_segmentos, p.layout_modulo,
+                p.layout_modulos, p.layout_segmentos, p.layout_modulo, p.levantamento_telhado,
                 c.nome AS concessionaria, t.nome AS telhado,
                 b.nome AS banco_financiamento, u.nome AS consultor
            FROM "SolarCosta_Propostas" p
