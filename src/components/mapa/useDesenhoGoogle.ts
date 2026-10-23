@@ -9,6 +9,7 @@ export interface EdicaoGoogle {
   onPonto: (p: PontoLocal) => void; onRemover: (id: string) => void; onFechar: () => void;
   onCamera: (vista: NonNullable<LevantamentoTelhado['vistaGoogle']>) => void;
   onAviso: (mensagem: string) => void;
+  aguaSelecionada?: string; onSelecionarAgua?: (id:string)=>void;
 }
 
 export function lerCameraGoogle(modo: 'satelite' | '3d', mapa: any): NonNullable<LevantamentoTelhado['vistaGoogle']> | null {
@@ -20,21 +21,30 @@ export function lerCameraGoogle(modo: 'satelite' | '3d', mapa: any): NonNullable
   return c ? { modo, latitude: c.lat, longitude: c.lng, altitude: c.altitude, distanciaM: mapa.range, inclinacao: mapa.tilt, azimute: ((mapa.heading ?? 0) % 360 + 360) % 360 } : null;
 }
 
-export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | null, modo: 'satelite' | '3d', edicao: EdicaoGoogle) {
+export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | null, modo: 'satelite' | '3d', edicao: EdicaoGoogle, somenteLeitura=false) {
   const atual = useRef(edicao); atual.current = edicao;
   useEffect(() => {
-    if (!instancia) return;
+    if (!instancia || somenteLeitura) return;
     const { mapa } = instancia;
+    let ponteiro: { x:number;y:number;tratado:boolean;id:number;movido:boolean } | null = null;
+    let estavel = true;
     const clique = (e: any) => {
+      if(modo==='3d'&&(!estavel||ponteiro?.tratado||ponteiro?.movido))return;
       const { dados, ferramenta, rascunho, onPonto, onRemover, onFechar } = atual.current;
-      const geo = criarGeorreferencia(dados), pos = e.latLng ?? e.position;
-      if (!geo) { atual.current.onAviso('Clique em Usar centro como endereço do 2D para fixar a área antes de desenhar.'); return; }
+      const geo = criarGeorreferencia(dados), pos = e.latLng ?? e.position ?? e.detail?.position;
+      if (!geo) { atual.current.onAviso('Use Mais ações → Definir imóvel neste centro para fixar a área antes de desenhar.'); return; }
       if (!pos) { atual.current.onAviso('Clique sobre o imóvel, evitando o horizonte e os controles do mapa.'); return; }
-      const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
-      const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+      const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat ?? pos.latitude;
+      const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng ?? pos.longitude;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      if(modo==='3d'&&ponteiro)ponteiro.tratado=true;
       const p = geo.paraLocal(lat, lng);
-      if (p.x < 0 || p.y < 0 || p.x > dados.larguraM || p.y > dados.alturaM) { atual.current.onAviso('Ponto fora da moldura do projeto. Use o centro como endereço do 2D para substituir a localização anterior.'); return; }
+      if (p.x < 0 || p.y < 0 || p.x > dados.larguraM || p.y > dados.alturaM) { atual.current.onAviso('Ponto fora da moldura do projeto. Use Mais ações → Definir imóvel neste centro para substituir a localização anterior.'); return; }
+      if(ferramenta==='navegar'){
+        const agua=[...dados.aguas].reverse().find(a=>dentro(p,a.pontos));
+        if(agua)atual.current.onSelecionarAgua?.(agua.id);
+        return;
+      }
       e.preventDefault?.();
       if (ferramenta === 'remover') {
         const placa = [...dados.placas].reverse().find(a => dentro(p, a.pontos));
@@ -55,9 +65,29 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       return () => { a.remove(); b.remove(); clearTimeout(timer); };
     }
     mapa.addEventListener('gmp-click', clique);
-    mapa.addEventListener('gmp-steadychange', camera);
-    return () => { mapa.removeEventListener('gmp-click', clique); mapa.removeEventListener('gmp-steadychange', camera); clearTimeout(timer); };
-  }, [instancia, modo]);
+    const descer=(e:PointerEvent)=>{
+
+      if(e.button!==0||e.isPrimary===false||e.composedPath().some(el=>el instanceof Element&&el.matches('button,a,input,select,[role="button"]'))) {ponteiro=null;return;}
+      ponteiro={x:e.clientX,y:e.clientY,tratado:false,id:e.pointerId,movido:false};
+    };
+    const mover=(e:PointerEvent)=>{if(ponteiro?.id===e.pointerId&&Math.hypot(e.clientX-ponteiro.x,e.clientY-ponteiro.y)>4)ponteiro.movido=true;};
+    const cancelar=()=>{ponteiro=null;};
+    const subir=(e:PointerEvent)=>{
+      const inicio=ponteiro;
+      if(!inicio||inicio.id!==e.pointerId)return;
+      if(Math.hypot(e.clientX-inicio.x,e.clientY-inicio.y)>4)inicio.movido=true;
+      // Sem position do Google não há interseção confiável com o telhado.
+      // Nunca estimar um ponto no solo: isso deslocava o desenho em relação ao 2D.
+
+    };
+    mapa.addEventListener('pointerdown',descer,true);
+    mapa.addEventListener('pointerup',subir,true);
+    mapa.addEventListener('pointermove',mover,true);
+    mapa.addEventListener('pointercancel',cancelar,true);
+    const estabilidade = (e: Event & {isSteady?:boolean}) => { estavel = e.isSteady === true; if(estavel)camera(); };
+    mapa.addEventListener('gmp-steadychange', estabilidade);
+    return () => { mapa.removeEventListener('gmp-click', clique); mapa.removeEventListener('pointerdown',descer,true);mapa.removeEventListener('pointerup',subir,true);mapa.removeEventListener('pointermove',mover,true);mapa.removeEventListener('pointercancel',cancelar,true);mapa.removeEventListener('gmp-steadychange', estabilidade); clearTimeout(timer); };
+  }, [instancia, modo, somenteLeitura]);
 
   const d = edicao.dados;
   useEffect(() => {
@@ -67,18 +97,24 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     const remover: Array<() => void> = [];
     const s = d.simulacao, loc = d.localizacao ?? d.satelite;
     const sol = s && loc ? posicaoSolar(s.data, s.hora, loc.latitude, loc.longitude, s.fuso) : null;
-    const desenhar = (pontos: PontoLocal[], cor: string, linha = false) => {
+    const desenhar = (pontos: PontoLocal[], cor: string, linha = false, aguaId?:string) => {
       if (pontos.length < (linha ? 2 : 3)) return;
-      const path = pontos.map(geo.paraGeo);
+      const path = pontos.map(p=>({...geo.paraGeo(p),...(modo==='3d'?{altitude:0.1}:{})}));
+      const selecionavel=!!aguaId && !somenteLeitura && !!atual.current.onSelecionarAgua && edicao.ferramenta==='navegar';
+      const espessura=aguaId===edicao.aguaSelecionada?4:2;
       if (modo === 'satelite') {
         const maps = (window as any).google.maps;
         const objeto = linha ? new maps.Polyline({ path, strokeColor: cor, strokeWeight: 3, clickable: false, map: mapa })
-          : new maps.Polygon({ paths: path, fillColor: cor, fillOpacity: 0.5, strokeColor: cor, strokeWeight: 2, clickable: false, map: mapa });
-        remover.push(() => objeto.setMap(null));
+          : new maps.Polygon({ paths: path, fillColor: cor, fillOpacity: 0.5, strokeColor: cor, strokeWeight: espessura, clickable: selecionavel, map: mapa });
+        const listener=selecionavel?objeto.addListener('click',()=>atual.current.onSelecionarAgua?.(aguaId!)):undefined;
+        remover.push(() => {listener?.remove();objeto.setMap(null);});
       } else {
-        const objeto = linha ? new biblioteca.Polyline3DElement({ path, strokeColor: cor, strokeWidth: 3, altitudeMode: 'CLAMP_TO_GROUND', drawsOccludedSegments: true })
-          : new biblioteca.Polygon3DElement({ path, fillColor: cor + '80', strokeColor: cor, strokeWidth: 2, altitudeMode: 'CLAMP_TO_GROUND', drawsOccludedSegments: true });
-        mapa.append(objeto); remover.push(() => objeto.remove());
+        const Polygon=selecionavel?biblioteca.Polygon3DInteractiveElement:biblioteca.Polygon3DElement;
+        const objeto = linha ? new biblioteca.Polyline3DElement({ path, strokeColor: cor, strokeWidth: 3, altitudeMode: 'RELATIVE_TO_MESH', drawsOccludedSegments: true })
+          : new Polygon({ path, fillColor: cor + '80', strokeColor: cor, strokeWidth: espessura, altitudeMode: 'RELATIVE_TO_MESH', drawsOccludedSegments: true });
+        const selecionar=(e:Event)=>{e.stopPropagation();atual.current.onSelecionarAgua?.(aguaId!);};
+        if(selecionavel)objeto.addEventListener('gmp-click',selecionar);
+        mapa.append(objeto); remover.push(() => {objeto.removeEventListener('gmp-click',selecionar);objeto.remove();});
       }
     };
     for (const a of d.aguas) {
@@ -87,7 +123,7 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
         const intensidade = incidenciaDireta(sol.elevacao, sol.azimute, a.inclinacao, a.azimute);
         cor = '#' + [Math.round(255 * intensidade), 100, Math.round(255 * (1 - intensidade))].map(v => v.toString(16).padStart(2, '0')).join('');
       }
-      desenhar(a.pontos, cor);
+      desenhar(a.pontos, cor, false, a.id);
     }
     d.obstaculos.forEach(a => desenhar(a.pontos, '#dc2626'));
     d.placas.forEach(a => desenhar(a.pontos, '#1e3a8a'));
@@ -101,15 +137,22 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     edicao.rascunho.forEach((p,i)=>{
       if(modo==='satelite') {
         const maps=(window as any).google.maps;
-        const marker=new maps.Marker({map:mapa,position:geo.paraGeo(p),label:String(i+1),clickable:false,icon:{path:maps.SymbolPath.CIRCLE,scale:7,fillColor:i===0?'#16a34a':'#d97706',fillOpacity:1,strokeWeight:1}});
+        const marker=new maps.Marker({map:mapa,position:geo.paraGeo(p),clickable:false,icon:{path:maps.SymbolPath.CIRCLE,scale:7,fillColor:i===0?'#16a34a':'#d97706',fillOpacity:1,strokeWeight:1}});
         remover.push(()=>marker.setMap(null));
       }else{
-        const marker=new biblioteca.Marker3DElement({position:geo.paraGeo(p),label:String(i+1),altitudeMode:'CLAMP_TO_GROUND',drawsWhenOccluded:true});
-        mapa.append(marker);remover.push(()=>marker.remove());
+        const fechar = i===0 && edicao.rascunho.length>=3 && ['agua','obstaculo'].includes(edicao.ferramenta);
+        const Marker = fechar ? biblioteca.Marker3DInteractiveElement : biblioteca.Marker3DElement;
+        const marker=new Marker({position:{...geo.paraGeo(p),altitude:0.1},altitudeMode:'RELATIVE_TO_MESH',drawsWhenOccluded:true});
+        const template=document.createElement('template');
+        template.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="7" fill="'+(i===0?'#16a34a':'#d97706')+'" stroke="#fff" stroke-width="2"/></svg>';
+        marker.append(template);
+        const concluir=(e:Event)=>{e.stopPropagation();atual.current.onFechar();};
+        if(fechar)marker.addEventListener('gmp-click',concluir);
+        mapa.append(marker);remover.push(()=>{marker.removeEventListener('gmp-click',concluir);marker.remove();});
       }
     });
     // Moldura delimita a área georreferenciada do projeto durante a navegação.
     desenhar([{ x: 0, y: 0 }, { x: d.larguraM, y: 0 }, { x: d.larguraM, y: d.alturaM }, { x: 0, y: d.alturaM }, { x: 0, y: 0 }], '#64748b', true);
     return () => remover.forEach(fn => fn());
-  }, [instancia, modo, d.aguas, d.obstaculos, d.placas, d.simulacao, d.localizacao, d.satelite, d.larguraM, d.alturaM, d.norte, edicao.rascunho]);
+  }, [instancia, modo, d.aguas, d.obstaculos, d.placas, d.simulacao, d.localizacao, d.satelite, d.larguraM, d.alturaM, d.norte, edicao.rascunho, edicao.ferramenta, edicao.aguaSelecionada, somenteLeitura]);
 }

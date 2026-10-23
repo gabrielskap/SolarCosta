@@ -27,6 +27,15 @@ export function registrarServiceWorker({ aoTerNovaVersao, aoFicarPronto }: Opcoe
   if (registrado) return;
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   registrado = true;
+  if(import.meta.env.DEV){
+    // Retira apenas workers desta aplicação no servidor de desenvolvimento.
+    // Sem recarregar automaticamente: um levantamento pode estar em edição.
+    void navigator.serviceWorker.getRegistrations().then(registros=>Promise.all(registros.filter(r=>
+      [location.origin+'/',location.origin+'/sistema/'].includes(r.scope)&&
+      [r.active?.scriptURL,r.waiting?.scriptURL,r.installing?.scriptURL].some(url=>url&&['/sw.js','/dev-sw.js'].includes(new URL(url).pathname))
+    ).map(r=>r.unregister()))).catch(()=>{});
+    return;
+  }
 
   const atualizar = registerSW({
     immediate: true,

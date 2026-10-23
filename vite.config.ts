@@ -82,9 +82,10 @@ export default defineConfig(() => {
         },
 
         devOptions: {
-          // Sem isto, nada de PWA funciona em `vite dev` e a única forma de
-          // testar seria `build && preview`.
-          enabled: true,
+          // Em desenvolvimento, o worker antigo pode servir a casca do app
+          // anterior e impedir que as correções do editor cheguem à tela.
+          // O comportamento offline é validado por build + preview.
+          enabled: false,
           type: 'module',
           navigateFallback: 'index.html',
         },

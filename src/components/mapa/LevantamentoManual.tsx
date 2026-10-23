@@ -1,7 +1,9 @@
+import { MousePointer2, Pentagon, TriangleAlert, SquarePlus, Eraser, Ruler, Undo2, Sun, Check } from 'lucide-react';
 import { listarPlacas, type PlacaSolar } from '../../services/placas';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { areaPoligono, areaSuperficie, distribuir, escalaSatelite, inserirPlaca, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
 import { AnaliseSolar } from './AnaliseSolar';
+import { CapturarMapa } from './CapturarMapa';
 import { GoogleVistaImovel } from './GoogleVistaImovel';
 import { aplicarSegmento } from '../../utils/analiseSolar';
 import { geocodificar, imagemTelhado, enderecoPorCoordenada, type TelhadoSolar } from '../../services/solar';
@@ -9,14 +11,15 @@ import { incidenciaDireta, posicaoSolar } from '../../utils/posicaoSolar';
 import { SimulacaoSolar } from './SimulacaoSolar';
 import { CanvasTelhado } from './CanvasTelhado';
 
-export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], imagemUrl, tokenPublico, expandido=false, onFecharContorno, interacao, centroGoogle }: {
-  centroGoogle?: {latitude:number;longitude:number};
+export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], imagemUrl, tokenPublico, expandido=false, onFecharContorno, interacao, centroGoogle, carregarImagem=true }: {
+  carregarImagem?:boolean;centroGoogle?: {latitude:number;longitude:number};
   dados: LevantamentoTelhado; onPonto?: (p:PontoLocal)=>void; onRemover?:(id:string)=>void; rascunho?:PontoLocal[];imagemUrl?:string;tokenPublico?:string;expandido?:boolean;onFecharContorno?:()=>void;interacao?:string;
 }) {
   const [fundo,setFundo]=useState<string>();
   const [falha,setFalha]=useState(false);
   const sat=dados.satelite;
   useEffect(()=>{
+    if(!carregarImagem)return;
     setFundo(undefined);setFalha(false);
     if(!sat||imagemUrl)return;
     let ativo=true,url:string|undefined;
@@ -26,7 +29,7 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
       url=r.url;setFundo(url);setFalha(!r.ok);
     });
     return ()=>{ativo=false;if(url)URL.revokeObjectURL(url);};
-  },[sat?.latitude,sat?.longitude,sat?.zoom,sat?.larguraPx,sat?.alturaPx,imagemUrl,tokenPublico]);
+  },[sat?.latitude,sat?.longitude,sat?.zoom,sat?.larguraPx,sat?.alturaPx,imagemUrl,tokenPublico,carregarImagem]);
   const imagem=imagemUrl||fundo||dados.imagem;
   const idFigura=useId().replace(/:/g,'');
   const sim=dados.simulacao,loc=dados.localizacao;
@@ -59,6 +62,8 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
   </CanvasTelhado>;
 }
 
+const iconesFerramenta={navegar:MousePointer2,agua:Pentagon,obstaculo:TriangleAlert,placa:SquarePlus,remover:Eraser,calibrar:Ruler};
+const nomesFerramenta={navegar:'Mover mapa e selecionar água',agua:'Desenhar água',obstaculo:'Obstáculo',placa:'Inserir placa',remover:'Remover placa',calibrar:'Calibrar'};
 const campo='border border-slate-300 rounded-lg px-2 py-1.5 w-full bg-white text-slate-900';
 function Numero({label,value,onChange,min=0,max=500,step=0.01}:{label:string;value:number;onChange:(v:number)=>void;min?:number;max?:number;step?:number}) {
   return <label className="text-xs text-slate-600">{label}<input className={campo} type="number" min={min} max={max} step={step} value={value} onChange={e=>{const v=e.target.valueAsNumber;if(Number.isFinite(v)&&v>=min&&v<=max)onChange(v);}}/></label>;
@@ -68,10 +73,11 @@ export function novoLevantamento(potenciaWp:number):LevantamentoTelhado {
   return {versao:1,origem:'manual',larguraM:30,alturaM:20,norte:0,tipologia:'Não informado',escalaConfirmada:false,aguas:[],obstaculos:[],modulo:{modelo:'Informado manualmente',larguraM:1.3,alturaM:2.38,potenciaWp},espacamentoM:0.03,recuoM:0.3,placas:[]};
 }
 
-export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplicar,onCancelar,enderecoBusca='',coordenadaInicial,googleAtivo=true,chaveMaps,onSalvarVista,salvandoVista=false}:{
-  valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;chaveMaps?:string|null;onSalvarVista?:(l:LevantamentoTelhado)=>void;salvandoVista?:boolean;
+export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplicar,onCancelar,enderecoBusca='',coordenadaInicial,googleAtivo=true,chaveMaps,onSalvarVista,salvandoVista=false,leadId,projetoCaptura,podeAnexarCaptura=false}:{
+  valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;chaveMaps?:string|null;onSalvarVista?:(l:LevantamentoTelhado)=>void;salvandoVista?:boolean;leadId?:string;projetoCaptura?:string;podeAnexarCaptura?:boolean;
 }) {
   const [d,setD]=useState<LevantamentoTelhado>(()=>structuredClone(valor??novoLevantamento(potenciaWp)));
+  const areaMapa=useRef<HTMLDivElement>(null);
   const [vista,setVista]=useState<'2d'|'satelite'|'3d'>(valor?.vistaGoogle?.modo??'2d');
   const localVista=d.satelite??d.localizacao??d.vistaGoogle;
   const chaveSolar=JSON.stringify([d.satelite,d.localizacao]);
@@ -90,7 +96,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
   const imagemAtual=useRef<string | undefined>(undefined);
   const rodada=useRef(0);
   useEffect(()=>()=>{rodada.current++;if(imagemAtual.current)URL.revokeObjectURL(imagemAtual.current);},[]);
-  const [ferramenta,setFerramenta]=useState<'agua'|'obstaculo'|'placa'|'remover'|'calibrar'>('agua');
+  const [ferramenta,setFerramenta]=useState<'navegar'|'agua'|'obstaculo'|'placa'|'remover'|'calibrar'>('navegar');
   const [revisaoFerramenta,setRevisaoFerramenta]=useState(0);
   const [aba,setAba]=useState<'telhado'|'modulos'|'imagem'|'dados'>('telhado');
   const [aguaSelecionada,setAguaSelecionada]=useState('');
@@ -123,7 +129,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
   const buscarSatelite=async(porCoordenadas=false)=>{
     if(carregando)return;
     if(!googleAtivo){setErro('A integração Google está desativada. Use imagem própria ou configure a chave no servidor.');return;}
-    if((d.aguas.length||d.obstaculos.length)&&!confirmarTroca){setConfirmarTroca(true);setErro('Trocar a imagem reinicia contornos e módulos. Clique novamente em Buscar Via Satélite para confirmar ou continue editando para manter o desenho.');return;}
+    if((d.aguas.length||d.obstaculos.length)&&!confirmarTroca){setConfirmarTroca(true);setErro('Trocar a imagem reinicia contornos e módulos. Clique novamente em Localizar imóvel para confirmar ou continue editando para manter o desenho.');return;}
     setCarregando(true);setErro('');const turno=++rodada.current;
     let url:string|undefined;
     try {
@@ -139,16 +145,19 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
         latitude=r.endereco.latitude;longitude=r.endereco.longitude;endereco=r.endereco.enderecoFormatado;
         if(!r.endereco.confiavel)setErro('Localização aproximada. Confira se a imagem corresponde ao imóvel e ajuste as coordenadas se necessário.');
       }
-      const img=await imagemTelhado(latitude,longitude,zoomBusca,640,640);url=img.url;
-      if(turno!==rodada.current){if(url)URL.revokeObjectURL(url);return;}
-      if(!img.ok||!url)throw new Error(img.erro||'Não foi possível carregar a imagem.');
+      if(!chaveMaps){
+        const img=await imagemTelhado(latitude,longitude,zoomBusca,640,640);url=img.url;
+        if(turno!==rodada.current){if(url)URL.revokeObjectURL(url);return;}
+        if(!img.ok||!url)throw new Error(img.erro||'Não foi possível carregar a imagem.');
+      }
       if(imagemAtual.current)URL.revokeObjectURL(imagemAtual.current);
       imagemAtual.current=url;setImagemSatelite(url);
       const escala=escalaSatelite(latitude,zoomBusca);
       setHistorico([]);setRascunho([]);setConfirmarTroca(false);
       setLatBusca(String(latitude));setLngBusca(String(longitude));
       setD({...d,...escala,norte:0,imagem:undefined,imagemNome:undefined,dataImagem:undefined,aguas:[],obstaculos:[],placas:[],escalaConfirmada:true,
-        localizacao:{latitude,longitude,endereco},satelite:{latitude,longitude,zoom:zoomBusca,larguraPx:640,alturaPx:640}});
+        localizacao:{latitude,longitude,endereco},satelite:{latitude,longitude,zoom:zoomBusca,larguraPx:640,alturaPx:640},vistaGoogle:{modo:'3d',latitude,longitude}});
+      setConsulta(endereco);setVista('3d');
     }catch(e){if(turno===rodada.current)setErro(e instanceof Error?e.message:'Falha ao buscar a imagem.');}
     finally{if(turno===rodada.current)setCarregando(false);}
   };
@@ -202,6 +211,8 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
     if(vista!=='2d'&&!d.satelite){setErro('Carregue a imagem por satélite para fixar a escala antes de desenhar no mapa Google.');return;}
     setConfirmarTroca(false);
     if(ferramenta==='placa'){
+      if(!d.aguas.length){setErro('Desenhe uma agua e clique em Concluir contorno antes de inserir as placas.');return;}
+      if(!d.modulo.produtoId&&!valor?.placas.length){setErro('Selecione a placa cadastrada na aba Placas antes de inserir.');setAba('modulos');return;}
       if(!d.escalaConfirmada){setErro('Informe uma escala em metros na aba Dados ou busque a imagem por satélite.');setAba('dados');return;}
       const placa=inserirPlaca(d,p,paisagem);
       if(!placa){setErro('A placa precisa ficar inteira dentro de uma água, sem sobrepor outras placas, obstáculos ou recuos.');return;}
@@ -210,51 +221,53 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
     if(ferramenta==='agua'||ferramenta==='obstaculo')setRascunho(r=>[...r,p]);
     if(ferramenta==='calibrar')setRascunho(r=>r.length>=2?[p]:[...r,p]);
   };
-  const instrucao=ferramenta==='placa'?'Clique dentro de uma água para inserir um módulo.':ferramenta==='calibrar'?'Marque dois pontos de uma distância conhecida.':ferramenta==='remover'?'Clique na placa que deseja remover.':'Marque os vértices; feche pelo primeiro ponto verde ou pelo botão Concluir.';
+  const instrucao=ferramenta==='navegar'?'Arraste para mover ou clique em uma água para selecioná-la.':ferramenta==='placa'?'Clique dentro de uma água para inserir um módulo.':ferramenta==='calibrar'?'Marque dois pontos de uma distância conhecida.':ferramenta==='remover'?'Clique na placa que deseja remover.':'Marque os vértices; feche pelo primeiro ponto verde ou pelo botão Concluir.';
   return <div className="fixed inset-0 z-[70] bg-slate-950/70 md:p-2" role="dialog" aria-modal="true" aria-label="Levantamento do telhado" onKeyDown={e=>{if(e.key==='Escape')onCancelar();}}>
     <div className="bg-white md:rounded-xl w-full h-[100dvh] md:h-[calc(100dvh-16px)] flex flex-col overflow-hidden">
       <header className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b">
-        <div><h2 className="font-bold text-lg text-slate-900">Levantamento do telhado</h2><p className="text-xs text-slate-500">Medição, módulos e luz solar sobre a mesma imagem.</p></div>
+        <div><h2 className="font-bold text-lg text-slate-900">Levantamento do telhado</h2></div>
         <button type="button" onClick={onCancelar} className="rounded-lg border px-3 py-2 text-sm">Fechar</button>
       </header>
       <div className="shrink-0 flex flex-wrap items-end gap-2 px-3 py-2 border-b bg-slate-50">
         <label className="flex-1 min-w-40 text-xs">Endereço do imóvel<input className={campo} value={consulta} maxLength={300} onChange={e=>{setConsulta(e.target.value);setConfirmarTroca(false);}} placeholder="Rua, número, bairro, cidade e UF"/></label>
         <label className="text-xs">Enquadramento<select className={campo} value={zoomBusca} onChange={e=>{setZoomBusca(Number(e.target.value));setConfirmarTroca(false);}}><option value={18}>Amplo</option><option value={19}>Intermediário</option><option value={20}>Detalhado</option></select></label>
-        <button type="button" disabled={carregando} className="rounded-lg bg-[#004276] px-4 py-2 text-sm font-bold text-white disabled:opacity-50 hover:bg-[#003159]" onClick={()=>void buscarSatelite()}>{carregando?'Carregando…':'Buscar Via Satélite'}</button>
+        <button type="button" disabled={carregando} className="rounded-lg bg-[#004276] px-4 py-2 text-sm font-bold text-white disabled:opacity-50 hover:bg-[#003159]" onClick={()=>void buscarSatelite()}>{carregando?'Carregando…':'Localizar imóvel'}</button>
       </div>
-      <div className="flex-1 min-h-0 grid grid-rows-[minmax(180px,1fr)_minmax(0,30dvh)] md:grid-rows-1 md:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="flex-1 min-h-0 grid grid-rows-[minmax(180px,1fr)_minmax(0,30dvh)] md:grid-rows-1 md:grid-cols-[minmax(0,1fr)_272px]">
         <main className="min-h-0 min-w-0 flex flex-col gap-2 p-2 bg-slate-50">
-          <div className="shrink-0 flex flex-wrap gap-1.5 items-center" aria-label="Visualização do imóvel">
-            {(['2d','satelite','3d'] as const).map(v=><button type="button" key={v} aria-pressed={vista===v} disabled={v!=='2d'&&!localVista} onClick={()=>setVista(v)} className={`px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40 ${vista===v?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{({'2d':'Levantamento 2D',satelite:'Satélite interativo','3d':'Google 3D'})[v]}</button>)}
+          <div ref={areaMapa} className="flex-1 min-h-0 relative isolate">
+          <div className="absolute inset-x-2 top-2 z-20 flex flex-wrap gap-1.5 items-center pointer-events-none">
+          <div className="pointer-events-auto flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-lg" aria-label="Visualização do imóvel">
+            {(['2d','satelite','3d'] as const).map(v=><button type="button" key={v} aria-pressed={vista===v} disabled={v!=='2d'&&!localVista} onClick={()=>setVista(v)} className={`px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40 ${vista===v?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{({'2d':'2D',satelite:'Satélite','3d':'3D'})[v]}</button>)}
             {!localVista&&<span className="text-xs text-slate-500">Localize o imóvel para abrir os mapas Google.</span>}
           </div>
-          <div className="shrink-0 flex flex-wrap gap-1.5 items-center">
-            {(['agua','obstaculo','placa','remover','calibrar'] as const).map(t=><button type="button" key={t} aria-pressed={ferramenta===t} onClick={()=>{setFerramenta(t);setRevisaoFerramenta(v=>v+1);setRascunho([]);if(t==='placa')setAba('modulos');}} className={`px-2 py-1.5 rounded-lg text-xs font-bold ${ferramenta===t?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{({agua:'Desenhar água',obstaculo:'Obstáculo',placa:'Inserir placa',remover:'Remover placa',calibrar:'Calibrar'})[t]}</button>)}
-            {(ferramenta==='agua'||ferramenta==='obstaculo')&&<button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" onClick={fecharPoligono} disabled={rascunho.length<3}>Concluir contorno</button>}
-            <button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" disabled={!historico.length} onClick={()=>{const anterior=historico[historico.length-1];if(JSON.stringify(anterior.satelite)!==JSON.stringify(d.satelite)){setImagemSatelite(undefined);if(imagemAtual.current){URL.revokeObjectURL(imagemAtual.current);imagemAtual.current=undefined;}setLatBusca(String(anterior.localizacao?.latitude??''));setLngBusca(String(anterior.localizacao?.longitude??''));setConsulta(anterior.localizacao?.endereco??'');}setD(anterior);setHistorico(h=>h.slice(0,-1));setRascunho([]);}}>Desfazer</button>
-            <button type="button" aria-pressed={solAberto} className={`border rounded-lg px-2 py-1.5 text-xs font-bold ${solAberto?'bg-amber-200':'bg-white'}`} onClick={()=>setSolAberto(v=>!v)}>Luz solar</button>
+          <div className="pointer-events-auto flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-lg" aria-label="Ferramentas do mapa">
+            {(['navegar','agua','obstaculo','placa','remover','calibrar'] as const).map(t=><button type="button" key={t} title={nomesFerramenta[t]} aria-label={nomesFerramenta[t]} aria-pressed={ferramenta===t} onClick={()=>{setFerramenta(t);setRevisaoFerramenta(v=>v+1);setRascunho([]);if(t==='placa')setAba('modulos');}} className={`px-2 py-1.5 rounded-lg text-xs font-bold ${ferramenta===t?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{React.createElement(iconesFerramenta[t],{size:16,'aria-hidden':true})}</button>)}
+            {(ferramenta==='agua'||ferramenta==='obstaculo')&&<button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" title="Concluir contorno" aria-label="Concluir contorno" onClick={fecharPoligono} disabled={rascunho.length<3}><Check size={16} aria-hidden="true"/></button>}
+            <button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" title="Desfazer" aria-label="Desfazer" disabled={!historico.length&&!rascunho.length} onClick={()=>{if(rascunho.length){setRascunho(r=>r.slice(0,-1));return;}const anterior=historico[historico.length-1];if(JSON.stringify(anterior.satelite)!==JSON.stringify(d.satelite)){setImagemSatelite(undefined);if(imagemAtual.current){URL.revokeObjectURL(imagemAtual.current);imagemAtual.current=undefined;}setLatBusca(String(anterior.localizacao?.latitude??''));setLngBusca(String(anterior.localizacao?.longitude??''));setConsulta(anterior.localizacao?.endereco??'');}setD(anterior);setHistorico(h=>h.slice(0,-1));setRascunho([]);}}><Undo2 size={16} aria-hidden="true"/></button>
+            <button type="button" title="Luz solar" aria-label="Luz solar" aria-pressed={solAberto} className={`border rounded-lg px-2 py-1.5 text-xs font-bold ${solAberto?'bg-amber-200':'bg-white'}`} onClick={()=>setSolAberto(v=>!v)}><Sun size={16} aria-hidden="true"/></button>
           </div>
-          <div className="flex-1 min-h-0 relative">
+          </div>
             <div hidden={vista!=='2d'} className="h-full">
-            <FiguraLevantamento centroGoogle={analise?.chave===chaveSolar?analise.telhado?.centro:undefined} expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
+            <FiguraLevantamento carregarImagem={vista==='2d'} centroGoogle={analise?.chave===chaveSolar?analise.telhado?.centro:undefined} expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
             </div>
-            {vista!=='2d'&&localVista&&<GoogleVistaImovel key={vista+localVista.latitude+','+localVista.longitude} chave={chaveMaps} latitude={localVista.latitude} longitude={localVista.longitude} modo={vista} onVoltar={()=>setVista('2d')} edicao={{dados:d,rascunho,ferramenta,onPonto:pontoNoMapa,onRemover:id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false),onFechar:fecharPoligono,onAviso:setErro,onCamera:vistaGoogle=>setD(atual=>({...atual,localizacao:atual.localizacao??{latitude:localVista.latitude,longitude:localVista.longitude},vistaGoogle}))}} onSelecionarLocal={v=>void selecionarLocalGoogle(v)} salvando={salvandoVista||carregando} onSalvarVista={vistaGoogle=>{if(rascunho.length){setErro('Conclua o contorno antes de salvar a vista.');return;}if((d.aguas.length||d.obstaculos.length)&&!d.escalaConfirmada){setErro('Confirme a escala antes de salvar o desenho.');return;}(onSalvarVista??onAplicar)({...d,vistaGoogle});}}/>}
+            {vista!=='2d'&&localVista&&<GoogleVistaImovel key={vista+localVista.latitude+','+localVista.longitude} chave={chaveMaps} latitude={localVista.latitude} longitude={localVista.longitude} modo={vista} onVoltar={()=>setVista('2d')} edicao={{dados:d,rascunho,ferramenta,aguaSelecionada:agua?.id,onSelecionarAgua:id=>{setAguaSelecionada(id);setAba('telhado');},onPonto:pontoNoMapa,onRemover:id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false),onFechar:fecharPoligono,onAviso:setErro,onCamera:vistaGoogle=>setD(atual=>JSON.stringify(atual.vistaGoogle)===JSON.stringify(vistaGoogle)?atual:({...atual,localizacao:atual.localizacao??{latitude:localVista.latitude,longitude:localVista.longitude},vistaGoogle}))}} onSelecionarLocal={v=>void selecionarLocalGoogle(v)} salvando={salvandoVista||carregando} onSalvarVista={vistaGoogle=>{if(rascunho.length){setErro('Conclua o contorno antes de salvar a vista.');return;}if((d.aguas.length||d.obstaculos.length)&&!d.escalaConfirmada){setErro('Confirme a escala antes de salvar o desenho.');return;}(onSalvarVista??onAplicar)({...d,vistaGoogle});}}/>}
             {solAberto&&<div className="absolute bottom-2 right-2 z-10 w-[min(300px,calc(100%-16px))] max-h-[calc(100%-56px)] overflow-auto shadow-xl rounded-xl"><SimulacaoSolar compact dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/></div>}
           </div>
           <div className="shrink-0 flex flex-wrap gap-2 items-center text-xs text-slate-600">
             <p className="flex-1 min-w-40">{instrucao}</p>
-            {rascunho.length>0&&<><span>{rascunho.length} pontos · {areaRascunho.toFixed(2)} m² em desenho</span><button type="button" className="underline" onClick={()=>setRascunho(r=>r.slice(0,-1))}>Retirar ponto</button></>}
+            {rascunho.length>0&&<><span>{rascunho.length} pontos · {areaRascunho.toFixed(2)} m² em desenho</span></>}
             {ferramenta==='calibrar'&&<><label>Distância (m)<input type="number" min={0.1} step={0.1} className="border rounded w-20 px-1" value={distancia} onChange={e=>{if(e.target.valueAsNumber>0)setDistancia(e.target.valueAsNumber);}}/></label><button type="button" className="bg-sky-100 rounded px-2 py-1 disabled:opacity-40" disabled={rascunho.length!==2} onClick={calibrar}>Aplicar escala</button></>}
           </div>
         </main>
         <aside className="min-h-0 flex flex-col border-t md:border-t-0 md:border-l bg-white">
           <div className="shrink-0 grid grid-cols-4 text-xs border-b" role="tablist" aria-label="Ajustes do levantamento">{(['telhado','modulos','imagem','dados'] as const).map(t=><button type="button" key={t} role="tab" aria-selected={aba===t} onClick={()=>setAba(t)} className={`px-1 py-3 font-bold ${aba===t?'text-[#004276] bg-sky-50 border-b-2 border-[#004276]':'text-slate-500'}`}>{({telhado:'Telhado',modulos:'Placas',imagem:'Imagem',dados:'Dados'})[t]}</button>)}</div>
           <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3 text-sm" role="tabpanel">
-            <div hidden={aba!=='telhado'}>
+            <details hidden={aba!=='telhado'} className="rounded-lg border text-xs"><summary className="cursor-pointer p-2 font-semibold">Análise solar Google</summary>
               <AnaliseSolar key={chaveSolar} dados={d} agua={agua} ativo={googleAtivo} onResultado={telhado=>setAnalise({chave:chaveSolar,telhado})} onAplicar={segmento=>{if(agua)atualizar(aplicarSegmento(d,agua.id,segmento),false);}}/>
-            </div>
+            </details>
             {aba==='telhado'&&<>
-              <div className="bg-sky-50 rounded-lg p-3"><p className="text-xs text-slate-600">Área total de superfície</p><strong className="text-xl text-[#004276]">{areaSuperficie(d).toFixed(2)} m²</strong><p className="text-xs text-slate-500">Calculada ao fechar os pontos; corrigida pela inclinação informada.</p></div>
+              <div className="bg-sky-50 rounded-lg p-3"><p className="text-xs text-slate-600">Área total de superfície</p><strong className="text-xl text-[#004276]">{areaSuperficie(d).toFixed(2)} m²</strong></div>
               {d.aguas.length?<><label className="block text-xs">Água selecionada<select className={campo} value={agua?.id??''} onChange={e=>setAguaSelecionada(e.target.value)}>{d.aguas.map(a=><option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
                 {agua&&<><div className="grid grid-cols-2 gap-2"><Numero label="Inclinação (°)" max={75} value={agua.inclinacao} onChange={v=>editarAgua({inclinacao:v})}/><Numero label="Azimute (0° norte)" max={359.99} value={agua.azimute} onChange={v=>editarAgua({azimute:v})}/></div><p className="text-xs text-slate-600">Em planta: {areaPoligono(agua.pontos).toFixed(2)} m² · {d.placas.filter(p=>p.aguaId===agua.id).length} placas</p><button type="button" className="text-xs text-red-700 underline" onClick={()=>atualizar({aguas:d.aguas.filter(a=>a.id!==agua.id)})}>Excluir água selecionada</button></>}
               </>:<p className="text-xs text-slate-600">Escolha Desenhar água, marque os vértices e conclua o contorno. A escala do mapa será usada automaticamente.</p>}
@@ -278,6 +291,9 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
               <p className="text-xs text-slate-500">Dimensões do datasheet. Inclusão respeita contornos, obstáculos e recuos; a distribuição substitui as placas atuais.</p>
             </>}
             {aba==='imagem'&&<>
+            <details className="rounded-lg border bg-slate-50 text-xs"><summary className="cursor-pointer px-3 py-2 font-semibold">Capturar imagem do mapa</summary>
+          <CapturarMapa alvo={areaMapa} leadId={leadId} projeto={projetoCaptura} modo={vista} podeAnexar={podeAnexarCaptura} temPontos={!!(d.aguas.length||d.obstaculos.length||rascunho.length)}/>
+            </details>
               <label className="block text-xs">Imagem própria (até 10 MB)<input type="file" accept="image/jpeg,image/png,image/webp" className="block w-full mt-1" disabled={carregando} onChange={e=>{void importar(e.target.files?.[0]);e.target.value='';}}/></label>
               <p className="text-xs text-slate-500">{d.satelite?'Google Static Maps, até 1280 × 1280 px. Ampliar com zoom não acrescenta detalhes à imagem.':d.imagemNome||'Imagem própria ou planta em metros.'}</p>
               <label className="block text-xs">Latitude<input className={campo} value={latBusca} onChange={e=>{setLatBusca(e.target.value);setConfirmarTroca(false);}}/></label><label className="block text-xs">Longitude<input className={campo} value={lngBusca} onChange={e=>{setLngBusca(e.target.value);setConfirmarTroca(false);}}/></label>
@@ -298,7 +314,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
       {erro&&<div role="alert" className="shrink-0 text-xs text-amber-900 bg-amber-50 px-3 py-2 border-t">{erro}{confirmarTroca&&<button type="button" className="ml-2 underline" onClick={()=>{setConfirmarTroca(false);setErro('');}}>Manter desenho atual</button>}</div>}
       {novoLocalGoogle&&<div className="shrink-0 border-t bg-amber-50 p-3 text-xs flex gap-3"><button type="button" className="rounded bg-red-700 text-white px-3 py-2" disabled={carregando} onClick={()=>void selecionarLocalGoogle(novoLocalGoogle,true)}>Substituir local e reiniciar desenho</button><button type="button" className="underline" onClick={()=>{setNovoLocalGoogle(undefined);setErro('');}}>Manter local e desenho atuais</button></div>}
       <footer className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 bg-white">
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700"><strong>{d.placas.length} placas · {potencia.toFixed(2)} kWp</strong><span>{areaSuperficie(d).toFixed(2)} m² de telhado</span><span>{Math.round(mensal)} kWh/mês (HSP)</span></div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700"><strong>{d.placas.length} placas · {potencia.toFixed(2)} kWp</strong><span>{areaSuperficie(d).toFixed(2)} m² de telhado</span>{d.placas.length>0&&<span>{Math.round(mensal)} kWh/mês</span>}</div>
         <button type="button" disabled={carregando||!d.escalaConfirmada||!d.aguas.length||!d.placas.length} className="bg-[#004276] disabled:opacity-40 text-white rounded-lg px-4 py-2 text-sm font-bold" onClick={()=>{if(!d.modulo.produtoId&&!valor){setErro('Selecione uma placa cadastrada na aba Placas.');setAba('modulos');return;}onAplicar(d);}}>Aplicar levantamento</button>
       </footer>
     </div>
