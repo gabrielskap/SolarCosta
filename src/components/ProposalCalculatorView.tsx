@@ -1754,7 +1754,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     </select>
                     {kits.length === 0 && (
                       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 mt-2">
-                        Nenhum kit cadastrado. Monte os kits em Fornecedores e produtos.
+                        Nenhum kit cadastrado. Monte os kits em Parâmetros &gt; Kits.
                       </p>
                     )}
                   </div>

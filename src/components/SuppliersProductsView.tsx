@@ -17,6 +17,7 @@ interface SuppliersProductsViewProps {
   onDeleteKit: (id: string) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
+  mode?: 'produtos' | 'kits' | 'fornecedores';
 }
 
 /** Linha da composição em edição. produtoId vazio = linha ainda não escolhida. */
@@ -36,10 +37,17 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   onSaveKit,
   onDeleteKit,
   currentUser,
-  showToast
+  showToast,
+  mode
 }) => {
-  const [activeTab, setActiveTab] = useState<'produtos' | 'fornecedores' | 'kits'>('produtos');
+  const [activeTab, setActiveTab] = useState<'produtos' | 'fornecedores' | 'kits'>(mode || 'produtos');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (mode) {
+      setActiveTab(mode);
+    }
+  }, [mode]);
 
   // Modals state
   const [isNewProductOpen, setIsNewProductOpen] = useState(false);
@@ -263,10 +271,56 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#004276]">Fornecedores e produtos</h1>
-          <p className="text-xs font-semibold text-slate-500 mt-0.5">
-            Catálogo de equipamentos e kits de instalação · {fornecedores.length} fornecedores cadastrados
-          </p>
+          {mode === 'produtos' && (
+            <>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1">
+                <span>Parâmetros</span>
+                <span>/</span>
+                <span className="text-[#004276]">Produtos</span>
+              </div>
+              <h1 className="text-2xl font-extrabold text-[#004276]">Cadastro de Produtos</h1>
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                Catálogo de equipamentos e componentes fotovoltaicos · {produtos.length} produtos cadastrados
+              </p>
+            </>
+          )}
+
+          {mode === 'kits' && (
+            <>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1">
+                <span>Parâmetros</span>
+                <span>/</span>
+                <span className="text-[#004276]">Kits</span>
+              </div>
+              <h1 className="text-2xl font-extrabold text-[#004276]">Cadastro de Kits</h1>
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                Composição de kits de instalação e precificação · {kits.length} kits cadastrados
+              </p>
+            </>
+          )}
+
+          {mode === 'fornecedores' && (
+            <>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1">
+                <span>Gestão</span>
+                <span>/</span>
+                <span className="text-[#004276]">Fornecedores</span>
+              </div>
+              <h1 className="text-2xl font-extrabold text-[#004276]">Fornecedores</h1>
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                Parceiros e distribuidores homologados · {fornecedores.length} fornecedores cadastrados
+              </p>
+            </>
+          )}
+
+          {!mode && (
+            <>
+              <h1 className="text-2xl font-extrabold text-[#004276]">Fornecedores e produtos</h1>
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                Catálogo de equipamentos e kits de instalação · {fornecedores.length} fornecedores cadastrados
+              </p>
+            </>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -277,70 +331,88 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar equipamento..."
+              placeholder={
+                activeTab === 'produtos'
+                  ? 'Buscar equipamento...'
+                  : activeTab === 'kits'
+                  ? 'Buscar kit de instalação...'
+                  : 'Buscar fornecedor...'
+              }
               className="pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-[#004276] w-48 sm:w-64"
             />
           </div>
 
-          <button
-            onClick={() => {
-              setEditingProduct(null);
-              setNomeProd('');
-              setIsNewProductOpen(true);
-            }}
-            className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs transition"
-          >
-            + Novo produto
-          </button>
+          {(mode === 'produtos' || !mode) && (
+            <button
+              onClick={() => {
+                setEditingProduct(null);
+                setNomeProd('');
+                setIsNewProductOpen(true);
+              }}
+              className="px-3.5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-xs shadow transition flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" /> Novo produto
+            </button>
+          )}
 
-          <button
-            onClick={handleOpenNewKit}
-            className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs transition"
-          >
-            + Novo kit de instalação
-          </button>
+          {(mode === 'kits' || !mode) && (
+            <button
+              onClick={handleOpenNewKit}
+              className={`px-3.5 py-2 font-bold rounded-xl text-xs shadow transition flex items-center gap-1.5 ${
+                mode === 'kits'
+                  ? 'bg-[#004276] hover:bg-[#003159] text-white'
+                  : 'bg-white border border-slate-300 hover:bg-slate-50 text-slate-700'
+              }`}
+            >
+              <Plus className="w-4 h-4" /> Novo kit de instalação
+            </button>
+          )}
 
-          <button
-            onClick={() => setIsNewSupplierOpen(true)}
-            className="px-4 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-xs shadow transition"
-          >
-            + Novo fornecedor
-          </button>
+          {(mode === 'fornecedores' || !mode) && (
+            <button
+              onClick={() => setIsNewSupplierOpen(true)}
+              className="px-4 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-xs shadow transition flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" /> Novo fornecedor
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Tabs Header */}
-      <div className="bg-white p-1 rounded-2xl border border-slate-200 flex flex-wrap items-center gap-1 w-full sm:w-fit">
-        <button
-          onClick={() => setActiveTab('produtos')}
-          className={`py-2 px-5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === 'produtos' ? 'bg-[#004276] text-white shadow' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Package className="w-4 h-4" />
-          <span>Produtos ({produtos.length})</span>
-        </button>
+      {/* Tabs Header - only show if no specific mode is defined */}
+      {!mode && (
+        <div className="bg-white p-1 rounded-2xl border border-slate-200 flex flex-wrap items-center gap-1 w-full sm:w-fit">
+          <button
+            onClick={() => setActiveTab('produtos')}
+            className={`py-2 px-5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === 'produtos' ? 'bg-[#004276] text-white shadow' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>Produtos ({produtos.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('kits')}
-          className={`py-2 px-5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === 'kits' ? 'bg-[#004276] text-white shadow' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Boxes className="w-4 h-4" />
-          <span>Kits ({kits.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('kits')}
+            className={`py-2 px-5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === 'kits' ? 'bg-[#004276] text-white shadow' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Boxes className="w-4 h-4" />
+            <span>Kits ({kits.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('fornecedores')}
-          className={`py-2 px-5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === 'fornecedores' ? 'bg-[#004276] text-white shadow' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Truck className="w-4 h-4" />
-          <span>Fornecedores ({fornecedores.length})</span>
-        </button>
-      </div>
+          <button
+            onClick={() => setActiveTab('fornecedores')}
+            className={`py-2 px-5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === 'fornecedores' ? 'bg-[#004276] text-white shadow' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Truck className="w-4 h-4" />
+            <span>Fornecedores ({fornecedores.length})</span>
+          </button>
+        </div>
+      )}
 
       {/* PRODUTOS TAB */}
       {activeTab === 'produtos' && (

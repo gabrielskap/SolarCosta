@@ -764,7 +764,7 @@ export default function App() {
           setIsOpenMobile={setIsMobileSidebarOpen}
         />
 
-        <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden md:pl-64">
+        <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden md:pl-80">
           <header className="hidden md:flex items-center justify-between gap-3 bg-white border-b border-slate-200 px-6 py-2.5 shrink-0 z-10">
             <span className="text-xs font-semibold text-slate-500 first-letter:uppercase">
               {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
@@ -972,9 +972,56 @@ export default function App() {
                 <Route
                   path="parametros/placas" element={<PlacasView />} />
                 <Route
+                  path="parametros/produtos"
+                  element={
+                    <SuppliersProductsView
+                      mode="produtos"
+                      produtos={produtos}
+                      fornecedores={fornecedores}
+                      kits={kits}
+                      onSaveProduto={handleSaveProduto}
+                      onDeleteProduto={handleDeleteProduto}
+                      onSaveFornecedor={handleSaveFornecedor}
+                      onDeleteFornecedor={handleDeleteFornecedor}
+                      onSaveKit={handleSaveKit}
+                      onDeleteKit={handleDeleteKit}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
+                <Route
+                  path="parametros/kits"
+                  element={
+                    <SuppliersProductsView
+                      mode="kits"
+                      produtos={produtos}
+                      fornecedores={fornecedores}
+                      kits={kits}
+                      onSaveProduto={handleSaveProduto}
+                      onDeleteProduto={handleDeleteProduto}
+                      onSaveFornecedor={handleSaveFornecedor}
+                      onDeleteFornecedor={handleDeleteFornecedor}
+                      onSaveKit={handleSaveKit}
+                      onDeleteKit={handleDeleteKit}
+                      currentUser={currentUser}
+                      showToast={showToast}
+                    />
+                  }
+                />
+                <Route
+                  path="produtos"
+                  element={<Navigate to="/sistema/parametros/produtos" replace />}
+                />
+                <Route
+                  path="kits"
+                  element={<Navigate to="/sistema/parametros/kits" replace />}
+                />
+                <Route
                   path="fornecedores"
                   element={
                     <SuppliersProductsView
+                      mode="fornecedores"
                       produtos={produtos}
                       fornecedores={fornecedores}
                       kits={kits}

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { listarPlacas, salvarPlaca, type PlacaSolar } from '../services/placas';
 import { http } from '../services/http';
 
@@ -34,7 +35,7 @@ export function PlacasView() {
    }}><option value="">Selecione um produto do tipo Módulo</option>
    {form.produtoId&&!produtos.some(p=>p.id===form.produtoId)&&<option value={form.produtoId} disabled>Produto indisponível — selecione outro</option>}
    {produtos.filter(p=>p.id===form.produtoId||!placas.some(placa=>placa.id!==id&&placa.produtoId===p.id)).map(p=><option key={p.id} value={p.id}>{p.codigo} · {p.nome}</option>)}</select></label>
-   <p className="text-sm text-slate-500">Cadastre o produto como Módulo em <a href="/sistema/fornecedores" className="text-sky-800 underline">Fornecedores e produtos</a>. Cada produto pode ter um cadastro de placa.</p>
+   <p className="text-sm text-slate-500">Cadastre o produto como Módulo em <Link to="/sistema/parametros/produtos" className="text-sky-800 underline">Produtos</Link>. Cada produto pode ter um cadastro de placa.</p>
    <div className="grid sm:grid-cols-2 gap-4">
     <label>Fabricante<input required maxLength={120} className={campo} value={form.fabricante} onChange={e => setForm({...form,fabricante:e.target.value})}/></label>
     <label>Modelo<input required maxLength={160} className={campo} value={form.modelo} onChange={e => setForm({...form,modelo:e.target.value})}/></label>

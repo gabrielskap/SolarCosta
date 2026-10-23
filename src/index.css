@@ -596,8 +596,33 @@
   }
 }
 
+/* ==================== BARRA DE ROLAGEM DA SIDEBAR ==================== */
+/*
+ * Rolagem discreta e fina (5px) para a sidebar no desktop e navegadores WebKit/Firefox,
+ * evitando que a barra padrão de 16px do Windows roube espaço horizontal
+ * útil dos itens de navegação e force quebras de linha indesejadas.
+ */
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
 /* ===================== ROLAGEM SUAVE POR ÂNCORA ===================== */
 /* O site usa links #ancora; respeita quem pediu menos animação no SO. */
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
 }
+
