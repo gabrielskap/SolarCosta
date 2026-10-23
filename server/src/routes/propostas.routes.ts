@@ -298,7 +298,7 @@ propostasRouter.post(
             $47::jsonb,$48::jsonb,
             $49,$50,
             COALESCE($51, false),$52::jsonb,
-            COALESCE($53,0),COALESCE($54,0),COALESCE($55,0),
+            COALESCE($53::numeric,0),COALESCE($54::numeric,0),COALESCE($55::numeric,0),
             -- NULLIF(btrim(...)) e não o valor cru: campo apagado na tela chega
             -- como '', e '' gravado seria um responsável técnico EM BRANCO na
             -- folha — enquanto NULL devolve a proposta ao cadastro da empresa.
@@ -396,9 +396,9 @@ propostasRouter.put(
             -- preenchendo" mostra o seletor de lead, e sem esta coluna trocá-lo
             -- lá não teria efeito nenhum — o pior tipo de falha, a silenciosa.
             lead_id = $52::uuid,
-            iluminacao_publica_sem_sfcr = COALESCE($53,0),
-            custo_disponibilidade       = COALESCE($54,0),
-            iluminacao_publica_com_sfcr = COALESCE($55,0),
+            iluminacao_publica_sem_sfcr = COALESCE($53::numeric,0),
+            custo_disponibilidade       = COALESCE($54::numeric,0),
+            iluminacao_publica_com_sfcr = COALESCE($55::numeric,0),
             -- Atribuição direta, sem COALESCE com a coluna atual: APAGAR o
             -- responsável técnico tem que funcionar, e é assim que a proposta
             -- volta a seguir o cadastro da empresa.
@@ -467,9 +467,9 @@ propostasRouter.patch(
     await emTransacao(async (cliente) => {
       const { rows } = await cliente.query(
         `UPDATE "SolarCosta_Propostas" SET
-            status     = $2,
-            enviada_em = CASE WHEN $2 = 'enviada' THEN COALESCE(enviada_em, now()) ELSE enviada_em END,
-            aceita_em  = CASE WHEN $2 = 'aceita'  THEN COALESCE(aceita_em,  now()) ELSE aceita_em  END
+            status     = $2::"SolarCosta_StatusProposta",
+            enviada_em = CASE WHEN $2::"SolarCosta_StatusProposta" = 'enviada' THEN COALESCE(enviada_em, now()) ELSE enviada_em END,
+            aceita_em  = CASE WHEN $2::"SolarCosta_StatusProposta" = 'aceita'  THEN COALESCE(aceita_em,  now()) ELSE aceita_em  END
           WHERE id = $1 AND excluido_em IS NULL
           RETURNING numero, cliente_nome`,
         [id, status],

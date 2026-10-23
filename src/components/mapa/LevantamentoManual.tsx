@@ -82,7 +82,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
   const [distancia,setDistancia]=useState(10);
   const [carregando,setCarregando]=useState(false);
   const [historico,setHistorico]=useState<LevantamentoTelhado[]>([]);
-  const atualizar=(patch:Partial<LevantamentoTelhado>,limpar=true)=>{setHistorico(h=>[...h.slice(-29),structuredClone(d)]);setD({...d,...patch,...(limpar?{placas:[]}: {})});setErro('');setConfirmarTroca(false);};
+  const atualizar=(patch:Partial<LevantamentoTelhado>,limpar=true)=>{setHistorico(h=>[...h.slice(-29),structuredClone(d)]);setD(atual=>({...atual,...patch,...(limpar?{placas:[]}: {})}));setErro('');setConfirmarTroca(false);};
   const buscarSatelite=async(porCoordenadas=false)=>{
     if(carregando)return;
     if(!googleAtivo){setErro('A integração Google está desativada. Use imagem própria ou configure a chave no servidor.');return;}
