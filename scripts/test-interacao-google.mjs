@@ -88,10 +88,27 @@ for(const ferramenta of ['agua','obstaculo','calibrar','placa','remover','navega
   }
 }
 assert.equal(animacoesInterrompidas,5,'edição interrompe movimento pendente da câmera');
+// Regressão: o Map3DElement aproxima no duplo clique pelos PointerEvents, sem
+// passar pelo evento dblclick. A câmera anterior ao gesto deve ser restaurada.
+Object.assign(mapa,{center:{lat:-19.85,lng:-43.97,altitude:800},range:40,tilt:0,heading:0});
+edicao.ferramenta='placa';
+emitir('pointerdown',{button:0,pointerId:5,clientX:10,clientY:10,composedPath:()=>[]});
+emitir('pointerup',{pointerId:5,clientX:10,clientY:10});
+Object.assign(mapa,{center:{lat:-19.8501,lng:-43.9701,altitude:800},range:12});
+emitir('gmp-rangechange',{});
+assert.deepEqual([mapa.center.lat,mapa.range],[-19.85,40],'duplo clique em edição não aproxima a câmera 3D');
+emitir('wheel',{});
+mapa.range=25;emitir('gmp-rangechange',{});
+assert.equal(mapa.range,25,'roda do mouse continua aproximando durante a edição');
+edicao.ferramenta='navegar';
+emitir('pointerdown',{button:0,pointerId:6,clientX:10,clientY:10,composedPath:()=>[]});
+mapa.range=10;emitir('gmp-rangechange',{});
+assert.equal(mapa.range,10,'Mover mapa permite aproximar');
+animacoesInterrompidas=0;
 limpar();
 assert.equal(listeners.size, 0, 'desmontagem remove todos os listeners');
 module.exports.useDesenhoGoogle({ mapa }, '3d', edicao, true);
-assert.equal(effects[2](), undefined, 'prévia não instala listeners de edição');
+assert.equal(effects[3](), undefined, 'prévia não instala listeners de edição');
 assert.equal(listeners.size, 0, 'prévia permanece sem ações de desenho');
 const objetos=[];
 class Forma {
@@ -107,7 +124,7 @@ edicao.ferramenta='navegar';
 edicao.aguaSelecionada='agua-1';
 const biblioteca={Polygon3DInteractiveElement:AguaInterativa,Polygon3DElement:Forma,Polyline3DElement:Forma};
 module.exports.useDesenhoGoogle({mapa,biblioteca},'3d',edicao);
-const limparFormas=effects[5]();
+const limparFormas=effects[8]();
 assert.equal(objetos.length,1,'não cria moldura ou água quadrada automaticamente');
 const agua=objetos.find(o=>o instanceof AguaInterativa);
 assert(agua,'água usa polígono 3D interativo');
@@ -123,7 +140,7 @@ assert(objetos.every(o=>o.removido),'desmontagem remove as sobreposições');
 edicao.dados.placas=[{id:'placa-1',pontos:[{x:40,y:40},{x:42,y:40},{x:42,y:44},{x:40,y:44}]}];
 objetos.length=0;
 module.exports.useDesenhoGoogle({mapa,biblioteca},'3d',edicao);
-const limparCamadas=effects[7]();
+const limparCamadas=effects[11]();
 const agua3d=objetos.find(o=>o.options.fillColor==='#0284c780');
 const placa3d=objetos.find(o=>o.options.fillColor==='#1e3a8aff');
 assert(agua3d&&placa3d,'água translúcida e placa opaca são desenhadas');
@@ -142,7 +159,12 @@ class FormaSatelite extends Forma {
 Object.assign(window.google.maps,{Polygon:FormaSatelite,Polyline:FormaSatelite});
 objetos.length=0;
 module.exports.useDesenhoGoogle({mapa},'satelite',edicao);
-const limparSatelite=effects[9]();
+let opcoes;mapa.setOptions=o=>{opcoes=o;};
+edicao.ferramenta='placa';
+module.exports.useDesenhoGoogle({mapa},'satelite',edicao);
+effects[13]();
+assert.deepEqual({...opcoes},{draggable:false,disableDoubleClickZoom:true},'satélite não arrasta nem aproxima por duplo clique em edição');
+const limparSatelite=effects[14]();
 const agua2d=objetos.find(o=>o.options.fillColor==='#0284c7');
 const placa2d=objetos.find(o=>o.options.fillColor==='#1e3a8a');
 assert(placa2d.options.zIndex>agua2d.options.zIndex,'satélite também mantém placas sobre as águas');

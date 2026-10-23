@@ -1,7 +1,7 @@
 import { MousePointer2, Pentagon, TriangleAlert, SquarePlus, Eraser, Ruler, Undo2, Sun, Check } from 'lucide-react';
 import { listarPlacas, type PlacaSolar } from '../../services/placas';
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { areaPoligono, areaSuperficie, distribuir, escalaSatelite, inserirPlaca, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
+import { areaPoligono, areaSuperficie, dentro, distribuir, escalaSatelite, inserirPlaca, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
 import { AnaliseSolar } from './AnaliseSolar';
 import { CapturarMapa } from './CapturarMapa';
 import { GoogleVistaImovel } from './GoogleVistaImovel';
@@ -215,6 +215,8 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
       if(!d.aguas.length){setErro('Desenhe uma agua e clique em Concluir contorno antes de inserir as placas.');return;}
       if(!d.modulo.produtoId&&!valor?.placas.length){setErro('Selecione a placa cadastrada na aba Placas antes de inserir.');setAba('modulos');return;}
       if(!d.escalaConfirmada){setErro('Informe uma escala em metros na aba Dados ou busque a imagem por satélite.');setAba('dados');return;}
+      // O segundo clique de um duplo clique cai sobre a placa recém-inserida.
+      if(d.placas.some(pl=>dentro(p,pl.pontos)))return;
       const placa=inserirPlaca(d,p,paisagem);
       if(!placa){setErro('A placa precisa ficar inteira dentro de uma água, sem sobrepor outras placas, obstáculos ou recuos.');return;}
       atualizar({placas:[...d.placas,placa]},false);return;

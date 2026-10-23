@@ -68,12 +68,30 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       return () => { a.remove(); b.remove(); clearTimeout(timer); };
     }
     mapa.addEventListener('gmp-click', clique);
+    // O Map3DElement reconhece o duplo clique pelos próprios PointerEvents, sem
+    // depender do evento dblclick. Em edição, a câmera anterior ao clique é
+    // restaurada se o gesto tentar movê-la; a roda do mouse continua livre.
+    let fixa: { center:any;range:number;tilt:number;heading:number } | null = null, gestoAte = 0;
     const descer=(e:PointerEvent)=>{
 
       if(e.button!==0||e.isPrimary===false||e.composedPath().some(el=>el!==mapa&&el instanceof Element&&el.matches('button,a,input,select,[role="button"]'))) {ponteiro=null;return;}
       ponteiro={x:e.clientX,y:e.clientY,tratado:false,id:e.pointerId,movido:false};
-      if(atual.current.ferramenta!=='navegar')mapa.stopCameraAnimation?.();
+      if(atual.current.ferramenta!=='navegar'){
+        mapa.stopCameraAnimation?.();
+        if(Date.now()>gestoAte)fixa={center:{...mapa.center},range:mapa.range,tilt:mapa.tilt,heading:mapa.heading};
+        gestoAte=Date.now()+1500;
+      }else{gestoAte=0;fixa=null;}
     };
+    const travar=()=>{
+      if(!fixa||atual.current.ferramenta==='navegar'||Date.now()>gestoAte)return;
+      const c=mapa.center;
+      if(c&&Math.abs(c.lat-fixa.center.lat)<1e-9&&Math.abs(c.lng-fixa.center.lng)<1e-9&&Math.abs(mapa.range-fixa.range)<0.01&&Math.abs(mapa.tilt-fixa.tilt)<0.01&&Math.abs(mapa.heading-fixa.heading)<0.01)return;
+      mapa.stopCameraAnimation?.();Object.assign(mapa,fixa);
+    };
+    const eventosCamera=['gmp-centerchange','gmp-rangechange','gmp-tiltchange','gmp-headingchange'];
+    eventosCamera.forEach(n=>mapa.addEventListener(n,travar));
+    const roda=()=>{gestoAte=0;fixa=null;};
+    mapa.addEventListener('wheel',roda,true);
     const mover=(e:PointerEvent)=>{
       if(ponteiro?.id!==e.pointerId)return;
       if(Math.hypot(e.clientX-ponteiro.x,e.clientY-ponteiro.y)>4)ponteiro.movido=true;
@@ -103,8 +121,15 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     mapa.addEventListener('dblclick',duploClique,true);
     const estabilidade = (e: Event & {isSteady?:boolean}) => { if(e.isSteady)camera(); };
     mapa.addEventListener('gmp-steadychange', estabilidade);
-    return () => { mapa.removeEventListener('gmp-click', clique); mapa.removeEventListener('pointerdown',descer,true);mapa.removeEventListener('pointerup',subir,true);mapa.removeEventListener('pointermove',mover,true);mapa.removeEventListener('pointercancel',cancelar,true);mapa.removeEventListener('dblclick',duploClique,true);mapa.removeEventListener('gmp-steadychange', estabilidade); clearTimeout(timer); };
+    return () => { mapa.removeEventListener('gmp-click', clique); mapa.removeEventListener('pointerdown',descer,true);mapa.removeEventListener('pointerup',subir,true);mapa.removeEventListener('pointermove',mover,true);mapa.removeEventListener('pointercancel',cancelar,true);mapa.removeEventListener('dblclick',duploClique,true);mapa.removeEventListener('gmp-steadychange', estabilidade);eventosCamera.forEach(n=>mapa.removeEventListener(n,travar));mapa.removeEventListener('wheel',roda,true); clearTimeout(timer); };
   }, [instancia, modo, somenteLeitura]);
+
+  useEffect(() => {
+    if (!instancia || somenteLeitura || modo !== 'satelite') return;
+    // Mesma regra do 3D: só Mover mapa arrasta ou aproxima por duplo clique.
+    const navegar = edicao.ferramenta === 'navegar';
+    instancia.mapa.setOptions?.({ draggable: navegar, disableDoubleClickZoom: !navegar });
+  }, [instancia, modo, somenteLeitura, edicao.ferramenta]);
 
   const d = edicao.dados;
   useEffect(() => {
