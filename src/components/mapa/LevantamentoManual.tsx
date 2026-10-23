@@ -1,7 +1,7 @@
-import { MousePointer2, Pentagon, TriangleAlert, SquarePlus, Eraser, Ruler, Undo2, Sun, Check } from 'lucide-react';
+import { MousePointer2, Pentagon, TriangleAlert, SquarePlus, Move, Eraser, Ruler, Undo2, Sun, Check } from 'lucide-react';
 import { listarPlacas, type PlacaSolar } from '../../services/placas';
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { areaPoligono, areaSuperficie, dentro, distribuir, escalaSatelite, inserirPlaca, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
+import { areaPoligono, areaSuperficie, dentro, distribuir, escalaSatelite, inserirPlaca, moverPlaca, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
 import { AnaliseSolar } from './AnaliseSolar';
 import { CapturarMapa } from './CapturarMapa';
 import { GoogleVistaImovel } from './GoogleVistaImovel';
@@ -11,9 +11,9 @@ import { incidenciaDireta, posicaoSolar } from '../../utils/posicaoSolar';
 import { SimulacaoSolar } from './SimulacaoSolar';
 import { CanvasTelhado } from './CanvasTelhado';
 
-export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], imagemUrl, tokenPublico, expandido=false, onFecharContorno, interacao, centroGoogle, carregarImagem=true }: {
+export function FiguraLevantamento({ dados, onPonto, onRemover, placaSelecionada, rascunho=[], imagemUrl, tokenPublico, expandido=false, onFecharContorno, interacao, centroGoogle, carregarImagem=true }: {
   carregarImagem?:boolean;centroGoogle?: {latitude:number;longitude:number};
-  dados: LevantamentoTelhado; onPonto?: (p:PontoLocal)=>void; onRemover?:(id:string)=>void; rascunho?:PontoLocal[];imagemUrl?:string;tokenPublico?:string;expandido?:boolean;onFecharContorno?:()=>void;interacao?:string;
+  dados: LevantamentoTelhado; onPonto?: (p:PontoLocal)=>void; onRemover?:(id:string)=>void; placaSelecionada?:string; rascunho?:PontoLocal[];imagemUrl?:string;tokenPublico?:string;expandido?:boolean;onFecharContorno?:()=>void;interacao?:string;
 }) {
   const [fundo,setFundo]=useState<string>();
   const [falha,setFalha]=useState(false);
@@ -52,7 +52,7 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
     <rect width={dados.larguraM} height={dados.alturaM} fill={`url(#grade-${idFigura})`} pointerEvents="none"/>
     {dados.aguas.map(a=><g key={a.id}><polygon points={pontos(a.pontos)} fill={sim?.mostrarIncidencia&&sol?`hsl(${220*(1-incidenciaDireta(sol.elevacao,sol.azimute,a.inclinacao,a.azimute))} 85% 50% / 0.5)`:'#38bdf833'} stroke="#0284c7" strokeWidth={Math.max(0.06,dados.larguraM/600)}/><text x={a.pontos[0].x} y={a.pontos[0].y} fontSize={dados.larguraM/55} fill="#075985">{a.nome}</text></g>)}
     {dados.obstaculos.map(o=><polygon key={o.id} points={pontos(o.pontos)} fill="#ef444466" stroke="#b91c1c" strokeWidth="0.06"/>)}
-    {dados.placas.map(p=><polygon key={p.id} points={pontos(p.pontos)} fill="#1e3a8a" stroke="#93c5fd" strokeWidth="0.025" style={{cursor:onRemover?'pointer':undefined}} onClick={e=>{if(onRemover){e.stopPropagation();onRemover(p.id);}}}/>)}
+    {dados.placas.map(p=><polygon key={p.id} points={pontos(p.pontos)} fill="#1e3a8a" stroke={p.id===placaSelecionada?'#f59e0b':'#93c5fd'} strokeWidth={p.id===placaSelecionada?0.12:0.025} style={{cursor:onRemover?'pointer':undefined}} onClick={e=>{if(onRemover){e.stopPropagation();onRemover(p.id);}}}/>)}
     {sombras.length>0&&dados.aguas.filter(a=>a.inclinacao===0).map(a=><g key={`sombra-${a.id}`} pointerEvents="none"><defs><clipPath id={`${idFigura}-${a.id}`}><polygon points={pontos(a.pontos)}/></clipPath></defs><g clipPath={`url(#${idFigura}-${a.id})`} fill="#0f172a" fillOpacity="0.35">{sombras.map((p,i)=><polygon key={i} points={pontos(p)}/>)}</g></g>)}
     {rascunho.length>0&&<polyline points={pontos(rascunho)} fill="#fbbf2433" stroke="#d97706" strokeWidth={dados.larguraM/500}/>}
     {rascunho.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={dados.larguraM/180} fill="#d97706"/>)}
@@ -62,8 +62,8 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
   </CanvasTelhado>;
 }
 
-const iconesFerramenta={navegar:MousePointer2,agua:Pentagon,obstaculo:TriangleAlert,placa:SquarePlus,remover:Eraser,calibrar:Ruler};
-const nomesFerramenta={navegar:'Mover mapa e selecionar água',agua:'Desenhar água',obstaculo:'Obstáculo',placa:'Inserir placa',remover:'Remover placa',calibrar:'Calibrar'};
+const iconesFerramenta={navegar:MousePointer2,agua:Pentagon,obstaculo:TriangleAlert,placa:SquarePlus,mover:Move,remover:Eraser,calibrar:Ruler};
+const nomesFerramenta={navegar:'Mover mapa e selecionar água',agua:'Desenhar água',obstaculo:'Obstáculo',placa:'Inserir placa',mover:'Mover placa',remover:'Remover placa',calibrar:'Calibrar'};
 const campo='border border-slate-300 rounded-lg px-2 py-1.5 w-full bg-white text-slate-900';
 function Numero({label,value,onChange,min=0,max=500,step=0.01}:{label:string;value:number;onChange:(v:number)=>void;min?:number;max?:number;step?:number}) {
   return <label className="text-xs text-slate-600">{label}<input className={campo} type="number" min={min} max={max} step={step} value={value} onChange={e=>{const v=e.target.valueAsNumber;if(Number.isFinite(v)&&v>=min&&v<=max)onChange(v);}}/></label>;
@@ -97,7 +97,8 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
   const imagemAtual=useRef<string | undefined>(undefined);
   const rodada=useRef(0);
   useEffect(()=>()=>{rodada.current++;if(imagemAtual.current)URL.revokeObjectURL(imagemAtual.current);},[]);
-  const [ferramenta,setFerramenta]=useState<'navegar'|'agua'|'obstaculo'|'placa'|'remover'|'calibrar'>('navegar');
+  const [ferramenta,setFerramenta]=useState<'navegar'|'agua'|'obstaculo'|'placa'|'mover'|'remover'|'calibrar'>('navegar');
+  const [placaSelecionada,setPlacaSelecionada]=useState('');
   const [revisaoFerramenta,setRevisaoFerramenta]=useState(0);
   const [aba,setAba]=useState<'telhado'|'modulos'|'imagem'|'dados'>('telhado');
   const [aguaSelecionada,setAguaSelecionada]=useState('');
@@ -221,10 +222,19 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
       if(!placa){setErro('A placa precisa ficar inteira dentro de uma água, sem sobrepor outras placas, obstáculos ou recuos.');return;}
       atualizar({placas:[...d.placas,placa]},false);return;
     }
+    if(ferramenta==='mover'){
+      // Primeiro clique escolhe a placa; o seguinte define o novo centro dela.
+      const clicada=[...d.placas].reverse().find(pl=>dentro(p,pl.pontos));
+      if(clicada){setPlacaSelecionada(clicada.id===placaSelecionada?'':clicada.id);setErro('');return;}
+      if(!placaSelecionada||!d.placas.some(pl=>pl.id===placaSelecionada)){setErro('Clique primeiro na placa que deseja mover.');return;}
+      const movida=moverPlaca(d,placaSelecionada,p);
+      if(!movida){setErro('A placa precisa ficar inteira dentro de uma água, sem sobrepor outras placas, obstáculos ou recuos.');return;}
+      atualizar({placas:d.placas.map(pl=>pl.id===movida.id?movida:pl)},false);return;
+    }
     if(ferramenta==='agua'||ferramenta==='obstaculo')setRascunho(r=>[...r,p]);
     if(ferramenta==='calibrar')setRascunho(r=>r.length>=2?[p]:[...r,p]);
   };
-  const instrucao=ferramenta==='navegar'?'Arraste para mover ou clique em uma água para selecioná-la.':ferramenta==='placa'?'Clique dentro de uma água para inserir um módulo.':ferramenta==='calibrar'?'Marque dois pontos de uma distância conhecida.':ferramenta==='remover'?'Clique na placa que deseja remover.':'Marque os vértices; feche pelo primeiro ponto verde ou pelo botão Concluir.';
+  const instrucao=ferramenta==='navegar'?'Arraste para mover ou clique em uma água para selecioná-la.':ferramenta==='placa'?'Clique dentro de uma água para inserir um módulo.':ferramenta==='calibrar'?'Marque dois pontos de uma distância conhecida.':ferramenta==='remover'?'Clique na placa que deseja remover.':ferramenta==='mover'?(placaSelecionada?'Clique no novo local da placa selecionada, ou nela de novo para desmarcar.':'Clique na placa que deseja mover.'):'Marque os vértices; feche pelo primeiro ponto verde ou pelo botão Concluir.';
   return <div className="fixed inset-0 z-[70] bg-slate-950/70 md:p-2" role="dialog" aria-modal="true" aria-label="Levantamento do telhado" onKeyDown={e=>{if(e.key==='Escape')onCancelar();}}>
     <div className="bg-white md:rounded-xl w-full h-[100dvh] md:h-[calc(100dvh-16px)] flex flex-col overflow-hidden">
       <header className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b">
@@ -245,16 +255,16 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
             {!localVista&&<span className="text-xs text-slate-500">Localize o imóvel para abrir os mapas Google.</span>}
           </div>
           <div className="pointer-events-auto flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-lg" aria-label="Ferramentas do mapa">
-            {(['navegar','agua','obstaculo','placa','remover','calibrar'] as const).map(t=><button type="button" key={t} title={nomesFerramenta[t]} aria-label={nomesFerramenta[t]} aria-pressed={ferramenta===t} onClick={()=>{setFerramenta(t);setRevisaoFerramenta(v=>v+1);setRascunho([]);if(t==='placa')setAba('modulos');}} className={`px-2 py-1.5 rounded-lg text-xs font-bold ${ferramenta===t?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{React.createElement(iconesFerramenta[t],{size:16,'aria-hidden':true})}</button>)}
+            {(['navegar','agua','obstaculo','placa','mover','remover','calibrar'] as const).map(t=><button type="button" key={t} title={nomesFerramenta[t]} aria-label={nomesFerramenta[t]} aria-pressed={ferramenta===t} onClick={()=>{setFerramenta(t);setRevisaoFerramenta(v=>v+1);setRascunho([]);setPlacaSelecionada('');if(t==='placa')setAba('modulos');}} className={`px-2 py-1.5 rounded-lg text-xs font-bold ${ferramenta===t?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{React.createElement(iconesFerramenta[t],{size:16,'aria-hidden':true})}</button>)}
             {(ferramenta==='agua'||ferramenta==='obstaculo')&&<button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" title="Concluir contorno" aria-label="Concluir contorno" onClick={fecharPoligono} disabled={rascunho.length<3}><Check size={16} aria-hidden="true"/></button>}
             <button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" title="Desfazer" aria-label="Desfazer" disabled={!historico.length&&!rascunho.length} onClick={()=>{if(rascunho.length){setRascunho(r=>r.slice(0,-1));return;}const anterior=historico[historico.length-1];if(JSON.stringify(anterior.satelite)!==JSON.stringify(d.satelite)){setImagemSatelite(undefined);if(imagemAtual.current){URL.revokeObjectURL(imagemAtual.current);imagemAtual.current=undefined;}setLatBusca(String(anterior.localizacao?.latitude??''));setLngBusca(String(anterior.localizacao?.longitude??''));setConsulta(anterior.localizacao?.endereco??'');}setD(anterior);setHistorico(h=>h.slice(0,-1));setRascunho([]);}}><Undo2 size={16} aria-hidden="true"/></button>
             <button type="button" title="Luz solar" aria-label="Luz solar" aria-pressed={solAberto} className={`border rounded-lg px-2 py-1.5 text-xs font-bold ${solAberto?'bg-amber-200':'bg-white'}`} onClick={()=>setSolAberto(v=>!v)}><Sun size={16} aria-hidden="true"/></button>
           </div>
           </div>
             <div hidden={vista!=='2d'} className="h-full">
-            <FiguraLevantamento carregarImagem={vista==='2d'} centroGoogle={analise?.chave===chaveSolar?analise.telhado?.centro:undefined} expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
+            <FiguraLevantamento carregarImagem={vista==='2d'} centroGoogle={analise?.chave===chaveSolar?analise.telhado?.centro:undefined} expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} placaSelecionada={ferramenta==='mover'?placaSelecionada:undefined} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
             </div>
-            {vista!=='2d'&&localVista&&<GoogleVistaImovel key={revisaoLocal+vista+localVista.latitude+','+localVista.longitude} chave={chaveMaps} latitude={localVista.latitude} longitude={localVista.longitude} modo={vista} onVoltar={()=>setVista('2d')} edicao={{dados:d,rascunho,ferramenta,aguaSelecionada:agua?.id,onSelecionarAgua:id=>{setAguaSelecionada(id);setAba('telhado');},onPonto:pontoNoMapa,onRemover:id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false),onFechar:fecharPoligono,onAviso:setErro,onCamera:vistaGoogle=>setD(atual=>JSON.stringify(atual.vistaGoogle)===JSON.stringify(vistaGoogle)?atual:({...atual,localizacao:atual.localizacao??{latitude:localVista.latitude,longitude:localVista.longitude},vistaGoogle}))}} onSelecionarLocal={v=>void selecionarLocalGoogle(v)} salvando={salvandoVista||carregando} onSalvarVista={vistaGoogle=>{if(rascunho.length){setErro('Conclua o contorno antes de salvar a vista.');return;}if((d.aguas.length||d.obstaculos.length)&&!d.escalaConfirmada){setErro('Confirme a escala antes de salvar o desenho.');return;}(onSalvarVista??onAplicar)({...d,vistaGoogle});}}/>}
+            {vista!=='2d'&&localVista&&<GoogleVistaImovel key={revisaoLocal+vista+localVista.latitude+','+localVista.longitude} chave={chaveMaps} latitude={localVista.latitude} longitude={localVista.longitude} modo={vista} onVoltar={()=>setVista('2d')} edicao={{dados:d,rascunho,ferramenta,aguaSelecionada:agua?.id,placaSelecionada:ferramenta==='mover'?placaSelecionada:undefined,onSelecionarAgua:id=>{setAguaSelecionada(id);setAba('telhado');},onPonto:pontoNoMapa,onRemover:id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false),onFechar:fecharPoligono,onAviso:setErro,onCamera:vistaGoogle=>setD(atual=>JSON.stringify(atual.vistaGoogle)===JSON.stringify(vistaGoogle)?atual:({...atual,localizacao:atual.localizacao??{latitude:localVista.latitude,longitude:localVista.longitude},vistaGoogle}))}} onSelecionarLocal={v=>void selecionarLocalGoogle(v)} salvando={salvandoVista||carregando} onSalvarVista={vistaGoogle=>{if(rascunho.length){setErro('Conclua o contorno antes de salvar a vista.');return;}if((d.aguas.length||d.obstaculos.length)&&!d.escalaConfirmada){setErro('Confirme a escala antes de salvar o desenho.');return;}(onSalvarVista??onAplicar)({...d,vistaGoogle});}}/>}
             {solAberto&&<div className="absolute bottom-2 right-2 z-10 w-[min(300px,calc(100%-16px))] max-h-[calc(100%-56px)] overflow-auto shadow-xl rounded-xl"><SimulacaoSolar compact dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/></div>}
           </div>
           <CapturarMapa alvo={areaMapa} leadId={leadId} propostaId={propostaId} modo={vista} podeAnexar={podeAnexarCaptura} dados={d} rascunho={!!rascunho.length} onSalva={capturado=>{setD(capturado);if(onSalvarVista)onSalvarVista(capturado,true);else onAplicar(capturado);}}/>

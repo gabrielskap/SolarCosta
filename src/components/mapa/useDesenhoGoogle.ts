@@ -10,6 +10,7 @@ export interface EdicaoGoogle {
   onCamera: (vista: NonNullable<LevantamentoTelhado['vistaGoogle']>) => void;
   onAviso: (mensagem: string) => void;
   aguaSelecionada?: string; onSelecionarAgua?: (id:string)=>void;
+  placaSelecionada?: string;
 }
 
 export function lerCameraGoogle(modo: 'satelite' | '3d', mapa: any): NonNullable<LevantamentoTelhado['vistaGoogle']> | null {
@@ -143,7 +144,7 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     const exportando=fase==='contornos';
     const s = d.simulacao, loc = d.localizacao ?? d.satelite;
     const sol = s && loc ? posicaoSolar(s.data, s.hora, loc.latitude, loc.longitude, s.fuso) : null;
-    const desenhar = (pontos: PontoLocal[], cor: string, linha = false, aguaId?:string, camada=10) => {
+    const desenhar = (pontos: PontoLocal[], cor: string, linha = false, aguaId?:string, camada=10, contorno?:string) => {
       if (pontos.length < (linha ? 2 : 3)) return;
       // Separação visual sobre a malha: placas acima das águas, evitando
       // superfícies coplanares que piscam ou se encobrem ao girar a câmera.
@@ -153,13 +154,13 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       if (modo === 'satelite') {
         const maps = (window as any).google.maps;
         const objeto = linha ? new maps.Polyline({ path, zIndex: camada, strokeColor: cor, strokeWeight: 3, clickable: false, map: mapa })
-          : new maps.Polygon({ paths: path, zIndex: camada, fillColor: cor, fillOpacity: exportando||camada===30?1:0.5, strokeColor: camada===30?'#93c5fd':cor, strokeWeight: espessura, clickable: selecionavel, map: mapa });
+          : new maps.Polygon({ paths: path, zIndex: camada, fillColor: cor, fillOpacity: exportando||camada===30?1:0.5, strokeColor: contorno??(camada===30?'#93c5fd':cor), strokeWeight: contorno?4:espessura, clickable: selecionavel, map: mapa });
         const listener=selecionavel?objeto.addListener('click',()=>atual.current.onSelecionarAgua?.(aguaId!)):undefined;
         remover.push(() => {listener?.remove();objeto.setMap(null);});
       } else {
         const Polygon=selecionavel?biblioteca.Polygon3DInteractiveElement:biblioteca.Polygon3DElement;
         const objeto = linha ? new biblioteca.Polyline3DElement({ path, zIndex: camada, strokeColor: cor, strokeWidth: 3, altitudeMode: 'RELATIVE_TO_MESH', drawsOccludedSegments: true })
-          : new Polygon({ path, zIndex: camada, fillColor: cor + (exportando||camada===30?'ff':'80'), strokeColor: camada===30?'#93c5fd':cor, strokeWidth: espessura, altitudeMode: 'RELATIVE_TO_MESH', drawsOccludedSegments: true });
+          : new Polygon({ path, zIndex: camada, fillColor: cor + (exportando||camada===30?'ff':'80'), strokeColor: contorno??(camada===30?'#93c5fd':cor), strokeWidth: contorno?4:espessura, altitudeMode: 'RELATIVE_TO_MESH', drawsOccludedSegments: true });
         const selecionar=(e:Event)=>{e.stopPropagation();atual.current.onSelecionarAgua?.(aguaId!);};
         if(selecionavel)objeto.addEventListener('gmp-click',selecionar);
         mapa.append(objeto); remover.push(() => {objeto.removeEventListener('gmp-click',selecionar);objeto.remove();});
@@ -174,7 +175,7 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       if(exportando)desenhar([...a.pontos,a.pontos[0]],cor,true);else desenhar(a.pontos, cor, false, a.id);
     }
     d.obstaculos.forEach(a => desenhar(exportando?[...a.pontos,a.pontos[0]]:a.pontos, '#dc2626',exportando,undefined,20));
-    d.placas.forEach(a => desenhar(a.pontos, '#1e3a8a',false,undefined,30));
+    d.placas.forEach(a => desenhar(a.pontos, '#1e3a8a',false,undefined,30,!exportando&&a.id===edicao.placaSelecionada?'#f59e0b':undefined));
     if (!exportando && s?.mostrarSombras && sol && sol.elevacao > 0) for (const o of d.obstaculos) {
       const comprimento = o.alturaM / Math.tan(sol.elevacao * Math.PI / 180), ang = (sol.azimute - d.norte) * Math.PI / 180;
       const topo = o.pontos.map(p => ({ x: p.x - comprimento * Math.sin(ang), y: p.y + comprimento * Math.cos(ang) }));
@@ -206,5 +207,5 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     const mudar=(e:Event)=>renderizar((e as CustomEvent).detail);
     alvo.addEventListener('solarcosta-captura-fase',mudar);
     return () => {alvo.removeEventListener('solarcosta-captura-fase',mudar);limpar();};
-  }, [instancia, modo, d.aguas, d.obstaculos, d.placas, d.simulacao, d.localizacao, d.satelite, d.larguraM, d.alturaM, d.norte, edicao.rascunho, edicao.ferramenta, edicao.aguaSelecionada, somenteLeitura]);
+  }, [instancia, modo, d.aguas, d.obstaculos, d.placas, d.simulacao, d.localizacao, d.satelite, d.larguraM, d.alturaM, d.norte, edicao.rascunho, edicao.ferramenta, edicao.aguaSelecionada, edicao.placaSelecionada, somenteLeitura]);
 }

@@ -130,3 +130,14 @@ export function inserirPlaca(l:LevantamentoTelhado,centro:PontoLocal,paisagem=fa
   }
   return null;
 }
+
+/** Reposiciona uma placa pelo centro, mantendo id, string e orientação (retrato/paisagem). */
+export function moverPlaca(l:LevantamentoTelhado,id:string,centro:PontoLocal):PlacaManual | null {
+  const atual=l.placas.find(p=>p.id===id);
+  if(!atual)return null;
+  const [a,b]=atual.pontos as [PontoLocal,PontoLocal];
+  const lado=Math.hypot(b.x-a.x,b.y-a.y);
+  const paisagem=Math.abs(lado-l.modulo.alturaM)<Math.abs(lado-l.modulo.larguraM);
+  const nova=inserirPlaca({...l,placas:l.placas.filter(p=>p.id!==id)},centro,paisagem);
+  return nova&&{...atual,aguaId:nova.aguaId,pontos:nova.pontos};
+}
