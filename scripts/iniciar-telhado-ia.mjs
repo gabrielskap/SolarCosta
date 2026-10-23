@@ -15,5 +15,8 @@ if(!['localhost','127.0.0.1'].includes(url.hostname))throw new Error('O comando 
 const child=spawn(python,['server.py'],{cwd:path.join(root,'services/telhado-ia'),stdio:'inherit',windowsHide:true,
   env:{...process.env,BIND:'127.0.0.1',PORT:url.port||'8000'}});
 child.on('error',e=>{console.error('Não foi possível iniciar o Python da IA:',e.message);process.exitCode=1;});
-for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill());
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{
+  if(process.platform==='win32'&&child.pid)spawn('taskkill',['/pid',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+  else child.kill();
+});
 child.on('exit',code=>{process.exitCode=code??0;});

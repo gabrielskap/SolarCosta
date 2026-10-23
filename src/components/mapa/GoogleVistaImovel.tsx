@@ -134,13 +134,7 @@ export function GoogleVistaImovel({ chave, latitude, longitude, modo, onVoltar, 
       {!somenteLeitura&&<div data-captura-ocultar className="absolute bottom-8 left-2 right-14 z-20 flex flex-wrap items-center gap-1.5 pointer-events-none">
         <button type="button" className="pointer-events-auto rounded-lg border bg-white/95 shadow px-3 py-2 text-xs font-semibold" onClick={() => recentralizar.current()}>Centralizar imóvel</button>
             {!somenteLeitura&&<button type="button" disabled={salvando||!instancia||!!mensagem||carregando} className="pointer-events-auto rounded-lg bg-sky-800 text-white shadow px-3 py-2 text-xs font-semibold disabled:opacity-40" onClick={()=>{const vista=instancia&&lerCameraGoogle(modo,instancia.mapa);if(vista)onSalvarVista(vista);}}>{salvando?'Salvando…':'Salvar vista e desenho'}</button>}
-        {!somenteLeitura&&<details className="relative pointer-events-auto text-xs">
-          <summary className="cursor-pointer list-none rounded-lg border bg-white/95 shadow px-3 py-2 font-semibold" aria-label="Mais ações do mapa">Mais ações ···</summary>
-          <div className="absolute bottom-full left-0 mb-2 w-56 rounded-xl border bg-white p-2 shadow-xl">
-            <button type="button" disabled={!instancia||salvando} className="w-full rounded p-2 text-left hover:bg-slate-100 disabled:opacity-40" onClick={()=>{const v=instancia&&lerCameraGoogle(modo,instancia.mapa);if(v)onSelecionarLocal(v);}}>Definir imóvel neste centro</button>
-
-          </div>
-        </details>}
+        <button type="button" title="Definir imóvel neste centro" aria-label="Definir imóvel neste centro" disabled={!instancia||salvando} className="pointer-events-auto rounded-lg border bg-white/95 shadow px-3 py-2 text-xs font-semibold disabled:opacity-40" onClick={()=>{const v=instancia&&lerCameraGoogle(modo,instancia.mapa);if(v)onSelecionarLocal(v);}}>⌖ Definir imóvel</button>
       </div>}
       <div ref={container} className="absolute inset-0" />
       {!somenteLeitura&&<div data-captura-ocultar className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-red-600 text-3xl" aria-hidden="true">+</div>}

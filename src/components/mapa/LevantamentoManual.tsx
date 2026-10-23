@@ -74,7 +74,7 @@ export function novoLevantamento(potenciaWp:number):LevantamentoTelhado {
 }
 
 export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplicar,onCancelar,enderecoBusca='',coordenadaInicial,googleAtivo=true,chaveMaps,onSalvarVista,salvandoVista=false,leadId,propostaId,podeAnexarCaptura=false}:{
-  valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;chaveMaps?:string|null;onSalvarVista?:(l:LevantamentoTelhado)=>void;salvandoVista?:boolean;leadId?:string;propostaId?:string;podeAnexarCaptura?:boolean;
+  valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;chaveMaps?:string|null;onSalvarVista?:(l:LevantamentoTelhado,manterAberto?:boolean)=>void;salvandoVista?:boolean;leadId?:string;propostaId?:string;podeAnexarCaptura?:boolean;
 }) {
   const [d,setD]=useState<LevantamentoTelhado>(()=>structuredClone(valor??novoLevantamento(potenciaWp)));
   const areaMapa=useRef<HTMLDivElement>(null);
@@ -254,6 +254,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
             {vista!=='2d'&&localVista&&<GoogleVistaImovel key={vista+localVista.latitude+','+localVista.longitude} chave={chaveMaps} latitude={localVista.latitude} longitude={localVista.longitude} modo={vista} onVoltar={()=>setVista('2d')} edicao={{dados:d,rascunho,ferramenta,aguaSelecionada:agua?.id,onSelecionarAgua:id=>{setAguaSelecionada(id);setAba('telhado');},onPonto:pontoNoMapa,onRemover:id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false),onFechar:fecharPoligono,onAviso:setErro,onCamera:vistaGoogle=>setD(atual=>JSON.stringify(atual.vistaGoogle)===JSON.stringify(vistaGoogle)?atual:({...atual,localizacao:atual.localizacao??{latitude:localVista.latitude,longitude:localVista.longitude},vistaGoogle}))}} onSelecionarLocal={v=>void selecionarLocalGoogle(v)} salvando={salvandoVista||carregando} onSalvarVista={vistaGoogle=>{if(rascunho.length){setErro('Conclua o contorno antes de salvar a vista.');return;}if((d.aguas.length||d.obstaculos.length)&&!d.escalaConfirmada){setErro('Confirme a escala antes de salvar o desenho.');return;}(onSalvarVista??onAplicar)({...d,vistaGoogle});}}/>}
             {solAberto&&<div className="absolute bottom-2 right-2 z-10 w-[min(300px,calc(100%-16px))] max-h-[calc(100%-56px)] overflow-auto shadow-xl rounded-xl"><SimulacaoSolar compact dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/></div>}
           </div>
+          <CapturarMapa alvo={areaMapa} leadId={leadId} propostaId={propostaId} modo={vista} podeAnexar={podeAnexarCaptura} dados={d} rascunho={!!rascunho.length} onSalva={capturado=>{setD(capturado);if(onSalvarVista)onSalvarVista(capturado,true);else onAplicar(capturado);}}/>
           <div className="shrink-0 flex flex-wrap gap-2 items-center text-xs text-slate-600">
             <p className="flex-1 min-w-40">{instrucao}</p>
             {rascunho.length>0&&<><span>{rascunho.length} pontos · {areaRascunho.toFixed(2)} m² em desenho</span></>}
@@ -291,9 +292,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
               <p className="text-xs text-slate-500">Dimensões do datasheet. Inclusão respeita contornos, obstáculos e recuos; a distribuição substitui as placas atuais.</p>
             </>}
             {aba==='imagem'&&<>
-            <details className="rounded-lg border bg-slate-50 text-xs"><summary className="cursor-pointer px-3 py-2 font-semibold">Capturar imagem do mapa</summary>
-          <CapturarMapa alvo={areaMapa} leadId={leadId} propostaId={propostaId} modo={vista} podeAnexar={podeAnexarCaptura} dados={d} rascunho={!!rascunho.length} onSalva={capturado=>{setD(capturado);(onSalvarVista??onAplicar)(capturado);}}/>
-            </details>
+
               <label className="block text-xs">Imagem própria (até 10 MB)<input type="file" accept="image/jpeg,image/png,image/webp" className="block w-full mt-1" disabled={carregando} onChange={e=>{void importar(e.target.files?.[0]);e.target.value='';}}/></label>
               <p className="text-xs text-slate-500">{d.satelite?'Google Static Maps, até 1280 × 1280 px. Ampliar com zoom não acrescenta detalhes à imagem.':d.imagemNome||'Imagem própria ou planta em metros.'}</p>
               <label className="block text-xs">Latitude<input className={campo} value={latBusca} onChange={e=>{setLatBusca(e.target.value);setConfirmarTroca(false);}}/></label><label className="block text-xs">Longitude<input className={campo} value={lngBusca} onChange={e=>{setLngBusca(e.target.value);setConfirmarTroca(false);}}/></label>

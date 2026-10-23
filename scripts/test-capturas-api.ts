@@ -70,11 +70,14 @@ try{
   assert.equal((await upload(id,'fundo')).status,409,'captura finalizada não aceita sobrescrita');
   const novo=await criar(true);await upload(novo,'original');await upload(novo,'fundo');await upload(novo,'mascara',mask);
   await request(novo,'/iniciar');
-  await new Promise<void>(r=>ia.listen(0,'127.0.0.1',r));
-  process.env.TELHADO_IA_URL=`http://127.0.0.1:${(ia.address() as any).port}`;process.env.TELHADO_IA_TOKEN='test-only-token-with-more-than-32-chars';
+  const iaReal=process.env.TESTE_IA_REAL==='true';
+  if(!iaReal){
+    await new Promise<void>(r=>ia.listen(0,'127.0.0.1',r));
+    process.env.TELHADO_IA_URL=`http://127.0.0.1:${(ia.address() as any).port}`;process.env.TELHADO_IA_TOKEN='test-only-token-with-more-than-32-chars';
+  }
   parar=iniciarFilaCapturas({conectar:()=>pool.connect()});
   let job:any;
-  for(let i=0;i<80;i++){
+  for(let i=0;i<200;i++){
     job=(await (await fetch(url(novo),{headers})).json()).captura;
     if(job.estado==='concluido'||job.estado==='falhou')break;
     await new Promise(r=>setTimeout(r,100));
@@ -106,7 +109,7 @@ try{
     await new Promise(r=>setTimeout(r,100));
   }
   assert.equal(job.estado,'falhou');assert(job.original_id,'reinício não perde o original');
-  console.log('OK API: autenticação, permissão, uploads, idempotência, fila IA, original/final, cancelamento e prévia. Todas as escritas serão revertidas.');
+  console.log(`OK API${iaReal?' + Real-ESRGAN real':''}: autenticação, permissão, uploads, idempotência, fila IA, original/final, cancelamento, reinício e prévia. Todas as escritas serão revertidas.`);
 } finally {
   parar?.();await new Promise<void>(r=>server.close(()=>r()));
   if(ia.listening)await new Promise<void>(r=>ia.close(()=>r()));

@@ -34,14 +34,14 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       if(modo==='3d'&&((!estavel&&!ponteiro)||ponteiro?.tratado||ponteiro?.movido))return;
       const { dados, ferramenta, rascunho, onPonto, onRemover, onFechar } = atual.current;
       const geo = criarGeorreferencia(dados), pos = e.latLng ?? e.position ?? e.detail?.position;
-      if (!geo) { atual.current.onAviso('Use Mais ações → Definir imóvel neste centro para fixar a área antes de desenhar.'); return; }
+      if (!geo) { atual.current.onAviso('Use Definir imóvel para fixar a área antes de desenhar.'); return; }
       if (!pos) { atual.current.onAviso('Clique sobre o imóvel, evitando o horizonte e os controles do mapa.'); return; }
       const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat ?? pos.latitude;
       const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng ?? pos.longitude;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       if(modo==='3d'&&ponteiro)ponteiro.tratado=true;
       const p = geo.paraLocal(lat, lng);
-      if (p.x < 0 || p.y < 0 || p.x > dados.larguraM || p.y > dados.alturaM) { atual.current.onAviso('Ponto fora da moldura do projeto. Use Mais ações → Definir imóvel neste centro para substituir a localização anterior.'); return; }
+      if (p.x < 0 || p.y < 0 || p.x > dados.larguraM || p.y > dados.alturaM) { atual.current.onAviso('Ponto fora da moldura do projeto. Use Definir imóvel para substituir a localização anterior.'); return; }
       if(ferramenta==='navegar'){
         const agua=[...dados.aguas].reverse().find(a=>dentro(p,a.pontos));
         if(agua)atual.current.onSelecionarAgua?.(agua.id);

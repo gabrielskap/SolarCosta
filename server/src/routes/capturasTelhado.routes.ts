@@ -11,7 +11,7 @@ import { CAMPOS_CAPTURA, cancelarCaptura, documentoCaptura, obterCaptura, propos
 import { validarImagem } from '../services/imagemCaptura.js';
 
 export const capturasTelhadoRouter=Router();
-capturasTelhadoRouter.use(exigirLogin);
+capturasTelhadoRouter.use('/:id/capturas-telhado',exigirLogin);
 const alterar=exigirPermissao('emitir_propostas','anexar_documentos');
 const params=z.object({id:z.string().uuid(),captura:z.string().uuid().optional()});
 const tabela='"SolarCosta_CapturasTelhado"';

@@ -75,6 +75,7 @@ edicao.aguaSelecionada='agua-1';
 const biblioteca={Polygon3DInteractiveElement:AguaInterativa,Polygon3DElement:Forma,Polyline3DElement:Forma};
 module.exports.useDesenhoGoogle({mapa,biblioteca},'3d',edicao);
 const limparFormas=effects[5]();
+assert.equal(objetos.length,1,'não cria moldura ou água quadrada automaticamente');
 const agua=objetos.find(o=>o instanceof AguaInterativa);
 assert(agua,'água usa polígono 3D interativo');
 assert.equal(agua.options.strokeWidth,4,'água selecionada recebe destaque');

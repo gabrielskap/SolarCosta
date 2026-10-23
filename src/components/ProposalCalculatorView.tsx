@@ -105,6 +105,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const editando = !!propostaExistente;
   const [levantamentoTelhado, setLevantamentoTelhado] = useState<LevantamentoTelhado | undefined>(propostaExistente?.levantamentoTelhado);
   const [editorManualAberto, setEditorManualAberto] = useState(false);
+  const manterEditorCaptura=useRef(false);
   const [salvarVistaPendente,setSalvarVistaPendente] = useState(false);
 
   // Lead vinculado. Sem lead selecionado o formulário nasce em branco — antes
@@ -736,7 +737,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   useEffect(()=>{
     if(!salvarVistaPendente)return;
     void salvar(false,false).then(ok=>{
-      if(ok){setEditorManualAberto(false);showToast('Vista e desenho salvos','success','O levantamento reabrira no enquadramento salvo.');}
+      if(ok){if(!manterEditorCaptura.current)setEditorManualAberto(false);showToast('Vista e desenho salvos','success','O levantamento reabrira no enquadramento salvo.');}
       else showToast('Vista ainda nao gravada','error','Confira os dados obrigatorios da proposta e tente novamente.');
     }).catch(()=>showToast('Falha ao salvar a vista','error','O desenho permanece no editor. Tente novamente.')).finally(()=>setSalvarVistaPendente(false));
   },[salvarVistaPendente]);
@@ -1205,7 +1206,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <button type="button" className="text-xs text-red-700 underline" onClick={()=>setLevantamentoTelhado(undefined)}>Remover levantamento manual</button>
             </>}
           </div>
-          {editorManualAberto&&<LevantamentoManual valor={levantamentoTelhado} potenciaWp={moduloWp} hsp={hsp} perdasPct={perdasPct} alvo={modulosQtdCalculada} enderecoBusca={consultaAuto||[endereco,numeroEndereco,cidade].filter(Boolean).join(', ')} coordenadaInicial={coordenadaLead??undefined} leadId={linkedLead?.id} propostaId={propostaSalva.current?.id} podeAnexarCaptura={currentUser.cargo==='Administrador'||!!currentUser.permissoes?.anexarDocumentos&&!!currentUser.permissoes?.emitirPropostas} salvandoVista={salvamentoEmCurso||salvarVistaPendente} onSalvarVista={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);if(l.placas.length)setDadosTelhado(null);setSalvarVistaPendente(true);}} chaveMaps={config?.google_maps_browser_key} googleAtivo={config?.google_maps_ativo!==false} onCancelar={()=>setEditorManualAberto(false)} onAplicar={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);setDadosTelhado(null);setEditorManualAberto(false);showToast('Levantamento aplicado','success','Potência e geração recalculadas. Confira os equipamentos do kit.');}}/>}
+          {editorManualAberto&&<LevantamentoManual valor={levantamentoTelhado} potenciaWp={moduloWp} hsp={hsp} perdasPct={perdasPct} alvo={modulosQtdCalculada} enderecoBusca={consultaAuto||[endereco,numeroEndereco,cidade].filter(Boolean).join(', ')} coordenadaInicial={coordenadaLead??undefined} leadId={linkedLead?.id} propostaId={propostaSalva.current?.id} podeAnexarCaptura={currentUser.cargo==='Administrador'||!!currentUser.permissoes?.anexarDocumentos&&!!currentUser.permissoes?.emitirPropostas} salvandoVista={salvamentoEmCurso||salvarVistaPendente} onSalvarVista={(l,manterAberto=false)=>{manterEditorCaptura.current=manterAberto;setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);if(l.placas.length)setDadosTelhado(null);setSalvarVistaPendente(true);}} chaveMaps={config?.google_maps_browser_key} googleAtivo={config?.google_maps_ativo!==false} onCancelar={()=>setEditorManualAberto(false)} onAplicar={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);setDadosTelhado(null);setEditorManualAberto(false);showToast('Levantamento aplicado','success','Potência e geração recalculadas. Confira os equipamentos do kit.');}}/>}
           </div>
 
           {/* Section 3: Kit de equipamentos e serviços */}

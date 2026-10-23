@@ -12,6 +12,7 @@ const png=(canvas:HTMLCanvasElement)=>new Promise<Blob>((resolve,reject)=>canvas
 
 /** Compartilhamento solicitado antes do primeiro await, no gesto do usuário. */
 export async function capturarMapaHD(alvo:HTMLElement,signal?:AbortSignal):Promise<CapturaHD> {
+  signal?.throwIfAborted();
   if(alvo.dataset.mapaPronto==='false')throw new Error('Aguarde o mapa terminar de carregar antes de capturar.');
   if(!navigator.mediaDevices?.getDisplayMedia)throw new Error('Use Chrome ou Edge em HTTPS ou localhost para capturar a aba.');
   const local=new AbortController(),cancelar=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.stopImmediatePropagation();local.abort();}};
@@ -51,9 +52,10 @@ export async function capturarMapaHD(alvo:HTMLElement,signal?:AbortSignal):Promi
     alvo.append(bloqueador);
     alvo.querySelectorAll<HTMLElement>('[data-captura-ocultar]').forEach(el=>{ocultos.push([el,el.style.visibility]);el.style.visibility='hidden';});
     const crop=(window as any).CropTarget;
-    if(crop?.fromElement&&track.cropTo){await track.cropTo(await crop.fromElement(alvo));confirmado=true;}
+    let recortado=false;
+    if(!confirmado&&crop?.fromElement&&track.cropTo){await track.cropTo(await crop.fromElement(alvo));confirmado=true;recortado=true;}
     if(!confirmado)throw new Error('Este navegador não permite confirmar a aba. Use Chrome ou Edge atualizado.');
-    const recortado=!!(crop?.fromElement&&track.cropTo);
+
     video.muted=true;video.playsInline=true;video.srcObject=stream;await video.play();
     const quadro=()=>new Promise<void>((resolve,reject)=>{
       let id:number;
@@ -69,6 +71,8 @@ export async function capturarMapaHD(alvo:HTMLElement,signal?:AbortSignal):Promi
       if(!recortado&&Math.abs(sx-sy)/Math.max(sx,sy)>0.05)throw new Error('Não foi possível alinhar a aba capturada.');
       const w=recortado?video.videoWidth:rect.width*sx,h=recortado?video.videoHeight:rect.height*sy;
       if(!w||!h)throw new Error('Captura vazia.');
+      if(recortado&&Math.abs(w/h-rect.width/rect.height)/(rect.width/rect.height)>0.02)throw new Error('O navegador não recortou o mapa corretamente. Tente novamente no Chrome ou Edge.');
+      if(!recortado&&(rect.left<0||rect.top<0||rect.left+rect.width>window.innerWidth+1||rect.top+rect.height>window.innerHeight+1))throw new Error('Mantenha todo o mapa visível para capturar.');
       const f=Math.min(1,3840/w,3840/h),canvas=document.createElement('canvas');
       canvas.width=Math.round(w*f);canvas.height=Math.round(h*f);
       const ctx=canvas.getContext('2d',{willReadFrequently:true})!;
@@ -92,7 +96,7 @@ export async function capturarMapaHD(alvo:HTMLElement,signal?:AbortSignal):Promi
     throw new Error('O mapa mudou durante a captura. Aguarde carregar os detalhes e tente novamente.');
   }finally{
     bloqueador.remove();if(raiz)raiz.style.zIndex=zOriginal??'';
-    controle?.restaurar();
+    try{controle?.restaurar();}catch{/* O mapa pode ter sido desmontado durante o cancelamento. */}
     if(styleOriginal===null)alvo.removeAttribute('style');else alvo.setAttribute('style',styleOriginal);
     ocultos.forEach(([el,v])=>{el.style.visibility=v;});
     parar();video.pause();video.srcObject=null;
