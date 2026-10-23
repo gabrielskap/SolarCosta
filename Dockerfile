@@ -15,6 +15,8 @@ RUN npm ci
 COPY index.html vite.config.ts tsconfig.json ./
 COPY public ./public
 COPY src ./src
+# Motor de geometria puro compartilhado pelo frontend e pela API.
+COPY server/src/domain/levantamentoTelhado.ts ./server/src/domain/levantamentoTelhado.ts
 RUN npm run build
 
 # -----------------------------------------------------------------------------
