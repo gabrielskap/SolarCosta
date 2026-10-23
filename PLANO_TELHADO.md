@@ -1,5 +1,13 @@
 # Levantamento e plano — localização e layout do telhado
 
+## Implementação entregue em 23/10/2026
+
+O editor foi unificado: busca de imagem por endereço/coordenadas e desenho usam a mesma área. Há escala Web Mercator calculada para a imagem (com confirmação/calibração pelo usuário), contornos, obstáculos, recuos, dimensões de módulos, distribuição e integração com geração/proposta/PDF. A imagem Google não é copiada para o JSON da proposta: é gravada a referência do enquadramento, e a imagem é requisitada novamente quando necessária; imagens próprias usam uma prévia raster com tamanho limitado.
+
+A simulação geométrica usa as equações NOAA para posição solar por data, horário e fuso, compara incidência direta por água e projeta sombras de obstáculos de altura informada sobre águas planas. Não calcula sombras sobre águas inclinadas, perdas energéticas anuais por sombra ou irradiância meteorológica; as cores representam incidência relativa no instante escolhido. A geração comercial permanece pelo método HSP/perdas.
+
+Testes: geometria, escala, posição solar, orientação e contrato de persistência; fluxo do editor no navegador com respostas Google simuladas (sem consumo). A consulta real a Google depende da sessão autenticada e da chave configurada. Catálogo técnico completo, strings/MPPT e simulação energética avançada continuam nas etapas de evolução abaixo.
+
 Data: 23/10/2026. Tela: `/sistema/propostas/nova`.
 
 Escopo desta entrega: levantamento do código atual, comparação com a reunião e plano para implementação. Nenhuma funcionalidade de produção foi alterada. A interface local não foi validada em navegador nem foram realizadas chamadas autenticadas às APIs pagas; os achados abaixo são de inspeção do código e da documentação dos provedores.

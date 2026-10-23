@@ -3,6 +3,7 @@ import { areaPoligono, areaSuperficie, distribuir, escalaSatelite, poligonoValid
 import { geocodificar, imagemTelhado } from '../../services/solar';
 import { incidenciaDireta, posicaoSolar } from '../../utils/posicaoSolar';
 import { SimulacaoSolar } from './SimulacaoSolar';
+import { CanvasTelhado } from './CanvasTelhado';
 
 export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], imagemUrl, tokenPublico }: {
   dados: LevantamentoTelhado; onPonto?: (p:PontoLocal)=>void; onRemover?:(id:string)=>void; rascunho?:PontoLocal[];imagemUrl?:string;tokenPublico?:string;
@@ -31,25 +32,19 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
     const topo=o.pontos.map(p=>({x:p.x+dx,y:p.y+dy}));
     return [topo,...o.pontos.map((p,i)=>[p,o.pontos[(i+1)%o.pontos.length],topo[(i+1)%topo.length],topo[i]])];
   }):[];
-  const ref=useRef<SVGSVGElement>(null);
   const pontos=(p:PontoLocal[])=>p.map(v=>`${v.x},${v.y}`).join(' ');
-  return <svg ref={ref} viewBox={`0 0 ${dados.larguraM} ${dados.alturaM}`} role="img" aria-label="Planta do telhado em metros" className="w-full rounded-lg bg-slate-100 border border-slate-300 max-h-[560px]" style={{aspectRatio:`${dados.larguraM}/${dados.alturaM}`,touchAction:'manipulation'}} onClick={e=>{
-    if(!onPonto||!ref.current) return;
-    const point=new DOMPoint(e.clientX,e.clientY).matrixTransform(ref.current.getScreenCTM()!.inverse());
-    if(point.x>=0&&point.y>=0&&point.x<=dados.larguraM&&point.y<=dados.alturaM*(sat?0.94:1)) onPonto({x:point.x,y:point.y});
-  }}>
-    <defs><pattern id="grade-telhado-manual" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M 1 0 L 0 0 0 1" fill="none" stroke="#cbd5e1" strokeWidth="0.02"/></pattern></defs>
+  return <CanvasTelhado largura={dados.larguraM} altura={dados.alturaM} resetKey={sat?`${sat.latitude},${sat.longitude},${sat.zoom}`:dados.imagem} onPonto={onPonto?p=>{if(p.y<=dados.alturaM*(sat?0.94:1))onPonto(p);}:undefined} rodape={sat&&imagem?<svg viewBox={`0 ${dados.alturaM*0.94} ${dados.larguraM} ${dados.alturaM*0.06}`} className="block h-10 w-full bg-white" role="img" aria-label="Créditos da imagem de satélite"><image href={imagem} width={dados.larguraM} height={dados.alturaM} preserveAspectRatio="none"/></svg>:undefined}>
+    <defs><pattern id={`grade-${idFigura}`} width="1" height="1" patternUnits="userSpaceOnUse"><path d="M 1 0 L 0 0 0 1" fill="none" stroke="#cbd5e1" strokeWidth="0.02"/></pattern></defs>
     {imagem&&<image href={imagem} width={dados.larguraM} height={dados.alturaM} preserveAspectRatio="none" onError={()=>setFalha(true)}/>}
-    <rect width={dados.larguraM} height={dados.alturaM} fill="url(#grade-telhado-manual)" pointerEvents="none"/>
+    <rect width={dados.larguraM} height={dados.alturaM} fill={`url(#grade-${idFigura})`} pointerEvents="none"/>
     {dados.aguas.map(a=><g key={a.id}><polygon points={pontos(a.pontos)} fill={sim?.mostrarIncidencia&&sol?`hsl(${220*(1-incidenciaDireta(sol.elevacao,sol.azimute,a.inclinacao,a.azimute))} 85% 50% / 0.5)`:'#38bdf833'} stroke="#0284c7" strokeWidth={Math.max(0.06,dados.larguraM/600)}/><text x={a.pontos[0].x} y={a.pontos[0].y} fontSize={dados.larguraM/55} fill="#075985">{a.nome}</text></g>)}
     {dados.obstaculos.map(o=><polygon key={o.id} points={pontos(o.pontos)} fill="#ef444466" stroke="#b91c1c" strokeWidth="0.06"/>)}
     {dados.placas.map(p=><polygon key={p.id} points={pontos(p.pontos)} fill="#1e3a8a" stroke="#93c5fd" strokeWidth="0.025" style={{cursor:onRemover?'pointer':undefined}} onClick={e=>{if(onRemover){e.stopPropagation();onRemover(p.id);}}}/>)}
     {sombras.length>0&&dados.aguas.filter(a=>a.inclinacao===0).map(a=><g key={`sombra-${a.id}`} pointerEvents="none"><defs><clipPath id={`${idFigura}-${a.id}`}><polygon points={pontos(a.pontos)}/></clipPath></defs><g clipPath={`url(#${idFigura}-${a.id})`} fill="#0f172a" fillOpacity="0.35">{sombras.map((p,i)=><polygon key={i} points={pontos(p)}/>)}</g></g>)}
     {rascunho.length>0&&<polyline points={pontos(rascunho)} fill="#fbbf2433" stroke="#d97706" strokeWidth={dados.larguraM/500}/>}
     {rascunho.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={dados.larguraM/180} fill="#d97706"/>)}
-    {sat&&imagem&&<svg y={dados.alturaM*0.94} width={dados.larguraM} height={dados.alturaM*0.06} viewBox={`0 ${dados.alturaM*0.94} ${dados.larguraM} ${dados.alturaM*0.06}`} pointerEvents="none"><image href={imagem} width={dados.larguraM} height={dados.alturaM} preserveAspectRatio="none"/></svg>}
     {falha&&<text x="1" y="2" fontSize="0.7" fill="#b91c1c">Imagem indisponível; geometria preservada</text>}
-  </svg>;
+  </CanvasTelhado>;
 }
 
 const campo='border border-slate-300 rounded-lg px-2 py-1.5 w-full bg-white text-slate-900';
@@ -163,8 +158,8 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
         <p className="text-xs text-slate-500">A imagem entra diretamente no desenho. Consultas Google podem gerar consumo. A escala é aproximada ao nível do solo; valide uma medida conhecida.</p>
         {confirmarTroca&&<button type="button" className="text-xs underline text-slate-600" onClick={()=>{setConfirmarTroca(false);setErro('');}}>Manter a imagem e o desenho atuais</button>}
       </div>
-      <div className="grid lg:grid-cols-[1fr_320px] gap-5">
-        <div className="space-y-3 lg:sticky lg:top-0 lg:self-start">
+      <div className="grid lg:grid-cols-[1fr_320px] gap-5 lg:h-[calc(100dvh-320px)] lg:min-h-[360px]">
+        <div className="space-y-3 lg:overflow-y-auto lg:pr-1">
           <div className="flex flex-wrap gap-2">{(['agua','obstaculo','remover','calibrar'] as const).map(t=><button type="button" key={t} onClick={()=>{setFerramenta(t);setRascunho([]);}} className={`px-3 py-2 rounded-lg text-xs font-bold ${ferramenta===t?'bg-sky-800 text-white':'bg-slate-100 text-slate-700'}`}>{({agua:'Desenhar água',obstaculo:'Obstáculo',remover:'Remover módulo',calibrar:'Calibrar escala'})[t]}</button>)}</div>
           <FiguraLevantamento dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={p=>{setConfirmarTroca(false);if(ferramenta==='agua'||ferramenta==='obstaculo')setRascunho(r=>[...r,p]);if(ferramenta==='calibrar')setRascunho(r=>r.length>=2?[p]:[...r,p]);}} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
           <p className="text-xs text-slate-600">{ferramenta==='calibrar'?'Marque dois pontos de uma distância conhecida.':ferramenta==='remover'?'Clique no módulo que deseja retirar.':'Clique nos vértices do contorno e conclua o polígono.'} Grade: 1 m. Norte informado: {d.norte}° em relação ao topo da imagem.</p>
@@ -177,7 +172,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
           <p className="text-xs text-slate-500">Estimativa por HSP {hsp} e perdas {perdasPct}%. Orientação e sombras não estão incorporadas nesta estimativa. Área de superfície: {areaSuperficie(d).toFixed(2)} m². Peso dos módulos: {d.modulo.pesoKg?`${(d.modulo.pesoKg*d.placas.length).toFixed(1)} kg`:'não informado'}.</p>
           {erro&&<p role="alert" className="text-sm text-amber-900 bg-amber-50 p-3 rounded">{erro}</p>}
         </div>
-        <div className="space-y-4 text-sm">
+        <div className="space-y-4 text-sm lg:overflow-y-auto lg:pr-2">
           <label className="block text-xs">Imagem própria (até 10 MB)<input type="file" accept="image/jpeg,image/png,image/webp" className="block w-full mt-1" disabled={carregando} onChange={e=>{void importar(e.target.files?.[0]);e.target.value='';}}/></label>
           {d.imagemNome&&<p className="text-xs text-slate-500">{d.imagemNome} · prévia comprimida salva com a proposta. Importar outra imagem reinicia os contornos.</p>}
           <div className="grid grid-cols-2 gap-2"><Numero label="Largura da planta (m)" value={d.larguraM} min={1} onChange={v=>{atualizar({larguraM:v,aguas:[],obstaculos:[],escalaConfirmada:false});setRascunho([]);}}/><Numero label="Altura da planta (m)" value={d.alturaM} min={1} onChange={v=>{atualizar({alturaM:v,aguas:[],obstaculos:[],escalaConfirmada:false});setRascunho([]);}}/></div>

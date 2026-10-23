@@ -1082,6 +1082,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 <input
                   type="number"
                   value={moduloWp}
+                  disabled={!!levantamentoTelhado}
+                  title={levantamentoTelhado ? 'Altere a potência do módulo no levantamento do telhado.' : undefined}
                   onChange={(e) => setModuloWp(Number(e.target.value))}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
                 />

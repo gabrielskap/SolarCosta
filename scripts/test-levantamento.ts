@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { areaPoligono, areaSuperficie, cabe, distribuir, escalaSatelite, poligonoValido, sobrepoe, type LevantamentoTelhado } from '../src/utils/levantamentoTelhado.ts';
 import {posicaoSolar,incidenciaDireta} from '../src/utils/posicaoSolar.ts';
+import {aproximarCamera,limitarCamera} from '../src/utils/cameraTelhado.ts';
 import { dimensionar } from '../src/utils/solar.ts';
 import { levantamentoTelhadoSchema } from '../server/src/schemas/levantamentoTelhado.ts';
 const ret=(x:number,y:number,w:number,h:number)=>[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
@@ -41,3 +42,13 @@ assert(incidenciaDireta(inverno.elevacao,inverno.azimute,30,0)>incidenciaDireta(
 assert.equal(incidenciaDireta(-10,0,0,0),0);
 assert(levantamentoTelhadoSchema.safeParse({...salvo,satelite:{latitude:-19.9,longitude:-43.9,zoom:20,larguraPx:640,alturaPx:640},localizacao:{latitude:-19.9,longitude:-43.9},simulacao:{data:'2026-06-21',hora:12,fuso:-3,mostrarIncidencia:true,mostrarSombras:true}}).success);
 console.log('OK: escala Web Mercator, posição solar, noite, orientação e persistência da simulação.');
+const camera={zoom:1,centro:{x:50,y:40}};
+const ampliada=aproximarCamera(camera,2,{x:60,y:30},100,80);
+assert.equal(ampliada.zoom,2);
+assert.deepEqual(ampliada.centro,{x:55,y:35});
+assert.equal((60-camera.centro.x)/(100/camera.zoom),(60-ampliada.centro.x)/(100/ampliada.zoom),'âncora permanece no mesmo ponto da tela');
+assert.deepEqual(aproximarCamera(ampliada,0.5,{x:60,y:30},100,80),camera);
+assert.deepEqual(limitarCamera({zoom:4,centro:{x:-100,y:999}},100,80),{zoom:4,centro:{x:12.5,y:70}});
+assert.equal(aproximarCamera(camera,100,camera.centro,100,80).zoom,12);
+assert.equal(aproximarCamera(camera,0.1,camera.centro,100,80).zoom,1);
+console.log('OK: zoom ancorado, retorno ao enquadramento e limites de navegação.');
