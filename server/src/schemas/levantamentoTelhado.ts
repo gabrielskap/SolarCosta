@@ -15,6 +15,7 @@ export const levantamentoTelhadoSchema=z.object({
   simulacao:z.object({data:z.string().date(),hora:z.number().min(0).max(23.75),fuso:z.number().int().min(-5).max(-2),mostrarIncidencia:z.boolean(),mostrarSombras:z.boolean()}).optional(),
   satelite:z.object({latitude:z.number().min(-85).max(85),longitude:z.number().min(-180).max(180),zoom:z.number().int().min(16).max(20),larguraPx:z.number().int().min(100).max(640),alturaPx:z.number().int().min(100).max(640)}).optional(),
   escalaConfirmada:z.literal(true),
+  vistaGoogle:z.object({modo:z.enum(['satelite','3d']),latitude:z.number().finite().min(-85).max(85),longitude:z.number().finite().min(-180).max(180),zoom:z.number().finite().min(0).max(30).optional(),altitude:z.number().finite().min(-500).max(100000).optional(),distanciaM:z.number().finite().min(1).max(10000000).optional(),inclinacao:z.number().finite().min(0).max(90).optional(),azimute:z.number().finite().min(0).lt(360).optional()}).optional(),
   aguas:z.array(z.object({id:z.string().uuid(),nome:z.string().max(100),pontos:poligono,inclinacao:z.number().min(0).max(75),azimute:z.number().min(0).lt(360)})).min(1).max(100),
   obstaculos:z.array(z.object({id:z.string().uuid(),pontos:poligono,alturaM:z.number().min(0).max(100)})).max(200),
   modulo:z.object({modelo:z.string().min(1).max(200),placaId:z.string().uuid().optional(),produtoId:z.string().uuid().optional(),larguraM:z.number().min(0.2).max(10),alturaM:z.number().min(0.2).max(10),potenciaWp:z.number().int().min(1).max(3000),pesoKg:z.number().min(0).max(200).optional()}),

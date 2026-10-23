@@ -26,6 +26,7 @@ export interface LevantamentoTelhado {
   dataImagem?: string;
   localizacao?: { latitude: number; longitude: number; endereco?: string };
   satelite?: { latitude: number; longitude: number; zoom: number; larguraPx: number; alturaPx: number };
+  vistaGoogle?: { modo: 'satelite' | '3d'; latitude: number; longitude: number; zoom?: number; altitude?: number; distanciaM?: number; inclinacao?: number; azimute?: number };
   simulacao?: { data: string; hora: number; fuso: number; mostrarIncidencia: boolean; mostrarSombras: boolean };
   escalaConfirmada: boolean;
   aguas: AguaManual[];
