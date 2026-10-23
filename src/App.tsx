@@ -417,6 +417,17 @@ export default function App() {
     }
   };
 
+  const handleDeleteProposal = async (id: string) => {
+    try {
+      await Api.deleteProposta(id);
+      setPropostas((anteriores) => anteriores.filter((p) => p.id !== id));
+      showToast('Proposta excluída', 'success', 'Proposta removida com sucesso.');
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir a proposta');
+    }
+  };
+
   /* -------------------------------------------------------- contratos -- */
 
   const handleSaveContract = async (contrato: Contrato) => {
@@ -894,6 +905,7 @@ export default function App() {
                       propostas={propostas}
                       onNovaProposta={handleOpenNewProposal}
                       onContinuarProposta={handleContinuarProposta}
+                      onDeleteProposta={handleDeleteProposal}
                       onOpenPDF={handleOpenPDF}
                       currentUser={currentUser}
                       showToast={showToast}

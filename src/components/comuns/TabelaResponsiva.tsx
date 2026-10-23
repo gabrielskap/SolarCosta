@@ -55,11 +55,11 @@ function Cartao<T>({
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
       {principais.map((c) => (
-        <div key={c.chave} className="flex items-center justify-between gap-3">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 shrink-0">
+        <div key={c.chave} className="flex items-start justify-between gap-3">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 shrink-0 mt-0.5">
             {c.titulo}
           </span>
-          <div className="text-right min-w-0">{c.celula(item)}</div>
+          <div className="text-right min-w-0 flex-1">{c.celula(item)}</div>
         </div>
       ))}
 
@@ -68,11 +68,11 @@ function Cartao<T>({
           {aberto && (
             <div className="pt-2 border-t border-slate-100 space-y-2">
               {secundarias.map((c) => (
-                <div key={c.chave} className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 shrink-0">
+                <div key={c.chave} className="flex items-start justify-between gap-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 shrink-0 mt-0.5">
                     {c.titulo}
                   </span>
-                  <div className="text-right min-w-0">{c.celula(item)}</div>
+                  <div className="text-right min-w-0 flex-1">{c.celula(item)}</div>
                 </div>
               ))}
             </div>
@@ -120,8 +120,8 @@ export function TabelaResponsiva<T>({
   }
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden">
-      <table className="w-full text-left text-xs">
+    <div className="border border-slate-200 rounded-xl overflow-x-auto">
+      <table className="w-full text-left text-xs min-w-[720px]">
         <thead>
           <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
             {colunas.map((c) => (

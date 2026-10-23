@@ -281,6 +281,10 @@ export const Api = {
     return Api.getProposta(id);
   },
 
+  deleteProposta: async (id: string): Promise<void> => {
+    await http.delete(`/api/propostas/${id}`);
+  },
+
   /* -------------------------------------------------------- contratos -- */
 
   getContratos: async (): Promise<Contrato[]> => {
