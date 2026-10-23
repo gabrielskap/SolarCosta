@@ -441,6 +441,17 @@ export default function App() {
     }
   };
 
+  const handleDeleteContract = async (id: string) => {
+    try {
+      await Api.deleteContrato(id);
+      setContratos((anteriores) => anteriores.filter((c) => c.id !== id));
+      showToast('Contrato excluído', 'success', 'Contrato removido com sucesso.');
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir o contrato');
+    }
+  };
+
   /* ------------------------------------------------------- financeiro -- */
 
   const handleSaveBoleto = async (boleto: Boleto) => {
@@ -955,6 +966,7 @@ export default function App() {
                       leads={leads}
                       propostas={propostas}
                       onSaveContract={handleSaveContract}
+                      onDeleteContract={handleDeleteContract}
                       config={config}
                       onOpenPDF={handleOpenPDF}
                       currentUser={currentUser}

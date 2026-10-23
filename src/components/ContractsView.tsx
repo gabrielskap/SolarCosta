@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Send, FileText, Plus, MessageCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ArrowLeft, Send, FileText, Plus, MessageCircle, Search, X, Trash2, AlertTriangle } from 'lucide-react';
 import { Contrato, Lead, Proposta, User } from '../types';
 import { param, type ConfigApp } from '../services/api';
 import { EnviarPorWhatsApp } from './whatsapp/EnviarPorWhatsApp';
@@ -12,6 +12,7 @@ interface ContractsViewProps {
   /** Empresa, parâmetros e cláusulas padrão vindos do banco. */
   config: ConfigApp | null;
   onSaveContract: (contrato: Contrato) => void;
+  onDeleteContract?: (contratoId: string) => Promise<void> | void;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
@@ -23,6 +24,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   propostas = [],
   config,
   onSaveContract,
+  onDeleteContract,
   onOpenPDF,
   currentUser,
   showToast
@@ -32,8 +34,55 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   /** Contrato escolhido para envio; null com o modal fechado. */
   const [enviando, setEnviando] = useState<Contrato | null>(null);
 
+  /** Contrato selecionado para confirmação de exclusão */
+  const [contratoParaExcluir, setContratoParaExcluir] = useState<Contrato | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
+
+  /** Filtros de busca e status da lista */
+  const [termoBusca, setTermoBusca] = useState('');
+  const [statusFiltro, setStatusFiltro] = useState<'todos' | Contrato['status']>('todos');
+  const [pagamentoFiltro, setPagamentoFiltro] = useState<string>('todos');
+
   const podeEnviarWhatsApp =
     currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.usarWhatsapp;
+
+  const podeExcluir =
+    currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.emitirContratos;
+
+  const normalizarBusca = (texto: string) =>
+    (texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  const contratosFiltrados = useMemo(() => {
+    const termo = normalizarBusca(termoBusca.trim());
+    return contratos.filter((c) => {
+      if (statusFiltro !== 'todos' && c.status !== statusFiltro) return false;
+      if (pagamentoFiltro !== 'todos') {
+        if (pagamentoFiltro === 'sem_cobranca' && c.situacaoPagamento) return false;
+        if (pagamentoFiltro !== 'sem_cobranca' && c.situacaoPagamento !== pagamentoFiltro) return false;
+      }
+      if (!termo) return true;
+      const alvo = normalizarBusca(
+        `${c.numero || ''} ${c.clienteNome || ''} ${c.cpfCnpj || ''} ${c.telefone || ''} ${c.endereco || ''} ${c.localInstalacao || ''} ${c.bancoAgente || ''}`
+      );
+      return alvo.includes(termo);
+    });
+  }, [contratos, termoBusca, statusFiltro, pagamentoFiltro]);
+
+  const aguardandoAssinatura = contratos.filter((c) => c.status === 'aguardando').length;
+  const valorTotalFiltrado = contratosFiltrados.reduce((acc, c) => acc + (c.valorTotal || 0), 0);
+
+  const confirmarExclusao = async () => {
+    if (!contratoParaExcluir || !onDeleteContract) return;
+    try {
+      setExcluindo(true);
+      await onDeleteContract(contratoParaExcluir.id);
+      setContratoParaExcluir(null);
+    } catch {
+      showToast('Erro ao excluir', 'error', 'Não foi possível excluir o contrato.');
+    } finally {
+      setExcluindo(false);
+    }
+  };
 
   // Origem do contrato: escolher uma proposta preenche o formulário inteiro.
   // Antes, o formulário nascia com um cliente fixo de demonstração.
@@ -41,7 +90,6 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   const [buscaProposta, setBuscaProposta] = useState('');
   const [propostasAbertas, setPropostasAbertas] = useState(false);
   const [indiceProposta, setIndiceProposta] = useState(0);
-  const normalizarBusca = (texto: string) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const propostasFiltradas = propostas.filter((p) =>
     normalizarBusca(`${p.numero} ${p.clienteNome}`).includes(normalizarBusca(buscaProposta)),
   );
@@ -288,11 +336,21 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
             {activeSubTab === 'lista' ? 'Contratos' : 'Contrato de prestação de serviço'}
           </h1>
           <p className="text-xs text-slate-500 font-semibold mt-0.5">
-            {activeSubTab === 'lista'
-              ? `${contratos.length} contrato(s) cadastrado(s)`
-              : propostaOrigem
-              ? `Gerado a partir da proposta nº ${propostaOrigem.numero} · ${propostaOrigem.clienteNome}`
-              : 'Novo contrato · número gerado ao emitir'}
+            {activeSubTab === 'lista' ? (
+              <>
+                {contratosFiltrados.length}{' '}
+                {contratosFiltrados.length === 1 ? 'contrato listado' : 'contratos listados'}
+                {contratosFiltrados.length !== contratos.length && ` (de ${contratos.length})`}
+                {' · '}
+                R$ {valorTotalFiltrado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {' · '}
+                {aguardandoAssinatura} aguardando assinatura
+              </>
+            ) : propostaOrigem ? (
+              `Gerado a partir da proposta nº ${propostaOrigem.numero} · ${propostaOrigem.clienteNome}`
+            ) : (
+              'Novo contrato · número gerado ao emitir'
+            )}
           </p>
         </div>
 
@@ -796,91 +854,170 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
         </div>
       ) : (
         /* LIST OF EMITTED CONTRACTS */
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <h3 className="font-bold text-slate-900 text-base">Contratos cadastrados</h3>
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <table className="tabela-mobile w-full text-left text-xs">
-              <thead>
-                <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
-                  <th className="p-3">Contrato</th>
-                  <th className="p-3">Cliente</th>
-                  <th className="p-3">Potência</th>
-                  <th className="p-3">Valor</th>
-                  <th className="p-3">Data</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Pagamento</th>
-                  <th className="p-3 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {contratos.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-500">
-                      Nenhum contrato cadastrado. Clique em “Cadastrar novo contrato” para começar.
-                    </td>
+        <div className="space-y-4">
+          {/* Barra de Filtros e Busca */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Campo de Busca */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={termoBusca}
+                onChange={(e) => setTermoBusca(e.target.value)}
+                placeholder="Buscar por cliente, nº do contrato, CPF/CNPJ, telefone, cidade..."
+                className="w-full pl-9 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#004276] focus:ring-1 focus:ring-[#004276] shadow-sm transition"
+              />
+              {termoBusca && (
+                <button
+                  type="button"
+                  onClick={() => setTermoBusca('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  title="Limpar busca"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Filtro por Status e Pagamento */}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={statusFiltro}
+                onChange={(e) => setStatusFiltro(e.target.value as 'todos' | Contrato['status'])}
+                className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#004276] shadow-sm"
+              >
+                <option value="todos">Status: Todos</option>
+                <option value="aguardando">Status: Aguardando assinatura</option>
+                <option value="assinado">Status: Assinado</option>
+              </select>
+
+              <select
+                value={pagamentoFiltro}
+                onChange={(e) => setPagamentoFiltro(e.target.value)}
+                className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#004276] shadow-sm"
+              >
+                <option value="todos">Pagamento: Todos</option>
+                <option value="pago">Pagamento: Pago</option>
+                <option value="aguardando">Pagamento: Aguardando</option>
+                <option value="vencido">Pagamento: Vencido</option>
+                <option value="sem_cobranca">Pagamento: Sem cobrança</option>
+              </select>
+
+              {(termoBusca || statusFiltro !== 'todos' || pagamentoFiltro !== 'todos') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTermoBusca('');
+                    setStatusFiltro('todos');
+                    setPagamentoFiltro('todos');
+                  }}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 px-2 py-2 rounded-lg hover:bg-slate-100 transition whitespace-nowrap"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="font-bold text-slate-900 text-base">Contratos cadastrados</h3>
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="tabela-mobile w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
+                    <th className="p-3">Contrato</th>
+                    <th className="p-3">Cliente</th>
+                    <th className="p-3">Potência</th>
+                    <th className="p-3">Valor</th>
+                    <th className="p-3">Data</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Pagamento</th>
+                    <th className="p-3 text-right">Ações</th>
                   </tr>
-                )}
-                {contratos.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50">
-                    <td data-label="Contrato" className="p-3 font-bold text-[#004276]">Nº {c.numero}</td>
-                    <td data-label="Cliente" className="p-3 font-semibold text-slate-900">{c.clienteNome}</td>
-                    <td data-label="Potência" className="p-3">{c.potenciaKwp} kWp</td>
-                    <td data-label="Valor" className="p-3 font-bold text-slate-900">R$ {c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    <td data-label="Data" className="p-3 text-slate-500">{c.dataEmissao}</td>
-                    <td data-label="Status" className="p-3">
-                      <button
-                        onClick={() => handleToggleStatus(c.id)}
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          c.status === 'assinado'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
-                      >
-                        {c.status === 'assinado' ? 'Assinado' : 'Aguardando assinatura'}
-                      </button>
-                    </td>
-                    <td data-label="Pagamento" className="p-3">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          c.situacaoPagamento === 'pago'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : c.situacaoPagamento === 'vencido'
-                            ? 'bg-red-100 text-red-800'
-                            : c.situacaoPagamento === 'aguardando'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        {c.situacaoPagamento === 'pago'
-                          ? 'Pago'
-                          : c.situacaoPagamento === 'vencido'
-                          ? 'Pagamento vencido'
-                          : c.situacaoPagamento === 'aguardando'
-                          ? 'Aguardando pagamento'
-                          : 'Sem cobrança'}
-                      </span>
-                    </td>
-                    <td data-label="Ações" className="p-3 text-right font-bold space-x-3">
-                      <button
-                        onClick={() => onOpenPDF('contrato', c)}
-                        className="text-blue-600 hover:underline"
-                      >
-                        Visualizar PDF
-                      </button>
-                      {podeEnviarWhatsApp && (
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {contratosFiltrados.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-500">
+                        {contratos.length === 0
+                          ? 'Nenhum contrato cadastrado. Clique em “Cadastrar novo contrato” para começar.'
+                          : 'Nenhum contrato encontrado para os filtros aplicados.'}
+                      </td>
+                    </tr>
+                  )}
+                  {contratosFiltrados.map((c) => (
+                    <tr key={c.id} className="hover:bg-slate-50">
+                      <td data-label="Contrato" className="p-3 font-bold text-[#004276]">Nº {c.numero}</td>
+                      <td data-label="Cliente" className="p-3 font-semibold text-slate-900">{c.clienteNome}</td>
+                      <td data-label="Potência" className="p-3">{c.potenciaKwp} kWp</td>
+                      <td data-label="Valor" className="p-3 font-bold text-slate-900">R$ {c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      <td data-label="Data" className="p-3 text-slate-500">{c.dataEmissao}</td>
+                      <td data-label="Status" className="p-3">
                         <button
-                          onClick={() => setEnviando(c)}
-                          className="text-emerald-700 hover:underline inline-flex items-center gap-1"
+                          onClick={() => handleToggleStatus(c.id)}
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            c.status === 'assinado'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
                         >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          Enviar
+                          {c.status === 'assinado' ? 'Assinado' : 'Aguardando assinatura'}
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                      <td data-label="Pagamento" className="p-3">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            c.situacaoPagamento === 'pago'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : c.situacaoPagamento === 'vencido'
+                              ? 'bg-red-100 text-red-800'
+                              : c.situacaoPagamento === 'aguardando'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {c.situacaoPagamento === 'pago'
+                            ? 'Pago'
+                            : c.situacaoPagamento === 'vencido'
+                            ? 'Pagamento vencido'
+                            : c.situacaoPagamento === 'aguardando'
+                            ? 'Aguardando pagamento'
+                            : 'Sem cobrança'}
+                        </span>
+                      </td>
+                      <td data-label="Ações" className="p-3 text-right font-bold space-x-3">
+                        <button
+                          onClick={() => onOpenPDF('contrato', c)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Visualizar PDF
+                        </button>
+                        {podeEnviarWhatsApp && (
+                          <button
+                            onClick={() => setEnviando(c)}
+                            className="text-emerald-700 hover:underline inline-flex items-center gap-1"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            Enviar
+                          </button>
+                        )}
+                        {podeExcluir && onDeleteContract && (
+                          <button
+                            type="button"
+                            onClick={() => setContratoParaExcluir(c)}
+                            className="text-rose-600 hover:text-rose-800 hover:underline inline-flex items-center gap-1"
+                            title="Excluir contrato"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Excluir
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -894,6 +1031,59 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
           onFechar={() => setEnviando(null)}
           showToast={showToast}
         />
+      )}
+
+      {/* Modal de confirmação de exclusão */}
+      {contratoParaExcluir && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Excluir contrato?</h3>
+                <p className="text-xs text-slate-500">Essa ação não poderá ser desfeita.</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
+              <p className="text-slate-700">
+                <span className="font-semibold">Nº:</span> {contratoParaExcluir.numero || 'Sem número'}
+              </p>
+              <p className="text-slate-700">
+                <span className="font-semibold">Cliente:</span> {contratoParaExcluir.clienteNome}
+              </p>
+              <p className="text-slate-700">
+                <span className="font-semibold">Potência:</span> {contratoParaExcluir.potenciaKwp} kWp
+              </p>
+              <p className="text-slate-700">
+                <span className="font-semibold">Valor:</span> R${' '}
+                {contratoParaExcluir.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setContratoParaExcluir(null)}
+                disabled={excluindo}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarExclusao}
+                disabled={excluindo}
+                className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {excluindo ? 'Excluindo...' : 'Sim, excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
