@@ -1,12 +1,15 @@
 import { listarPlacas, type PlacaSolar } from '../../services/placas';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { areaPoligono, areaSuperficie, distribuir, escalaSatelite, inserirPlaca, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
-import { geocodificar, imagemTelhado } from '../../services/solar';
+import { AnaliseSolar } from './AnaliseSolar';
+import { aplicarSegmento } from '../../utils/analiseSolar';
+import { geocodificar, imagemTelhado, type TelhadoSolar } from '../../services/solar';
 import { incidenciaDireta, posicaoSolar } from '../../utils/posicaoSolar';
 import { SimulacaoSolar } from './SimulacaoSolar';
 import { CanvasTelhado } from './CanvasTelhado';
 
-export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], imagemUrl, tokenPublico, expandido=false, onFecharContorno, interacao }: {
+export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], imagemUrl, tokenPublico, expandido=false, onFecharContorno, interacao, centroGoogle }: {
+  centroGoogle?: {latitude:number;longitude:number};
   dados: LevantamentoTelhado; onPonto?: (p:PontoLocal)=>void; onRemover?:(id:string)=>void; rascunho?:PontoLocal[];imagemUrl?:string;tokenPublico?:string;expandido?:boolean;onFecharContorno?:()=>void;interacao?:string;
 }) {
   const [fundo,setFundo]=useState<string>();
@@ -33,8 +36,13 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
     const topo=o.pontos.map(p=>({x:p.x+dx,y:p.y+dy}));
     return [topo,...o.pontos.map((p,i)=>[p,o.pontos[(i+1)%o.pontos.length],topo[(i+1)%topo.length],topo[i]])];
   }):[];
+  const mercatorY=(lat:number)=>Math.log(Math.tan(Math.PI/4+lat*Math.PI/360));
+  const marcador=sat&&centroGoogle?{
+    x:dados.larguraM/2+(centroGoogle.longitude-sat.longitude)/360*256*2**sat.zoom*dados.larguraM/sat.larguraPx,
+    y:dados.alturaM/2-(mercatorY(centroGoogle.latitude)-mercatorY(sat.latitude))/(2*Math.PI)*256*2**sat.zoom*dados.alturaM/sat.alturaPx,
+  }:undefined;
   const pontos=(p:PontoLocal[])=>p.map(v=>`${v.x},${v.y}`).join(' ');
-  return <CanvasTelhado interacao={interacao} expandido={expandido} largura={dados.larguraM} altura={dados.alturaM} resetKey={sat?`${sat.latitude},${sat.longitude},${sat.zoom}`:dados.imagem} onPonto={onPonto?p=>{if(p.y<=dados.alturaM*(sat?0.94:1))onPonto(p);}:undefined} rodape={sat&&imagem?<svg viewBox={`0 ${dados.alturaM*0.94} ${dados.larguraM} ${dados.alturaM*0.06}`} className="block h-10 w-full bg-white" role="img" aria-label="Créditos da imagem de satélite"><image href={imagem} width={dados.larguraM} height={dados.alturaM} preserveAspectRatio="none"/></svg>:undefined}>
+  return <CanvasTelhado interacao={interacao} expandido={expandido} largura={dados.larguraM} altura={dados.alturaM} resetKey={sat?`${sat.latitude},${sat.longitude},${sat.zoom}`:dados.imagem} onPonto={onPonto?p=>{if(p.y<=dados.alturaM*(sat?0.94:1))onPonto(p);}:undefined}>
     <defs><pattern id={`grade-${idFigura}`} width="1" height="1" patternUnits="userSpaceOnUse"><path d="M 1 0 L 0 0 0 1" fill="none" stroke="#cbd5e1" strokeWidth="0.02"/></pattern></defs>
     {imagem&&<image href={imagem} width={dados.larguraM} height={dados.alturaM} preserveAspectRatio="none" onError={()=>setFalha(true)}/>}
     <rect width={dados.larguraM} height={dados.alturaM} fill={`url(#grade-${idFigura})`} pointerEvents="none"/>
@@ -45,6 +53,7 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
     {rascunho.length>0&&<polyline points={pontos(rascunho)} fill="#fbbf2433" stroke="#d97706" strokeWidth={dados.larguraM/500}/>}
     {rascunho.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={dados.larguraM/180} fill="#d97706"/>)}
     {rascunho.length>=3&&onFecharContorno&&<circle cx={rascunho[0].x} cy={rascunho[0].y} r={dados.larguraM/120} fill="#16a34a" role="button" aria-label="Fechar contorno no primeiro ponto" tabIndex={0} style={{cursor:'pointer'}} onClick={e=>{e.stopPropagation();onFecharContorno();}} onKeyDown={e=>{if(e.key==='Enter'){e.stopPropagation();onFecharContorno();}}}/>}
+    {marcador&&<g pointerEvents="none"><circle cx={marcador.x} cy={marcador.y} r={dados.larguraM/70} fill="#fbbf24" stroke="#78350f" strokeWidth={dados.larguraM/500}/><text x={marcador.x} y={marcador.y} textAnchor="middle" dominantBaseline="central" fontSize={dados.larguraM/55} fill="#451a03">G</text></g>}
     {falha&&<text x="1" y="2" fontSize="0.7" fill="#b91c1c">Imagem indisponível; geometria preservada</text>}
   </CanvasTelhado>;
 }
@@ -62,6 +71,8 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
   valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;
 }) {
   const [d,setD]=useState<LevantamentoTelhado>(()=>structuredClone(valor??novoLevantamento(potenciaWp)));
+  const chaveSolar=JSON.stringify([d.satelite,d.localizacao]);
+  const [analise,setAnalise]=useState<{chave:string;telhado?:TelhadoSolar}>();
   const [catalogo,setCatalogo]=useState<PlacaSolar[]>([]);
   const [erroCatalogo,setErroCatalogo]=useState('');
   const [carregandoCatalogo,setCarregandoCatalogo]=useState(true);
@@ -199,7 +210,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
             <button type="button" aria-pressed={solAberto} className={`border rounded-lg px-2 py-1.5 text-xs font-bold ${solAberto?'bg-amber-200':'bg-white'}`} onClick={()=>setSolAberto(v=>!v)}>Luz solar</button>
           </div>
           <div className="flex-1 min-h-0 relative">
-            <FiguraLevantamento expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
+            <FiguraLevantamento centroGoogle={analise?.chave===chaveSolar?analise.telhado?.centro:undefined} expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
             {solAberto&&<div className="absolute bottom-2 right-2 z-10 w-[min(300px,calc(100%-16px))] max-h-[calc(100%-56px)] overflow-auto shadow-xl rounded-xl"><SimulacaoSolar compact dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/></div>}
           </div>
           <div className="shrink-0 flex flex-wrap gap-2 items-center text-xs text-slate-600">
@@ -211,6 +222,9 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
         <aside className="min-h-0 flex flex-col border-t md:border-t-0 md:border-l bg-white">
           <div className="shrink-0 grid grid-cols-4 text-xs border-b" role="tablist" aria-label="Ajustes do levantamento">{(['telhado','modulos','imagem','dados'] as const).map(t=><button type="button" key={t} role="tab" aria-selected={aba===t} onClick={()=>setAba(t)} className={`px-1 py-3 font-bold ${aba===t?'text-[#004276] bg-sky-50 border-b-2 border-[#004276]':'text-slate-500'}`}>{({telhado:'Telhado',modulos:'Placas',imagem:'Imagem',dados:'Dados'})[t]}</button>)}</div>
           <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3 text-sm" role="tabpanel">
+            <div hidden={aba!=='telhado'}>
+              <AnaliseSolar key={chaveSolar} dados={d} agua={agua} ativo={googleAtivo} onResultado={telhado=>setAnalise({chave:chaveSolar,telhado})} onAplicar={segmento=>{if(agua)atualizar(aplicarSegmento(d,agua.id,segmento),false);}}/>
+            </div>
             {aba==='telhado'&&<>
               <div className="bg-sky-50 rounded-lg p-3"><p className="text-xs text-slate-600">Área total de superfície</p><strong className="text-xl text-[#004276]">{areaSuperficie(d).toFixed(2)} m²</strong><p className="text-xs text-slate-500">Calculada ao fechar os pontos; corrigida pela inclinação informada.</p></div>
               {d.aguas.length?<><label className="block text-xs">Água selecionada<select className={campo} value={agua?.id??''} onChange={e=>setAguaSelecionada(e.target.value)}>{d.aguas.map(a=><option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>

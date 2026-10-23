@@ -1,3 +1,4 @@
+import { consultarBuildingInsights } from './googleSolarResposta.js';
 // Integração com o Google Maps Platform: Geocoding + Solar API.
 //
 // Por que fica no servidor e não no front: a chave é restrita por IP da VPS.
@@ -161,31 +162,6 @@ export interface TelhadoSolar {
   placaGoogle: { potenciaWp: number; alturaM: number; larguraM: number };
 }
 
-interface RespostaSolar {
-  name: string;
-  center: { latitude: number; longitude: number };
-  imageryDate?: { year: number; month: number; day: number };
-  imageryProcessedDate?: { year: number; month: number; day: number };
-  imageryQuality?: string;
-  solarPotential: {
-    maxArrayAreaMeters2: number;
-    panelCapacityWatts: number;
-    panelHeightMeters: number;
-    panelWidthMeters: number;
-    wholeRoofStats: { areaMeters2: number };
-    roofSegmentStats: Array<{
-      pitchDegrees: number;
-      azimuthDegrees: number;
-      stats: { areaMeters2: number; sunshineQuantiles: number[] };
-      center: { latitude: number; longitude: number };
-    }>;
-    solarPanels?: Array<{
-      center: { latitude: number; longitude: number };
-      orientation: 'LANDSCAPE' | 'PORTRAIT';
-      segmentIndex: number;
-    }>;
-  };
-}
 
 export async function telhadoPorCoordenada(
   latitude: number,
@@ -199,27 +175,12 @@ export async function telhadoPorCoordenada(
     const url =
       `${SOLAR_URL}?location.latitude=${latitude}&location.longitude=${longitude}` +
       `&requiredQuality=HIGH&key=${chave}`;
-    const resp = await fetch(url);
-
-    if (resp.status === 404) {
-      throw new AppError(
-        404,
-        'O Google não tem análise de telhado para este ponto. Ajuste o pino sobre a edificação e tente de novo.',
-        'telhado_sem_dados',
-      );
-    }
-    if (!resp.ok) {
-      const corpo = await resp.text();
-      console.error('[solar api]', resp.status, corpo.slice(0, 400));
-      throw new AppError(502, 'Falha ao consultar a análise de telhado.', 'solar_falhou');
-    }
-
-    const j = (await resp.json()) as RespostaSolar;
+    const j = await consultarBuildingInsights(url);
     const s = j.solarPotential;
 
     const resultado: TelhadoSolar = {
       edificacaoId: j.name,
-      centro: j.center,
+      centro: { latitude: j.center.latitude!, longitude: j.center.longitude! },
       imagemData: j.imageryDate
         ? { ano: j.imageryDate.year, mes: j.imageryDate.month, dia: j.imageryDate.day }
         : null,
@@ -231,15 +192,15 @@ export async function telhadoPorCoordenada(
       areaMaxArranjoM2: s.maxArrayAreaMeters2,
       segmentos: s.roofSegmentStats.map((r, indice) => ({
         indice,
-        azimuteGraus: r.azimuthDegrees,
+        azimuteGraus: r.azimuthDegrees % 360,
         inclinacaoGraus: r.pitchDegrees,
         areaM2: r.stats.areaMeters2,
-        centro: r.center,
+        centro: { latitude: r.center.latitude!, longitude: r.center.longitude! },
         // O Google devolve 11 quantis (0%, 10%, ... 100%); o do meio é a mediana.
         insolacaoMediaKwh: r.stats.sunshineQuantiles?.[5] ?? 0,
       })),
       placasGoogle: (s.solarPanels ?? []).map((p) => ({
-        centro: p.center,
+        centro: { latitude: p.center.latitude!, longitude: p.center.longitude! },
         orientacao: p.orientation,
         segmentoIndice: p.segmentIndex,
       })),

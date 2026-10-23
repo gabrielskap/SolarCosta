@@ -3,8 +3,8 @@ import {aproximarCamera,limitarCamera,type CameraTelhado} from '../../utils/came
 import type {PontoLocal} from '../../utils/levantamentoTelhado';
 
 /** A câmera muda somente o viewBox. A geometria continua sempre em metros. */
-export function CanvasTelhado({largura,altura,resetKey,children,onPonto,rodape,expandido=false,interacao}:{
-  largura:number;altura:number;resetKey?:string;children:React.ReactNode;onPonto?:(p:PontoLocal)=>void;rodape?:React.ReactNode;expandido?:boolean;interacao?:string;
+export function CanvasTelhado({largura,altura,resetKey,children,onPonto,expandido=false,interacao}:{
+  largura:number;altura:number;resetKey?:string;children:React.ReactNode;onPonto?:(p:PontoLocal)=>void;expandido?:boolean;interacao?:string;
 }) {
   const inicial=():CameraTelhado=>({zoom:1,centro:{x:largura/2,y:altura/2}});
   const [camera,setCamera]=useState<CameraTelhado>(inicial);
@@ -43,7 +43,7 @@ export function CanvasTelhado({largura,altura,resetKey,children,onPonto,rodape,e
       <button type="button" aria-pressed={navegar} className={`rounded border px-3 py-1.5 ${navegar?'bg-[#004276] text-white':'bg-white text-slate-700'}`} onClick={()=>setNavegar(v=>!v)}>Mover mapa</button>
       <span className="text-slate-500">Roda: zoom · Shift + arrastar: mover</span>
     </div>}
-    <svg ref={ref} viewBox={`${c.centro.x-w/2} ${c.centro.y-h/2} ${w} ${h}`} role="img" aria-label="Planta do telhado em metros" className={expandido?'w-full flex-1 min-h-0':'w-full max-h-[560px]'} style={{aspectRatio:expandido?undefined:`${largura}/${altura}`,touchAction:onPonto?'none':undefined,maxHeight:expandido?undefined:onPonto?'48vh':undefined,cursor:onPonto?(arrastando?'grabbing':navegar?'grab':'crosshair'):undefined}}
+    <svg ref={ref} overflow="hidden" viewBox={`${c.centro.x-w/2} ${c.centro.y-h/2} ${w} ${h}`} role="img" aria-label="Planta do telhado em metros" className={expandido?'w-full flex-1 min-h-0':'w-full max-h-[560px]'} style={{aspectRatio:expandido?undefined:`${largura}/${altura}`,touchAction:onPonto?'none':undefined,maxHeight:expandido?undefined:onPonto?'48vh':undefined,cursor:onPonto?(arrastando?'grabbing':navegar?'grab':'crosshair'):undefined}}
       onPointerDown={e=>{
         if(!onPonto||!(navegar||e.button===1||e.shiftKey)||e.button===2)return;
         const matriz=e.currentTarget.getScreenCTM();if(!matriz)return;
@@ -66,6 +66,5 @@ export function CanvasTelhado({largura,altura,resetKey,children,onPonto,rodape,e
         const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(matriz.inverse());
         if(p.x>=0&&p.y>=0&&p.x<=largura&&p.y<=altura)onPonto({x:p.x,y:p.y});
       }}>{children}</svg>
-    {rodape}
   </div>;
 }

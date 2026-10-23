@@ -7,13 +7,24 @@
 // precisa rodar de novo.
 
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { exigirLogin } from '../auth/middleware.js';
+import { exigirLogin, type RequestAutenticado } from '../auth/middleware.js';
 import { asyncHandler } from '../errors.js';
 import { geocodificar, imagemSatelite, telhadoPorCoordenada } from '../services/googleSolar.js';
 
 export const solarRouter = Router();
 solarRouter.use(exigirLogin);
+
+// Limite local por usuário; o orçamento global continua sendo controlado no provedor.
+const limiteAnaliseSolar = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  keyGenerator: req => (req as RequestAutenticado).usuario.id,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { erro: 'Limite de análises atingido. Aguarde alguns minutos ou continue manualmente.', codigo: 'solar_limite' },
+});
 
 const enderecoSchema = z.object({
   endereco: z.string().min(3, 'Informe o endereço.').max(300),
@@ -37,6 +48,7 @@ const coordenadaSchema = z.object({
 /** Coordenada -> segmentos de telhado + máscara de área útil. */
 solarRouter.get(
   '/telhado',
+  limiteAnaliseSolar,
   asyncHandler(async (req, res) => {
     const { lat, lng } = coordenadaSchema.parse(req.query);
     res.json({ telhado: await telhadoPorCoordenada(lat, lng) });
