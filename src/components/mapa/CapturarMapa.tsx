@@ -1,53 +1,63 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Api } from '../../services/api';
+import { enviarCaptura, cancelarCaptura } from '../../services/capturasTelhado';
 import type { PastaDocumento } from '../../types';
-import { capturarMapa } from '../../utils/capturarMapa';
+import type { LevantamentoTelhado } from '../../utils/levantamentoTelhado';
+import { capturarMapaHD, type CapturaHD } from '../../utils/capturarMapaHD';
 
-export function CapturarMapa({ alvo, leadId, projeto, modo, podeAnexar, temPontos }: {
-  alvo: React.RefObject<HTMLElement>; leadId?:string;projeto?:string;modo:string;podeAnexar:boolean;temPontos:boolean;
+interface Pendente {id:string;propostaId:string;pastaId:number;ia:boolean;dados:LevantamentoTelhado;pacote:CapturaHD}
+export function CapturarMapa({ alvo, leadId, propostaId, modo, podeAnexar, dados, rascunho, onSalva }: {
+  alvo:React.RefObject<HTMLElement>;leadId?:string;propostaId?:string;modo:string;podeAnexar:boolean;
+  dados:LevantamentoTelhado;rascunho:boolean;onSalva:(d:LevantamentoTelhado)=>void;
 }) {
-  const [pastas,setPastas]=useState<PastaDocumento[]>([]);
-  const [pasta,setPasta]=useState('');
-  const [ocupado,setOcupado]=useState(false);
-  const [mensagem,setMensagem]=useState('');
-  const [falha,setFalha]=useState(false);
-  const [pendente,setPendente]=useState<{arquivo:File;leadId:string;pastaId:number}>();
-  const vivo=useRef(true),trava=useRef(false);
-  const capturaAtiva=useRef<AbortController|null>(null);
-  useEffect(()=>{vivo.current=true;return()=>{vivo.current=false;capturaAtiva.current?.abort();};},[]);
+  const [pastas,setPastas]=useState<PastaDocumento[]>([]),[pasta,setPasta]=useState('');
+  const [ia,setIA]=useState(false),[ocupado,setOcupado]=useState(false),[mensagem,setMensagem]=useState('');
+  const [pendente,setPendente]=useState<Pendente>();
+  const vivo=useRef(true),trava=useRef(false),cancelado=useRef(false),ac=useRef<AbortController|null>(null),atual=useRef<Pendente>();
+  useEffect(()=>{vivo.current=true;return()=>{vivo.current=false;ac.current?.abort();};},[]);
   useEffect(()=>{
-    setPastas([]);setPasta('');setPendente(undefined);setMensagem('');
-    if(!leadId||!podeAnexar)return;
-    let ativo=true;
-    Api.getPastasLead(leadId).then(r=>{if(ativo){setPastas(r.pastas);const preferida=r.pastas.find(p=>/imagem|foto/i.test(p.nome));setPasta(preferida?String(preferida.id):'');}})
-      .catch(e=>{if(ativo){setFalha(true);setMensagem(e instanceof Error?e.message:'Não foi possível carregar as pastas.');}});
+    let ativo=true;setPastas([]);setPasta('');setPendente(undefined);atual.current=undefined;
+    if(leadId&&podeAnexar)Api.getPastasLead(leadId).then(r=>{if(ativo){setPastas(r.pastas);const foto=r.pastas.find(p=>/imagem|foto/i.test(p.nome));setPasta(foto?String(foto.id):'');}})
+      .catch(()=>{if(ativo)setMensagem('Não foi possível carregar as pastas de Documentos.');});
     return()=>{ativo=false;};
-  },[leadId,podeAnexar]);
+  },[leadId,podeAnexar,propostaId]);
   const executar=async(repetir=false)=>{
-    if(trava.current||!alvo.current||!leadId||!pasta||!podeAnexar)return;
-    trava.current=true;setOcupado(true);setMensagem('');setFalha(false);
+    if(trava.current||!alvo.current||!propostaId||!leadId||!pasta||!podeAnexar)return;
+    trava.current=true;cancelado.current=false;setOcupado(true);setMensagem('Selecione esta aba do sistema. Escape cancela a captura.');
     try{
-      let captura=pendente;
-      if(!repetir){
-        const destino=leadId,pastaId=Number(pasta);
-        const area=alvo.current.querySelector<HTMLElement>('[data-area-captura-mapa]')??alvo.current;
-        capturaAtiva.current=new AbortController();
-        const blob=await capturarMapa(area,capturaAtiva.current.signal);
-        const nome=('levantamento-'+(projeto||'projeto')+'-'+modo+'-'+new Date().toISOString().replace(/[:.]/g,'-')+'.png').replace(/[^a-zA-Z0-9._-]/g,'-').slice(-190);
-        captura={arquivo:new File([blob],nome,{type:'image/png'}),leadId:destino,pastaId};
-        if(vivo.current)setPendente(captura);
+      let p=repetir?pendente:undefined;
+      if(!p){
+        ac.current=new AbortController();
+        const area=alvo.current.querySelector<HTMLElement>('[data-area-captura-mapa]');
+        if(!area)throw new Error('Abra o mapa 3D para capturar.');
+        const pacote=await capturarMapaHD(area,ac.current.signal);
+        p={id:crypto.randomUUID(),propostaId,pastaId:Number(pasta),ia,dados:{...structuredClone(dados),vistaGoogle:pacote.camera},pacote};
+        atual.current=p;if(vivo.current)setPendente(p);
       }
-      if(!captura||!vivo.current)return;
-      await Api.enviarDocumento(captura.leadId,captura.pastaId,captura.arquivo);
-      if(vivo.current){setPendente(undefined);setMensagem('Imagem armazenada em Documentos → '+(pastas.find(p=>p.id===captura!.pastaId)?.nome||'pasta selecionada')+'.');}
-    }catch(e){if(vivo.current){setFalha(true);setMensagem(e instanceof DOMException&&e.name==='NotAllowedError'?'Captura cancelada. Para tentar novamente, selecione esta aba no diálogo do navegador.':e instanceof Error?e.message:'Falha ao capturar ou armazenar a imagem.');}}
+      if(!vivo.current||cancelado.current)return;
+      setMensagem('Armazenando o original e preparando a imagem…');
+      const job=await enviarCaptura(p.propostaId,p.id,p.pastaId,p.ia,p.dados,p.pacote);
+      if(cancelado.current){await cancelarCaptura(p.propostaId,p.id);return;}
+      if(vivo.current){setPendente(undefined);setMensagem(job.mensagem??'Captura salva.');onSalva(p.dados);}
+    }catch(e){if(vivo.current)setMensagem(cancelado.current||e instanceof DOMException&&['AbortError','NotAllowedError'].includes(e.name)
+      ?'Captura cancelada. O original enviado, se houver, permanece em Documentos.':e instanceof Error?e.message:'Falha ao capturar a imagem.');}
     finally{trava.current=false;if(vivo.current)setOcupado(false);}
   };
-  return <div className="text-xs flex flex-wrap items-center gap-2 border-b bg-white px-2 py-1.5" aria-label="Captura do levantamento">
-    <label>Pasta das imagens <select className="border rounded p-1 max-w-60" aria-label="Pasta das imagens" value={pasta} disabled={ocupado||!leadId||!podeAnexar} onChange={e=>setPasta(e.target.value)}><option value="">Selecione a pasta</option>{pastas.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
-    <button type="button" disabled={ocupado||!leadId||!pasta||!podeAnexar||!temPontos} className="rounded bg-sky-800 text-white px-3 py-1.5 disabled:opacity-40" onClick={()=>void executar()}>{ocupado?'Capturando / armazenando…':'Capturar'}</button>
-    {pendente&&falha&&<button type="button" disabled={ocupado} className="underline" onClick={()=>void executar(true)}>Tentar armazenar a captura novamente</button>}
-    <span className="text-slate-500">{!leadId?'Vincule a proposta a um cliente para armazenar as imagens.':!podeAnexar?'Sua conta precisa da permissão de anexar documentos.':!temPontos?'Insira os pontos antes de capturar.':'No diálogo do navegador, selecione esta aba do sistema.'}</span>
-    {mensagem&&<p role={falha?'alert':'status'} className={falha?'text-red-700':'text-emerald-800'}>{mensagem}</p>}
+  const cancelar=()=>{
+    cancelado.current=true;ac.current?.abort();
+    const p=atual.current;if(p)void cancelarCaptura(p.propostaId,p.id).catch(()=>{});
+    setPendente(undefined);setMensagem('Cancelando…');
+  };
+  const impedimento=!propostaId||!leadId?'Salve a proposta com um cliente vinculado antes de capturar.':!podeAnexar?'Sua conta precisa da permissão de anexar documentos.':modo!=='3d'?'Abra a visualização 3D para capturar em HD.':rascunho?'Conclua o contorno antes de capturar.':'';
+  return <div className="space-y-3 bg-white p-3 text-xs" aria-label="Captura HD do levantamento">
+    <label className="block">Pasta em Documentos<select className="mt-1 w-full rounded border p-1.5" value={pasta} disabled={ocupado||!!impedimento} onChange={e=>setPasta(e.target.value)}><option value="">Selecione a pasta</option>{pastas.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
+    <label className="flex items-center gap-2"><input type="checkbox" checked={ia} disabled={ocupado} onChange={e=>setIA(e.target.checked)}/>Melhorar com IA</label>
+    <p className="text-slate-500">Original preservado. Contornos e placas ficam fora da IA. A resolução da captura depende da tela; a melhoria pode levar até 15 minutos.</p>
+    <div className="flex flex-wrap gap-2"><button type="button" disabled={ocupado||!!impedimento||!pasta} className="rounded bg-sky-800 px-3 py-2 font-semibold text-white disabled:opacity-40" onClick={()=>void executar()}>{ocupado?'Preparando imagem…':'Capturar em HD'}</button>
+      {(ocupado||pendente)&&<button type="button" className="rounded border px-3 py-2" onClick={cancelar}>Cancelar</button>}
+      {pendente&&!ocupado&&<button type="button" className="underline" onClick={()=>void executar(true)}>Tentar armazenar novamente</button>}
+    </div>
+    {impedimento&&<p className="text-slate-500">{impedimento}</p>}
+    {mensagem&&<p role="status">{mensagem}</p>}
   </div>;
 }

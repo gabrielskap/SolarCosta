@@ -24,6 +24,7 @@ import {
   dashboardRouter,
   notificacoesRouter,
 } from './routes/painel.routes.js';
+import { capturasTelhadoRouter } from './routes/capturasTelhado.routes.js';
 import { propostasRouter } from './routes/propostas.routes.js';
 import { publicoRouter } from './routes/publico.routes.js';
 import { siteRouter } from './routes/site.routes.js';
@@ -159,6 +160,7 @@ export function criarApp(): express.Express {
   // lead num arquivo, tudo que mexe com arquivo anexado no outro. Os caminhos
   // não colidem — ver o cabeçalho de documentos.routes.ts.
   app.use('/api/leads', documentosRouter);
+  app.use('/api/propostas', capturasTelhadoRouter);
   app.use('/api/propostas', propostasRouter);
   app.use('/api/contratos', contratosRouter);
   app.use('/api/obras', obrasRouter);

@@ -29,6 +29,7 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     let ponteiro: { x:number;y:number;tratado:boolean;id:number;movido:boolean } | null = null;
     let estavel = true;
     const clique = (e: any) => {
+      if((mapa.getDiv?.()??mapa).dataset?.capturando==='true')return;
       if(modo==='3d'&&(!estavel||ponteiro?.tratado||ponteiro?.movido))return;
       const { dados, ferramenta, rascunho, onPonto, onRemover, onFechar } = atual.current;
       const geo = criarGeorreferencia(dados), pos = e.latLng ?? e.position ?? e.detail?.position;
@@ -57,7 +58,7 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       clearTimeout(timer);
       timer = setTimeout(() => {
         const vista = lerCameraGoogle(modo, mapa);
-        if (vista) atual.current.onCamera(vista);
+        if (vista&&(mapa.getDiv?.()??mapa).dataset?.capturando!=='true') atual.current.onCamera(vista);
       }, 200);
     };
     if (modo === 'satelite') {
@@ -95,6 +96,10 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     if (!instancia || !geo) return;
     const { mapa, biblioteca } = instancia;
     const remover: Array<() => void> = [];
+    const limpar=()=>remover.splice(0).forEach(fn=>fn());
+    const renderizar=(fase='editor')=>{
+    limpar();if(fase==='fundo')return;
+    const exportando=fase==='contornos';
     const s = d.simulacao, loc = d.localizacao ?? d.satelite;
     const sol = s && loc ? posicaoSolar(s.data, s.hora, loc.latitude, loc.longitude, s.fuso) : null;
     const desenhar = (pontos: PontoLocal[], cor: string, linha = false, aguaId?:string) => {
@@ -105,13 +110,13 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       if (modo === 'satelite') {
         const maps = (window as any).google.maps;
         const objeto = linha ? new maps.Polyline({ path, strokeColor: cor, strokeWeight: 3, clickable: false, map: mapa })
-          : new maps.Polygon({ paths: path, fillColor: cor, fillOpacity: 0.5, strokeColor: cor, strokeWeight: espessura, clickable: selecionavel, map: mapa });
+          : new maps.Polygon({ paths: path, fillColor: cor, fillOpacity: exportando?1:0.5, strokeColor: cor, strokeWeight: espessura, clickable: selecionavel, map: mapa });
         const listener=selecionavel?objeto.addListener('click',()=>atual.current.onSelecionarAgua?.(aguaId!)):undefined;
         remover.push(() => {listener?.remove();objeto.setMap(null);});
       } else {
         const Polygon=selecionavel?biblioteca.Polygon3DInteractiveElement:biblioteca.Polygon3DElement;
         const objeto = linha ? new biblioteca.Polyline3DElement({ path, strokeColor: cor, strokeWidth: 3, altitudeMode: 'RELATIVE_TO_MESH', drawsOccludedSegments: true })
-          : new Polygon({ path, fillColor: cor + '80', strokeColor: cor, strokeWidth: espessura, altitudeMode: 'RELATIVE_TO_MESH', drawsOccludedSegments: true });
+          : new Polygon({ path, fillColor: cor + (exportando?'ff':'80'), strokeColor: cor, strokeWidth: espessura, altitudeMode: 'RELATIVE_TO_MESH', drawsOccludedSegments: true });
         const selecionar=(e:Event)=>{e.stopPropagation();atual.current.onSelecionarAgua?.(aguaId!);};
         if(selecionavel)objeto.addEventListener('gmp-click',selecionar);
         mapa.append(objeto); remover.push(() => {objeto.removeEventListener('gmp-click',selecionar);objeto.remove();});
@@ -123,18 +128,18 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
         const intensidade = incidenciaDireta(sol.elevacao, sol.azimute, a.inclinacao, a.azimute);
         cor = '#' + [Math.round(255 * intensidade), 100, Math.round(255 * (1 - intensidade))].map(v => v.toString(16).padStart(2, '0')).join('');
       }
-      desenhar(a.pontos, cor, false, a.id);
+      if(exportando)desenhar([...a.pontos,a.pontos[0]],cor,true);else desenhar(a.pontos, cor, false, a.id);
     }
-    d.obstaculos.forEach(a => desenhar(a.pontos, '#dc2626'));
+    d.obstaculos.forEach(a => desenhar(exportando?[...a.pontos,a.pontos[0]]:a.pontos, '#dc2626',exportando));
     d.placas.forEach(a => desenhar(a.pontos, '#1e3a8a'));
-    if (s?.mostrarSombras && sol && sol.elevacao > 0) for (const o of d.obstaculos) {
+    if (!exportando && s?.mostrarSombras && sol && sol.elevacao > 0) for (const o of d.obstaculos) {
       const comprimento = o.alturaM / Math.tan(sol.elevacao * Math.PI / 180), ang = (sol.azimute - d.norte) * Math.PI / 180;
       const topo = o.pontos.map(p => ({ x: p.x - comprimento * Math.sin(ang), y: p.y + comprimento * Math.cos(ang) }));
       desenhar(topo, '#334155');
       o.pontos.forEach((p, i) => { const j = (i + 1) % o.pontos.length; desenhar([p, o.pontos[j], topo[j], topo[i]], '#334155'); });
     }
-    desenhar(edicao.rascunho, '#d97706', true);
-    edicao.rascunho.forEach((p,i)=>{
+    if(!exportando)desenhar(edicao.rascunho, '#d97706', true);
+    if(!exportando)edicao.rascunho.forEach((p,i)=>{
       if(modo==='satelite') {
         const maps=(window as any).google.maps;
         const marker=new maps.Marker({map:mapa,position:geo.paraGeo(p),clickable:false,icon:{path:maps.SymbolPath.CIRCLE,scale:7,fillColor:i===0?'#16a34a':'#d97706',fillOpacity:1,strokeWeight:1}});
@@ -152,7 +157,12 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
       }
     });
     // Moldura delimita a área georreferenciada do projeto durante a navegação.
-    desenhar([{ x: 0, y: 0 }, { x: d.larguraM, y: 0 }, { x: d.larguraM, y: d.alturaM }, { x: 0, y: d.alturaM }, { x: 0, y: 0 }], '#64748b', true);
-    return () => remover.forEach(fn => fn());
+    if(!exportando)desenhar([{ x: 0, y: 0 }, { x: d.larguraM, y: 0 }, { x: d.larguraM, y: d.alturaM }, { x: 0, y: d.alturaM }, { x: 0, y: 0 }], '#64748b', true);
+    };
+    renderizar();
+    const alvo=mapa.getDiv?.()??mapa;
+    const mudar=(e:Event)=>renderizar((e as CustomEvent).detail);
+    alvo.addEventListener('solarcosta-captura-fase',mudar);
+    return () => {alvo.removeEventListener('solarcosta-captura-fase',mudar);limpar();};
   }, [instancia, modo, d.aguas, d.obstaculos, d.placas, d.simulacao, d.localizacao, d.satelite, d.larguraM, d.alturaM, d.norte, edicao.rascunho, edicao.ferramenta, edicao.aguaSelecionada, somenteLeitura]);
 }

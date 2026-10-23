@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import type { ControleCaptura } from '../../utils/capturarMapaHD';
 import { useGoogleMaps } from './useGoogleMaps';
 import { useDesenhoGoogle, lerCameraGoogle, type EdicaoGoogle } from './useDesenhoGoogle';
 
@@ -11,6 +12,9 @@ export function GoogleVistaImovel({ chave, latitude, longitude, modo, onVoltar, 
 }) {
   const api = useGoogleMaps(chave, true);
   const container = useRef<HTMLDivElement>(null);
+  const areaCaptura=useRef<HTMLDivElement>(null);
+  const marcador=useRef<any>(null);
+  const estabilidade=useRef({pronto:false,em:Date.now()});
   const recentralizar = useRef<() => void>(() => {});
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
@@ -29,7 +33,7 @@ export function GoogleVistaImovel({ chave, latitude, longitude, modo, onVoltar, 
     const temporizador = window.setTimeout(() => {
       if (vivo) { setCarregando(false); setErro('O mapa demorou para carregar. Confira a conexão, a chave e as APIs habilitadas, ou volte ao levantamento 2D.'); }
     }, 30000);
-    const pronto = () => { if (vivo) { clearTimeout(temporizador); setCarregando(false); setErro(''); } };
+    const pronto = () => { if (vivo) { estabilidade.current={pronto:true,em:Date.now()}; clearTimeout(temporizador); setCarregando(false); setErro(''); } };
     const iniciar = async () => {
       const centro = { lat: latitude, lng: longitude };
       const salva = edicaoAtual.current.dados.vistaGoogle;
@@ -66,6 +70,7 @@ export function GoogleVistaImovel({ chave, latitude, longitude, modo, onVoltar, 
       const falhou = () => { if (vivo) { clearTimeout(temporizador); setCarregando(false); setErro('Não foi possível iniciar o Google 3D. Verifique a chave, o suporte gráfico do navegador e tente novamente.'); } };
       let primeiroEnquadramento=true;
       const estavel = (e: Event & { isSteady?: boolean }) => {
+        estabilidade.current={pronto:!!e.isSteady,em:Date.now()};
         if(!e.isSteady)return;
         if(primeiroEnquadramento&&altitude===undefined&&Math.abs(mapa.range-camera.range)>1)return;
         primeiroEnquadramento=false;pronto();
@@ -73,7 +78,8 @@ export function GoogleVistaImovel({ chave, latitude, longitude, modo, onVoltar, 
       mapa.addEventListener('gmp-error', falhou);
       mapa.addEventListener('gmp-steadychange', estavel);
       host.replaceChildren(mapa);
-      mapa.append(new Marker3DElement({position:centro,altitudeMode:'CLAMP_TO_GROUND',label:'Imóvel',drawsWhenOccluded:true}));
+      marcador.current=new Marker3DElement({position:centro,altitudeMode:'CLAMP_TO_GROUND',label:'Imóvel',drawsWhenOccluded:true});
+      mapa.append(marcador.current);
       setInstancia({mapa,biblioteca});
       const enquadrar = () => {
         mapa.stopCameraAnimation?.();
@@ -88,11 +94,44 @@ export function GoogleVistaImovel({ chave, latitude, longitude, modo, onVoltar, 
     return () => { vivo = false; clearTimeout(temporizador); setInstancia(null); limpar.forEach(fn => fn()); host.replaceChildren(); recentralizar.current = () => {}; };
   }, [api.pronto, chave, latitude, longitude, modo, tentativa, somenteLeitura]);
 
+  useEffect(()=>{
+    const area=areaCaptura.current;if(!area||!instancia||modo!=='3d')return;
+    const preparar=(evento:Event)=>{
+      evento.preventDefault();
+      const {resolve,reject,signal}=(evento as CustomEvent).detail;
+      const mapa=instancia.mapa,camera=lerCameraGoogle(modo,mapa);
+      if(!camera||carregando){reject(new Error('Aguarde o mapa carregar.'));return;}
+      const ui=mapa.defaultUIHidden;
+      mapa.stopCameraAnimation?.();mapa.defaultUIHidden=true;mapa.dataset.capturando='true';
+      marcador.current?.remove();
+      const controle:ControleCaptura={camera,
+        fase:v=>mapa.dispatchEvent(new CustomEvent('solarcosta-captura-fase',{detail:v})),
+        esperar:async()=>{
+          const inicio=Date.now();
+          do{
+            signal.throwIfAborted();if(!mapa.isConnected)throw new Error('O mapa foi fechado.');
+            await new Promise(r=>setTimeout(r,150));
+            if(estabilidade.current.pronto&&Date.now()-estabilidade.current.em>=600&&Date.now()-inicio>=600)return;
+          }while(Date.now()-inicio<30000);
+          throw new Error('O mapa não estabilizou. Aguarde os detalhes carregarem e tente novamente.');
+        },
+        restaurar:()=>{
+          mapa.dispatchEvent(new CustomEvent('solarcosta-captura-fase',{detail:'editor'}));
+          mapa.defaultUIHidden=ui;delete mapa.dataset.capturando;
+          if(marcador.current&&mapa.isConnected)mapa.append(marcador.current);
+        }
+      };
+      resolve(controle);
+    };
+    area.addEventListener('solarcosta-preparar-captura',preparar);
+    return()=>area.removeEventListener('solarcosta-preparar-captura',preparar);
+  },[instancia,modo,carregando]);
+
   const mensagem = !chave ? 'Configure GOOGLE_MAPS_BROWSER_KEY no servidor para habilitar os mapas interativos.' : api.erro || erro;
   useEffect(()=>{if(mensagem)onIndisponivel?.(mensagem);},[mensagem,onIndisponivel]);
   return <section className="h-full min-h-0 flex flex-col rounded-lg overflow-hidden border bg-slate-100" aria-label={modo === '3d' ? 'Google Maps 3D' : 'Satélite interativo Google'}>
-    <div className="relative flex-1 min-h-0" data-area-captura-mapa data-mapa-pronto={!carregando&&!mensagem?'true':'false'}>
-      {!somenteLeitura&&<div className="absolute bottom-8 left-2 right-14 z-20 flex flex-wrap items-center gap-1.5 pointer-events-none">
+    <div ref={areaCaptura} className="relative flex-1 min-h-0" data-area-captura-mapa data-mapa-pronto={!carregando&&!mensagem?'true':'false'}>
+      {!somenteLeitura&&<div data-captura-ocultar className="absolute bottom-8 left-2 right-14 z-20 flex flex-wrap items-center gap-1.5 pointer-events-none">
         <button type="button" className="pointer-events-auto rounded-lg border bg-white/95 shadow px-3 py-2 text-xs font-semibold" onClick={() => recentralizar.current()}>Centralizar imóvel</button>
             {!somenteLeitura&&<button type="button" disabled={salvando||!instancia||!!mensagem||carregando} className="pointer-events-auto rounded-lg bg-sky-800 text-white shadow px-3 py-2 text-xs font-semibold disabled:opacity-40" onClick={()=>{const vista=instancia&&lerCameraGoogle(modo,instancia.mapa);if(vista)onSalvarVista(vista);}}>{salvando?'Salvando…':'Salvar vista e desenho'}</button>}
         {!somenteLeitura&&<details className="relative pointer-events-auto text-xs">
@@ -104,7 +143,7 @@ export function GoogleVistaImovel({ chave, latitude, longitude, modo, onVoltar, 
         </details>}
       </div>}
       <div ref={container} className="absolute inset-0" />
-      {!somenteLeitura&&<div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-red-600 text-3xl" aria-hidden="true">+</div>}
+      {!somenteLeitura&&<div data-captura-ocultar className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-red-600 text-3xl" aria-hidden="true">+</div>}
       {mensagem ? <div role="alert" className="absolute inset-0 bg-white flex flex-col items-center justify-center gap-3 p-6 text-center text-sm"><p>{mensagem}</p><button type="button" className="rounded border px-3 py-2" onClick={onVoltar}>Continuar no 2D</button>{!api.erro && chave && <button type="button" className="underline" onClick={() => setTentativa(v => v + 1)}>Tentar novamente</button>}</div> : (api.carregando || carregando) && <div role="status" className="absolute bottom-20 left-3 rounded bg-white shadow px-3 py-2 text-sm pointer-events-none">Carregando mapa…</div>}
     </div>
   </section>;
