@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
-import { consultarUm, emTransacao, pool, type Ator, type Cliente } from '../db.js';
+import { consultarUm, emTransacao, type Ator, type Cliente } from '../db.js';
+import pg from 'pg';
+import { config } from '../config.js';
 import { naoEncontrado } from '../errors.js';
 import type { CapturaTelhado } from '../domain/capturaTelhado.js';
 import { comporCaptura } from './imagemCaptura.js';
+import { carregarUsuario } from '../auth/middleware.js';
 
 export const CAMPOS_CAPTURA='id,proposta_id,lead_id,estado,assinatura,camera,largura,altura,melhorar_ia,modelo,original_id,final_id,mensagem,criado_em,pronta';
 const TABELA='"SolarCosta_CapturasTelhado"';
@@ -15,7 +18,7 @@ export async function documentoCaptura(c:Cliente, j:{lead_id:string;pasta_id:num
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
     [j.lead_id,j.pasta_id,nome,mime,mime==='image/png'?'png':'webp',bytes.length,hash,bytes,j.usuario_id]);
   await c.query(`SELECT "SolarCosta_fn_auditar"('criar','Lead',$1,$2,$3)`,
-    [j.lead_id,null,`Captura do telhado anexada: ${nome}`]);
+    [`Captura do telhado: ${nome}`,j.lead_id,`Imagem anexada em ${bytes.length} bytes`]);
   return r.rows[0].id as string;
 }
 
@@ -29,11 +32,21 @@ const ativos=new Map<string,AbortController>();
 export function interromperCaptura(id:string){ativos.get(id)?.abort();}
 
 /** Um lock PostgreSQL protege toda a inferência, inclusive entre réplicas da API. */
-export function iniciarFilaCapturas() {
+async function conexaoDaFila():Promise<Cliente> {
+  // Lock de longa duração fora do pool HTTP: funciona inclusive com DATABASE_POOL_MAX=1.
+  const c=new pg.Client({connectionString:config.DATABASE_URL,ssl:config.DATABASE_SSL?{rejectUnauthorized:false}:undefined,
+    connectionTimeoutMillis:10000,application_name:'solarcosta-capturas'});
+  c.on('error',()=>{});
+  await c.connect();
+  return Object.assign(c,{release:()=>c.end()}) as unknown as Cliente;
+}
+
+export function iniciarFilaCapturas(opcoes:{conectar?:()=>Promise<Cliente>}={}) {
+  console.log(`[capturas] melhoria por IA ${process.env.TELHADO_IA_URL&&process.env.TELHADO_IA_TOKEN?'configurada':'desligada; captura original disponível'}`);
   let ocupado=false,parado=false;
   const executar=async()=>{
     if(ocupado||parado)return;ocupado=true;
-    const c=await pool.connect().catch(()=>null);
+    const c=await (opcoes.conectar??conexaoDaFila)().catch(()=>null);
     if(!c){ocupado=false;return;}
     let bloqueado=false;
     try {
@@ -56,6 +69,11 @@ export function iniciarFilaCapturas() {
         .then(v=>{if(v?.estado!=='processando')controller.abort();}).catch(()=>controller.abort());},2000);
       const conexaoPerdida=()=>controller.abort();c.on('error',conexaoPerdida);
       try {
+        const usuario=await carregarUsuario(j.usuario_id);
+        if(!usuario?.permissoes.anexar_documentos||!usuario.permissoes.emitir_propostas)throw new Error('Permissão revogada. O original foi preservado.');
+        const atual=(await c.query(`SELECT p.lead_id FROM "SolarCosta_Propostas" p JOIN ${TABELA} t ON t.proposta_id=p.id
+          WHERE t.id=$1 AND p.excluido_em IS NULL`,[j.id])).rows[0];
+        if(atual?.lead_id!==j.lead_id)throw new Error('O cliente da proposta foi alterado ou a proposta foi removida. Original preservado.');
         const url=process.env.TELHADO_IA_URL,token=process.env.TELHADO_IA_TOKEN;
         if(!url||!token)throw new Error('A melhoria por IA não está configurada. O original foi preservado.');
         const origem=new URL(url);if(!['http:','https:'].includes(origem.protocol))throw new Error('Configuração inválida do serviço de IA.');
@@ -89,7 +107,7 @@ export function iniciarFilaCapturas() {
         }
         clearTimeout(timeout);clearInterval(vigiar);ativos.delete(j.id);c.removeListener('error',conexaoPerdida);}
     } catch(e){console.error('[capturas] fila indisponível:',e instanceof Error?e.message:e);}
-    finally {if(bloqueado)await c.query('SELECT pg_advisory_unlock(723023)').catch(()=>{});c.release();ocupado=false;}
+    finally {if(bloqueado)await c.query('SELECT pg_advisory_unlock(723023)').catch(()=>{});await c.release();ocupado=false;}
   };
   const timer=setInterval(()=>void executar(),2500);timer.unref();void executar();
   return ()=>{parado=true;clearInterval(timer);for(const ac of ativos.values())ac.abort();};

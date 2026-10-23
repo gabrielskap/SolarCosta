@@ -59,12 +59,12 @@ export function CapturarMapa({ alvo, leadId, propostaId, modo, podeAnexar, dados
     <label className="block">Pasta em Documentos<select className="mt-1 w-full rounded border p-1.5" value={pasta} disabled={ocupado||!!impedimento} onChange={e=>setPasta(e.target.value)}><option value="">Selecione a pasta</option>{pastas.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
     <label className="flex items-center gap-2"><input type="checkbox" checked={ia} disabled={ocupado} onChange={e=>setIA(e.target.checked)}/>Melhorar com IA</label>
     <p className="text-slate-500">Original preservado. Contornos e placas ficam fora da IA. A resolução da captura depende da tela; a melhoria pode levar até 15 minutos.</p>
-    <div className="flex flex-wrap gap-2"><button type="button" disabled={ocupado||!!impedimento||!pasta} className="rounded bg-sky-800 px-3 py-2 font-semibold text-white disabled:opacity-40" onClick={()=>void executar()}>{ocupado?'Preparando imagem…':'Capturar em HD'}</button>
+    <div className="flex flex-wrap gap-2"><button type="button" disabled={ocupado||!!pendente||!!impedimento||!pasta} className="rounded bg-sky-800 px-3 py-2 font-semibold text-white disabled:opacity-40" onClick={()=>void executar()}>{ocupado?'Preparando imagem…':'Capturar em HD'}</button>
       {(ocupado||pendente)&&<button type="button" className="rounded border px-3 py-2" onClick={cancelar}>Cancelar</button>}
       {pendente&&!ocupado&&<button type="button" className="underline" onClick={()=>void executar(true)}>Tentar armazenar novamente</button>}
     </div>
     {impedimento&&<p className="text-slate-500">{impedimento}</p>}
-    {jobs.filter(j=>j.pronta&&['pendente','processando'].includes(j.estado)).map(j=><div key={j.id} className="rounded border p-2"><p role="status">{j.estado==='pendente'?'Aguardando IA':'Melhorando imagem'} — original preservado</p><button type="button" className="mt-1 underline" onClick={()=>void cancelarCaptura(j.proposta_id,j.id).then(()=>setJobs(js=>js.filter(v=>v.id!==j.id))).catch(e=>setMensagem(e.message))}>Cancelar melhoria</button></div>)}
+    {jobs.filter(j=>['pendente','processando'].includes(j.estado)).map(j=><div key={j.id} className="rounded border p-2"><p role="status">{!j.pronta?'Aguardando envio':j.estado==='pendente'?'Aguardando IA':'Melhorando imagem'} — original preservado</p><button type="button" className="mt-1 underline" onClick={()=>void cancelarCaptura(j.proposta_id,j.id).then(()=>setJobs(js=>js.filter(v=>v.id!==j.id))).catch(e=>setMensagem(e.message))}>Cancelar melhoria</button></div>)}
     {mensagem&&<p role="status">{mensagem}</p>}
   </div>;
 }

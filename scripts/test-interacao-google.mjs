@@ -50,6 +50,11 @@ let selecionada; edicao.onSelecionarAgua=id=>{selecionada=id;};
 edicao.ferramenta = 'navegar'; click();
 assert.equal(selecionada,'agua-1','modo Mover seleciona a água sob o clique em 3D');
 assert.equal(pontos.length, 2, 'modo Mover não desenha');
+edicao.ferramenta='agua';
+emitir('gmp-steadychange',{isSteady:false});
+emitir('pointerdown',{button:0,pointerId:3,clientX:10,clientY:10,composedPath:()=>[]});
+click();
+assert.equal(pontos.length,3,'um toque sem movimento desenha mesmo se o Google emitir steady=false');
 limpar();
 assert.equal(listeners.size, 0, 'desmontagem remove todos os listeners');
 module.exports.useDesenhoGoogle({ mapa }, '3d', edicao, true);
@@ -65,6 +70,7 @@ class Forma {
 class AguaInterativa extends Forma {}
 mapa.append=objeto=>objetos.push(objeto);
 Object.assign(edicao.dados,{obstaculos:[],placas:[]});
+edicao.ferramenta='navegar';
 edicao.aguaSelecionada='agua-1';
 const biblioteca={Polygon3DInteractiveElement:AguaInterativa,Polygon3DElement:Forma,Polyline3DElement:Forma};
 module.exports.useDesenhoGoogle({mapa,biblioteca},'3d',edicao);

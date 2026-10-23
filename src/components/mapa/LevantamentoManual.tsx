@@ -235,7 +235,7 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
       </div>
       <div className="flex-1 min-h-0 grid grid-rows-[minmax(180px,1fr)_minmax(0,30dvh)] md:grid-rows-1 md:grid-cols-[minmax(0,1fr)_272px]">
         <main className="min-h-0 min-w-0 flex flex-col gap-2 p-2 bg-slate-50">
-          <div ref={areaMapa} className="flex-1 min-h-0 relative isolate">
+          <div ref={areaMapa} data-captura-raiz className="flex-1 min-h-0 relative isolate">
           <div className="absolute inset-x-2 top-2 z-20 flex flex-wrap gap-1.5 items-center pointer-events-none">
           <div className="pointer-events-auto flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-lg" aria-label="Visualização do imóvel">
             {(['2d','satelite','3d'] as const).map(v=><button type="button" key={v} aria-pressed={vista===v} disabled={v!=='2d'&&!localVista} onClick={()=>setVista(v)} className={`px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40 ${vista===v?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{({'2d':'2D',satelite:'Satélite','3d':'3D'})[v]}</button>)}

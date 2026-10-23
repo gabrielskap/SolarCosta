@@ -1,0 +1,5 @@
+.venv
+weights
+__pycache__
+*.pyc
+.env*

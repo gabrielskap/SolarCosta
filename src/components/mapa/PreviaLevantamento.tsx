@@ -13,6 +13,7 @@ export function PreviaLevantamento({ dados, chave, propostaId, googleAtivo=true 
 }) {
   const [falha, setFalha] = useState('');
   const [imagem,setImagem]=useState<{url:string;chave:string}>();
+  const [resolvida,setResolvida]=useState('');
   const [job,setJob]=useState<CapturaTelhado>();
   const identidade=chaveCaptura(dados);
   useEffect(()=>{
@@ -32,7 +33,7 @@ export function PreviaLevantamento({ dados, chave, propostaId, googleAtivo=true 
           setImagem({url,chave:identidade});
         }
         if(r.capturas.some(c=>c.estado==='pendente'||c.estado==='processando'))timer=setTimeout(()=>void carregar(),3000);
-      }catch{if(ativo)timer=setTimeout(()=>void carregar(),15000);}
+      }catch{if(ativo)timer=setTimeout(()=>void carregar(),15000);}finally{if(ativo)setResolvida(identidade);}
     };
     void carregar();return()=>{ativo=false;clearTimeout(timer);if(url)URL.revokeObjectURL(url);};
   },[propostaId,identidade]);
@@ -41,9 +42,10 @@ export function PreviaLevantamento({ dados, chave, propostaId, googleAtivo=true 
   const mostrar3d = pode3d && !falha;
   if(imagem?.chave===identidade)return <div className="space-y-2">
     <img src={imagem.url} alt="Imagem salva do levantamento do telhado" className="w-full rounded-lg border object-contain"/>
-    {job&&['pendente','processando'].includes(job.estado)&&<p role="status" className="text-xs text-slate-500">Original salvo. Melhoria por IA em andamento…</p>}
+    {job&&['pendente','processando'].includes(job.estado)&&<p role="status" className="text-xs text-slate-500">{job.pronta?'Original salvo. Melhoria por IA em andamento…':'Original salvo. Finalizando envio da captura…'}</p>}
     {job?.estado==='falhou'&&<p role="status" className="text-xs text-slate-500">{job.mensagem}</p>}
   </div>;
+  if(propostaId&&resolvida!==identidade)return <div role="status" className="flex h-[360px] items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-500">Carregando imagem do levantamento…</div>;
   return <div className="space-y-2">
     {mostrar3d&&local ? <div className="h-[360px] md:h-[420px]" aria-label="Prévia 3D do levantamento salvo">
       <GoogleVistaImovel chave={chave} latitude={local.latitude} longitude={local.longitude} modo="3d" somenteLeitura onIndisponivel={setFalha}

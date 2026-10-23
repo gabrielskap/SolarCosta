@@ -13,6 +13,7 @@ TOKEN = os.environ.get('TELHADO_IA_TOKEN', '')
 LIMIT = 10*1024*1024
 LOCK = threading.Lock()
 JOBS = {}
+CANCELLED = set()
 GUARD = threading.Lock()
 BASE = Path(__file__).resolve().parent
 
@@ -51,6 +52,9 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(404)
             return
         with GUARD:
+            if len(CANCELLED) >= 1024:
+                CANCELLED.clear()
+            CANCELLED.add(job)
             process = JOBS.get(job)
             if process and process.poll() is None:
                 process.kill()
@@ -88,6 +92,8 @@ class Handler(BaseHTTPRequestHandler):
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 with GUARD:
                     JOBS[job] = process
+                    if job in CANCELLED:
+                        process.kill()
                 try:
                     code = process.wait(timeout=900)
                 except subprocess.TimeoutExpired:
@@ -107,6 +113,7 @@ class Handler(BaseHTTPRequestHandler):
                 process.wait()
             with GUARD:
                 JOBS.pop(job, None)
+                CANCELLED.discard(job)
             LOCK.release()
 
 

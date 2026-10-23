@@ -21,6 +21,9 @@ export async function capturarMapaHD(alvo:HTMLElement,signal?:AbortSignal):Promi
   try{if(media.setCaptureHandleConfig){media.setCaptureHandleConfig({handle,exposeOrigin:true,permittedOrigins:[location.origin]});verifica=true;}}catch{}
   let stream:MediaStream|undefined,controle:ControleCaptura|undefined;
   const video=document.createElement('video'),styleOriginal=alvo.getAttribute('style');
+  const raiz=alvo.closest<HTMLElement>('[data-captura-raiz]');
+  const zOriginal=raiz?.style.zIndex;
+  const bloqueador=document.createElement('div');
   const ocultos:Array<[HTMLElement,string]>=[];
   const parar=()=>stream?.getTracks().forEach(t=>t.stop());
   combinado.addEventListener('abort',parar);window.addEventListener('keydown',cancelar,true);
@@ -38,7 +41,12 @@ export async function capturarMapaHD(alvo:HTMLElement,signal?:AbortSignal):Promi
     });
     const r=alvo.getBoundingClientRect(),fator=Math.min((window.innerWidth-16)/r.width,(window.innerHeight-16)/r.height);
     const width=r.width*fator,height=r.height*fator;
+    if(raiz)raiz.style.zIndex='10000';
     Object.assign(alvo.style,{position:'fixed',left:`${(window.innerWidth-width)/2}px`,top:`${(window.innerHeight-height)/2}px`,width:`${width}px`,height:`${height}px`,zIndex:'10000',background:'#f1f5f9',pointerEvents:'none'});
+    Object.assign(bloqueador.style,{position:'absolute',inset:'0',zIndex:'99999',pointerEvents:'auto',cursor:'wait'});
+    bloqueador.addEventListener('pointerdown',e=>e.stopPropagation());
+    bloqueador.addEventListener('wheel',e=>e.preventDefault(),{passive:false});
+    alvo.append(bloqueador);
     alvo.querySelectorAll<HTMLElement>('[data-captura-ocultar]').forEach(el=>{ocultos.push([el,el.style.visibility]);el.style.visibility='hidden';});
     const crop=(window as any).CropTarget;
     if(crop?.fromElement&&track.cropTo){await track.cropTo(await crop.fromElement(alvo));confirmado=true;}
@@ -81,6 +89,7 @@ export async function capturarMapaHD(alvo:HTMLElement,signal?:AbortSignal):Promi
     }
     throw new Error('O mapa mudou durante a captura. Aguarde carregar os detalhes e tente novamente.');
   }finally{
+    bloqueador.remove();if(raiz)raiz.style.zIndex=zOriginal??'';
     controle?.restaurar();
     if(styleOriginal===null)alvo.removeAttribute('style');else alvo.setAttribute('style',styleOriginal);
     ocultos.forEach(([el,v])=>{el.style.visibility=v;});

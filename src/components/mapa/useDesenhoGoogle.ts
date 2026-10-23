@@ -30,7 +30,8 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     let estavel = true;
     const clique = (e: any) => {
       if((mapa.getDiv?.()??mapa).dataset?.capturando==='true')return;
-      if(modo==='3d'&&(!estavel||ponteiro?.tratado||ponteiro?.movido))return;
+      // Um toque parado pode emitir steady=false. Só bloquear animação sem gesto ou arrasto real.
+      if(modo==='3d'&&((!estavel&&!ponteiro)||ponteiro?.tratado||ponteiro?.movido))return;
       const { dados, ferramenta, rascunho, onPonto, onRemover, onFechar } = atual.current;
       const geo = criarGeorreferencia(dados), pos = e.latLng ?? e.position ?? e.detail?.position;
       if (!geo) { atual.current.onAviso('Use Mais ações → Definir imóvel neste centro para fixar a área antes de desenhar.'); return; }
@@ -142,22 +143,21 @@ export function useDesenhoGoogle(instancia: { mapa: any; biblioteca?: any } | nu
     if(!exportando)edicao.rascunho.forEach((p,i)=>{
       if(modo==='satelite') {
         const maps=(window as any).google.maps;
-        const marker=new maps.Marker({map:mapa,position:geo.paraGeo(p),clickable:false,icon:{path:maps.SymbolPath.CIRCLE,scale:7,fillColor:i===0?'#16a34a':'#d97706',fillOpacity:1,strokeWeight:1}});
+        const marker=new maps.Marker({map:mapa,position:geo.paraGeo(p),clickable:false,icon:{path:maps.SymbolPath.CIRCLE,scale:7,fillColor:i===0&&edicao.rascunho.length>=3?'#16a34a':'#d97706',fillOpacity:1,strokeWeight:1}});
         remover.push(()=>marker.setMap(null));
       }else{
         const fechar = i===0 && edicao.rascunho.length>=3 && ['agua','obstaculo'].includes(edicao.ferramenta);
         const Marker = fechar ? biblioteca.Marker3DInteractiveElement : biblioteca.Marker3DElement;
         const marker=new Marker({position:{...geo.paraGeo(p),altitude:0.1},altitudeMode:'RELATIVE_TO_MESH',drawsWhenOccluded:true});
         const template=document.createElement('template');
-        template.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="7" fill="'+(i===0?'#16a34a':'#d97706')+'" stroke="#fff" stroke-width="2"/></svg>';
+        template.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="7" fill="'+(fechar?'#16a34a':'#d97706')+'" stroke="#fff" stroke-width="2"/></svg>';
         marker.append(template);
         const concluir=(e:Event)=>{e.stopPropagation();atual.current.onFechar();};
         if(fechar)marker.addEventListener('gmp-click',concluir);
         mapa.append(marker);remover.push(()=>{marker.removeEventListener('gmp-click',concluir);marker.remove();});
       }
     });
-    // Moldura delimita a área georreferenciada do projeto durante a navegação.
-    if(!exportando)desenhar([{ x: 0, y: 0 }, { x: d.larguraM, y: 0 }, { x: d.larguraM, y: d.alturaM }, { x: 0, y: d.alturaM }, { x: 0, y: 0 }], '#64748b', true);
+    // Nenhuma água é desenhada automaticamente: só geometria salva ou pontos marcados.
     };
     renderizar();
     const alvo=mapa.getDiv?.()??mapa;

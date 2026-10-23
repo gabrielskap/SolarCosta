@@ -1,6 +1,6 @@
 """RRDBNet compatível com os pesos oficiais RealESRGAN_x4plus (escala 4).
 
-Arquitetura de BasicSR/Real-ESRGAN, Xintao Wang et al., BSD-3-Clause.
+Arquitetura de BasicSR/Real-ESRGAN, Xintao Wang et al., Apache-2.0 (BasicSR; ver LICENSE-BasicSR.txt).
 Referência: https://github.com/XPixelGroup/BasicSR/blob/v1.4.2/basicsr/archs/rrdbnet_arch.py
 O serviço não importa BasicSR/torchvision nem baixa código durante inferência.
 """

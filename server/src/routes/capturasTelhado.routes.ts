@@ -56,7 +56,8 @@ capturasTelhadoRouter.post('/:id/capturas-telhado/:captura/arquivos/:tipo',alter
     const j=await obterCaptura(id,captura!);
     if(j.lead_id!==p.lead_id)throw conflito('O cliente da proposta foi alterado. Capture novamente.');
     if(!Buffer.isBuffer(req.body))throw conflito('Envie a imagem PNG ou WebP como corpo da requisição.');
-    await validarImagem(req.body,j.largura,j.altura);
+    const mime=await validarImagem(req.body,j.largura,j.altura);
+    if(req.get('Content-Type')?.split(';')[0]!==mime)throw conflito('O tipo informado não corresponde à imagem enviada.');
     await emTransacao(async c=>{
       const linha=(await c.query(`SELECT *,fundo IS NOT NULL AS tem_fundo FROM ${tabela} WHERE id=$1 FOR UPDATE`,[j.id])).rows[0];
       if(linha.estado!=='pendente'||linha.pronta)throw conflito('Esta captura não aceita novos arquivos.');
