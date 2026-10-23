@@ -2,7 +2,7 @@ import React, {useEffect,useState} from 'react';
 import type {LevantamentoTelhado} from '../../utils/levantamentoTelhado';
 import {incidenciaDireta,posicaoSolar} from '../../utils/posicaoSolar';
 
-export function SimulacaoSolar({dados,onChange}:{dados:LevantamentoTelhado;onChange:(patch:Partial<LevantamentoTelhado>)=>void}) {
+export function SimulacaoSolar({dados,onChange,compact=false}:{dados:LevantamentoTelhado;onChange:(patch:Partial<LevantamentoTelhado>)=>void;compact?:boolean}) {
   const [lat,setLat]=useState(String(dados.localizacao?.latitude??''));
   const [lng,setLng]=useState(String(dados.localizacao?.longitude??''));
   const [erro,setErro]=useState('');
@@ -14,6 +14,15 @@ export function SimulacaoSolar({dados,onChange}:{dados:LevantamentoTelhado;onCha
   const caminho=loc?Array.from({length:97},(_,i)=>{const p=posicaoSolar(s.data,i/4,loc.latitude,loc.longitude,s.fuso);return `${i/96*360},${100-Math.max(0,p.elevacao)/90*90}`;}).join(' '):'';
   const hora=`${String(Math.floor(s.hora)).padStart(2,'0')}:${String(Math.round((s.hora%1)*60)).padStart(2,'0')}`;
   const campo='border rounded px-2 py-1.5 bg-white w-full';
+  if(compact)return <section className="rounded-xl border border-amber-200 bg-white/95 p-3 space-y-2" aria-label="Simulação da luz solar">
+    <h3 className="font-bold text-xs text-slate-900">Luz solar sobre a planta 2D</h3>
+    {!loc&&<div className="grid grid-cols-2 gap-2 text-xs"><label>Latitude<input className={campo} value={lat} onChange={e=>setLat(e.target.value)}/></label><label>Longitude<input className={campo} value={lng} onChange={e=>setLng(e.target.value)}/></label><button type="button" className="col-span-2 rounded border p-1" onClick={()=>{const a=Number(lat.replace(',','.')),b=Number(lng.replace(',','.'));if(!lat.trim()||!lng.trim()||!Number.isFinite(a)||Math.abs(a)>85||!Number.isFinite(b)||Math.abs(b)>180){setErro('Informe coordenadas válidas.');return;}onChange({localizacao:{latitude:a,longitude:b}});setErro('');}}>Usar coordenadas</button></div>}
+    <div className="grid grid-cols-[1fr_90px] gap-2 text-xs"><label>Data<input className={campo} type="date" value={s.data} onChange={e=>{if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value))ajustar({data:e.target.value});}}/></label><label>Fuso<select className={campo} value={s.fuso} onChange={e=>ajustar({fuso:Number(e.target.value)})}>{[-5,-4,-3,-2].map(v=><option key={v} value={v}>UTC{v}</option>)}</select></label></div>
+    <label className="block text-xs">Horário: <strong>{hora}</strong><input aria-label="Horário da simulação" className="block w-full accent-amber-600" type="range" min={0} max={23.75} step={0.25} value={s.hora} onChange={e=>ajustar({hora:Number(e.target.value)})}/></label>
+    {sol&&<><p className="text-xs">Altura: {sol.elevacao.toFixed(1)}° · Azimute: {sol.azimute.toFixed(1)}°{sol.elevacao<=0?' · Noite':''}</p><label className="flex gap-2 text-xs"><input type="checkbox" checked={s.mostrarIncidencia} onChange={e=>ajustar({mostrarIncidencia:e.target.checked})}/>Incidência direta por água</label><label className="flex gap-2 text-xs"><input type="checkbox" checked={s.mostrarSombras} onChange={e=>ajustar({mostrarSombras:e.target.checked})}/>Sombras em águas planas</label></>}
+    {erro&&<p role="alert" className="text-xs text-red-700">{erro}</p>}
+    <p className="text-[10px] text-slate-500">Sombras aproximadas pelas alturas informadas. O modelo atual é 2D e não inclui relevo ou entorno 3D.</p>
+  </section>;
   return <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-3" aria-label="Simulação da luz solar">
     <h3 className="text-sm font-bold text-slate-900">Simulação da luz solar</h3>
     <div className="grid grid-cols-2 gap-2 text-xs"><label>Latitude<input className={campo} value={lat} onChange={e=>setLat(e.target.value)}/></label><label>Longitude<input className={campo} value={lng} onChange={e=>setLng(e.target.value)}/></label></div>

@@ -12,6 +12,7 @@ import { asyncHandler, tratarErros } from './errors.js';
 import { agendaRouter } from './routes/agenda.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { catalogoRouter } from './routes/catalogo.routes.js';
+import { placasRouter } from './routes/placas.routes.js';
 import { contratosRouter } from './routes/contratos.routes.js';
 import { documentosRouter } from './routes/documentos.routes.js';
 import { financeiroRouter } from './routes/financeiro.routes.js';
@@ -160,6 +161,7 @@ export function criarApp(): express.Express {
   app.use('/api/obras', obrasRouter);
   app.use('/api/financeiro', financeiroRouter);
   app.use('/api/catalogo', catalogoRouter);
+  app.use('/api/placas', placasRouter);
   app.use('/api/agenda', agendaRouter);
   app.use('/api/usuarios', usuariosRouter);
   app.use('/api/dashboard', dashboardRouter);

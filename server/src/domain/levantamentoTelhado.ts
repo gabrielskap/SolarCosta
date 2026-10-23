@@ -30,7 +30,7 @@ export interface LevantamentoTelhado {
   escalaConfirmada: boolean;
   aguas: AguaManual[];
   obstaculos: { id: string; pontos: PontoLocal[]; alturaM: number }[];
-  modulo: { modelo: string; produtoId?: string; larguraM: number; alturaM: number; potenciaWp: number; pesoKg?: number };
+  modulo: { modelo: string; placaId?: string; produtoId?: string; larguraM: number; alturaM: number; potenciaWp: number; pesoKg?: number };
   espacamentoM: number;
   recuoM: number;
   placas: PlacaManual[];
@@ -114,4 +114,18 @@ export function distribuir(l:LevantamentoTelhado,alvo=2000,paisagem=false):Placa
 }
 export function areaSuperficie(l:LevantamentoTelhado) {
   return l.aguas.reduce((s,a)=>s+areaPoligono(a.pontos)/Math.cos(a.inclinacao*Math.PI/180),0);
+}
+
+/** Inclusão por clique com as mesmas dimensões e limites do preenchimento. */
+export function inserirPlaca(l:LevantamentoTelhado,centro:PontoLocal,paisagem=false):PlacaManual | null {
+  if(!l.escalaConfirmada||l.placas.length>=2000)return null;
+  for(const agua of l.aguas) {
+    if(!dentro(centro,agua.pontos))continue;
+    const ang=(agua.azimute-l.norte)*Math.PI/180,co=Math.cos(ang),si=Math.sin(ang);
+    const w=(paisagem?l.modulo.alturaM:l.modulo.larguraM)/2;
+    const h=(paisagem?l.modulo.larguraM:l.modulo.alturaM)*Math.cos(agua.inclinacao*Math.PI/180)/2;
+    const pontos=[{x:-w,y:-h},{x:w,y:-h},{x:w,y:h},{x:-w,y:h}].map(p=>({x:centro.x+p.x*co-p.y*si,y:centro.y+p.x*si+p.y*co}));
+    if(cabe(pontos,agua.pontos,l.obstaculos.map(o=>o.pontos),l.recuoM)&&!l.placas.some(p=>sobrepoe(p.pontos,pontos)))return {id:crypto.randomUUID(),aguaId:agua.id,pontos};
+  }
+  return null;
 }

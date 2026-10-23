@@ -140,6 +140,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           ))}
+          <details open className="space-y-1">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-blue-100">Parâmetros</summary>
+            <NavLink to="/sistema/parametros/placas" onClick={() => setIsOpenMobile(false)} className={({isActive}) => `block ml-4 px-3 py-2.5 rounded-lg text-sm border ${isActive ? 'bg-[#002e5c] border-[#FFD100] text-white' : 'border-transparent text-blue-100 hover:bg-blue-900/40'}`}>Placas</NavLink>
+          </details>
         </div>
 
         {/* Footer User Profile */}

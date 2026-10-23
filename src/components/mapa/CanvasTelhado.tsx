@@ -3,8 +3,8 @@ import {aproximarCamera,limitarCamera,type CameraTelhado} from '../../utils/came
 import type {PontoLocal} from '../../utils/levantamentoTelhado';
 
 /** A câmera muda somente o viewBox. A geometria continua sempre em metros. */
-export function CanvasTelhado({largura,altura,resetKey,children,onPonto,rodape}:{
-  largura:number;altura:number;resetKey?:string;children:React.ReactNode;onPonto?:(p:PontoLocal)=>void;rodape?:React.ReactNode;
+export function CanvasTelhado({largura,altura,resetKey,children,onPonto,rodape,expandido=false,interacao}:{
+  largura:number;altura:number;resetKey?:string;children:React.ReactNode;onPonto?:(p:PontoLocal)=>void;rodape?:React.ReactNode;expandido?:boolean;interacao?:string;
 }) {
   const inicial=():CameraTelhado=>({zoom:1,centro:{x:largura/2,y:altura/2}});
   const [camera,setCamera]=useState<CameraTelhado>(inicial);
@@ -14,6 +14,7 @@ export function CanvasTelhado({largura,altura,resetKey,children,onPonto,rodape}:
   const arrasto=useRef<{id:number;inicio:DOMPoint;camera:CameraTelhado;inversa:DOMMatrix;clientX:number;clientY:number}|null>(null);
   const ignorarClique=useRef(false);
   useEffect(()=>{setCamera(inicial());arrasto.current=null;setArrastando(false);},[largura,altura,resetKey]);
+  useEffect(()=>{setNavegar(false);ignorarClique.current=false;},[interacao]);
   useEffect(()=>{
     const svg=ref.current;if(!svg||!onPonto)return;
     const roda=(e:WheelEvent)=>{
@@ -33,7 +34,7 @@ export function CanvasTelhado({largura,altura,resetKey,children,onPonto,rodape}:
     arrasto.current=null;setArrastando(false);
     if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);
   };
-  return <div className="rounded-lg border border-slate-300 overflow-hidden bg-slate-100">
+  return <div className={`rounded-lg border border-slate-300 overflow-hidden bg-slate-100 ${expandido?'h-full min-h-0 flex flex-col':''}`}>
     {onPonto&&<div className="flex flex-wrap items-center gap-2 bg-white p-2 text-xs border-b border-slate-200" aria-label="Controles de zoom do mapa">
       <button type="button" className="rounded border px-3 py-1.5 font-bold disabled:opacity-40" aria-label="Aproximar mapa" disabled={c.zoom>=12} onClick={()=>aproximar(1.5)}>+</button>
       <button type="button" className="rounded border px-3 py-1.5 font-bold disabled:opacity-40" aria-label="Afastar mapa" disabled={c.zoom<=1} onClick={()=>aproximar(1/1.5)}>−</button>
@@ -42,7 +43,7 @@ export function CanvasTelhado({largura,altura,resetKey,children,onPonto,rodape}:
       <button type="button" aria-pressed={navegar} className={`rounded border px-3 py-1.5 ${navegar?'bg-[#004276] text-white':'bg-white text-slate-700'}`} onClick={()=>setNavegar(v=>!v)}>Mover mapa</button>
       <span className="text-slate-500">Roda: zoom · Shift + arrastar: mover</span>
     </div>}
-    <svg ref={ref} viewBox={`${c.centro.x-w/2} ${c.centro.y-h/2} ${w} ${h}`} role="img" aria-label="Planta do telhado em metros" className="w-full max-h-[560px]" style={{aspectRatio:`${largura}/${altura}`,touchAction:onPonto?'none':undefined,maxHeight:onPonto?'48vh':undefined,cursor:onPonto?(arrastando?'grabbing':navegar?'grab':'crosshair'):undefined}}
+    <svg ref={ref} viewBox={`${c.centro.x-w/2} ${c.centro.y-h/2} ${w} ${h}`} role="img" aria-label="Planta do telhado em metros" className={expandido?'w-full flex-1 min-h-0':'w-full max-h-[560px]'} style={{aspectRatio:expandido?undefined:`${largura}/${altura}`,touchAction:onPonto?'none':undefined,maxHeight:expandido?undefined:onPonto?'48vh':undefined,cursor:onPonto?(arrastando?'grabbing':navegar?'grab':'crosshair'):undefined}}
       onPointerDown={e=>{
         if(!onPonto||!(navegar||e.button===1||e.shiftKey)||e.button===2)return;
         const matriz=e.currentTarget.getScreenCTM();if(!matriz)return;

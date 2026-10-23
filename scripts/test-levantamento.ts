@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { areaPoligono, areaSuperficie, cabe, distribuir, escalaSatelite, poligonoValido, sobrepoe, type LevantamentoTelhado } from '../src/utils/levantamentoTelhado.ts';
+import { areaPoligono, areaSuperficie, cabe, distribuir, escalaSatelite, inserirPlaca, poligonoValido, sobrepoe, type LevantamentoTelhado } from '../src/utils/levantamentoTelhado.ts';
 import {posicaoSolar,incidenciaDireta} from '../src/utils/posicaoSolar.ts';
 import {aproximarCamera,limitarCamera} from '../src/utils/cameraTelhado.ts';
 import { dimensionar } from '../src/utils/solar.ts';
@@ -16,6 +16,11 @@ const u=[{x:0,y:0},{x:10,y:0},{x:10,y:10},{x:7,y:10},{x:7,y:3},{x:3,y:3},{x:3,y:
 assert.equal(cabe(ret(1,1,8,4),u,[],0),false,'arestas não atravessam concavidades');
 assert.equal(distribuir({...l,escalaConfirmada:false},20).length,0);
 const placas=distribuir(l,20);
+const inserida=inserirPlaca(l,{x:5,y:5});
+assert(inserida,'inclusão por clique dentro da água');
+assert.equal(inserirPlaca(l,{x:0.1,y:0.1}),null,'placa inteira respeita o recuo');
+assert.equal(inserirPlaca({...l,placas:[inserida!]},{x:5,y:5}),null,'não insere placa sobre outra');
+assert.equal(inserirPlaca({...l,escalaConfirmada:false},{x:5,y:5}),null,'imagem sem escala precisa de calibração');
 assert.equal(placas.length,20);
 assert(placas.every(p=>cabe(p.pontos,l.aguas[0].pontos,[],l.recuoM)));
 assert(!placas.some((a,i)=>placas.some((b,j)=>j>i&&sobrepoe(a.pontos,b.pontos))));

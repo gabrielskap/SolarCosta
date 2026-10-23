@@ -17,7 +17,7 @@ export const levantamentoTelhadoSchema=z.object({
   escalaConfirmada:z.literal(true),
   aguas:z.array(z.object({id:z.string().uuid(),nome:z.string().max(100),pontos:poligono,inclinacao:z.number().min(0).max(75),azimute:z.number().min(0).lt(360)})).min(1).max(100),
   obstaculos:z.array(z.object({id:z.string().uuid(),pontos:poligono,alturaM:z.number().min(0).max(100)})).max(200),
-  modulo:z.object({modelo:z.string().min(1).max(200),produtoId:z.string().uuid().optional(),larguraM:z.number().min(0.2).max(10),alturaM:z.number().min(0.2).max(10),potenciaWp:z.number().int().min(1).max(3000),pesoKg:z.number().min(0).max(200).optional()}),
+  modulo:z.object({modelo:z.string().min(1).max(200),placaId:z.string().uuid().optional(),produtoId:z.string().uuid().optional(),larguraM:z.number().min(0.2).max(10),alturaM:z.number().min(0.2).max(10),potenciaWp:z.number().int().min(1).max(3000),pesoKg:z.number().min(0).max(200).optional()}),
   espacamentoM:z.number().min(0).max(5),recuoM:z.number().min(0).max(10),
   placas:z.array(z.object({id:z.string().uuid(),aguaId:z.string().uuid(),pontos:z.array(ponto).length(4),stringId:z.string().uuid().optional()})).min(1).max(2000),
 }).superRefine((d,ctx)=>{

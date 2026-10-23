@@ -1,12 +1,13 @@
+import { listarPlacas, type PlacaSolar } from '../../services/placas';
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { areaPoligono, areaSuperficie, distribuir, escalaSatelite, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
+import { areaPoligono, areaSuperficie, distribuir, escalaSatelite, inserirPlaca, poligonoValido, type LevantamentoTelhado, type PontoLocal } from '../../utils/levantamentoTelhado';
 import { geocodificar, imagemTelhado } from '../../services/solar';
 import { incidenciaDireta, posicaoSolar } from '../../utils/posicaoSolar';
 import { SimulacaoSolar } from './SimulacaoSolar';
 import { CanvasTelhado } from './CanvasTelhado';
 
-export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], imagemUrl, tokenPublico }: {
-  dados: LevantamentoTelhado; onPonto?: (p:PontoLocal)=>void; onRemover?:(id:string)=>void; rascunho?:PontoLocal[];imagemUrl?:string;tokenPublico?:string;
+export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], imagemUrl, tokenPublico, expandido=false, onFecharContorno, interacao }: {
+  dados: LevantamentoTelhado; onPonto?: (p:PontoLocal)=>void; onRemover?:(id:string)=>void; rascunho?:PontoLocal[];imagemUrl?:string;tokenPublico?:string;expandido?:boolean;onFecharContorno?:()=>void;interacao?:string;
 }) {
   const [fundo,setFundo]=useState<string>();
   const [falha,setFalha]=useState(false);
@@ -33,7 +34,7 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
     return [topo,...o.pontos.map((p,i)=>[p,o.pontos[(i+1)%o.pontos.length],topo[(i+1)%topo.length],topo[i]])];
   }):[];
   const pontos=(p:PontoLocal[])=>p.map(v=>`${v.x},${v.y}`).join(' ');
-  return <CanvasTelhado largura={dados.larguraM} altura={dados.alturaM} resetKey={sat?`${sat.latitude},${sat.longitude},${sat.zoom}`:dados.imagem} onPonto={onPonto?p=>{if(p.y<=dados.alturaM*(sat?0.94:1))onPonto(p);}:undefined} rodape={sat&&imagem?<svg viewBox={`0 ${dados.alturaM*0.94} ${dados.larguraM} ${dados.alturaM*0.06}`} className="block h-10 w-full bg-white" role="img" aria-label="Créditos da imagem de satélite"><image href={imagem} width={dados.larguraM} height={dados.alturaM} preserveAspectRatio="none"/></svg>:undefined}>
+  return <CanvasTelhado interacao={interacao} expandido={expandido} largura={dados.larguraM} altura={dados.alturaM} resetKey={sat?`${sat.latitude},${sat.longitude},${sat.zoom}`:dados.imagem} onPonto={onPonto?p=>{if(p.y<=dados.alturaM*(sat?0.94:1))onPonto(p);}:undefined} rodape={sat&&imagem?<svg viewBox={`0 ${dados.alturaM*0.94} ${dados.larguraM} ${dados.alturaM*0.06}`} className="block h-10 w-full bg-white" role="img" aria-label="Créditos da imagem de satélite"><image href={imagem} width={dados.larguraM} height={dados.alturaM} preserveAspectRatio="none"/></svg>:undefined}>
     <defs><pattern id={`grade-${idFigura}`} width="1" height="1" patternUnits="userSpaceOnUse"><path d="M 1 0 L 0 0 0 1" fill="none" stroke="#cbd5e1" strokeWidth="0.02"/></pattern></defs>
     {imagem&&<image href={imagem} width={dados.larguraM} height={dados.alturaM} preserveAspectRatio="none" onError={()=>setFalha(true)}/>}
     <rect width={dados.larguraM} height={dados.alturaM} fill={`url(#grade-${idFigura})`} pointerEvents="none"/>
@@ -43,6 +44,7 @@ export function FiguraLevantamento({ dados, onPonto, onRemover, rascunho=[], ima
     {sombras.length>0&&dados.aguas.filter(a=>a.inclinacao===0).map(a=><g key={`sombra-${a.id}`} pointerEvents="none"><defs><clipPath id={`${idFigura}-${a.id}`}><polygon points={pontos(a.pontos)}/></clipPath></defs><g clipPath={`url(#${idFigura}-${a.id})`} fill="#0f172a" fillOpacity="0.35">{sombras.map((p,i)=><polygon key={i} points={pontos(p)}/>)}</g></g>)}
     {rascunho.length>0&&<polyline points={pontos(rascunho)} fill="#fbbf2433" stroke="#d97706" strokeWidth={dados.larguraM/500}/>}
     {rascunho.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={dados.larguraM/180} fill="#d97706"/>)}
+    {rascunho.length>=3&&onFecharContorno&&<circle cx={rascunho[0].x} cy={rascunho[0].y} r={dados.larguraM/120} fill="#16a34a" role="button" aria-label="Fechar contorno no primeiro ponto" tabIndex={0} style={{cursor:'pointer'}} onClick={e=>{e.stopPropagation();onFecharContorno();}} onKeyDown={e=>{if(e.key==='Enter'){e.stopPropagation();onFecharContorno();}}}/>}
     {falha&&<text x="1" y="2" fontSize="0.7" fill="#b91c1c">Imagem indisponível; geometria preservada</text>}
   </CanvasTelhado>;
 }
@@ -60,6 +62,10 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
   valor?:LevantamentoTelhado;potenciaWp:number;hsp:number;perdasPct:number;alvo:number;onAplicar:(l:LevantamentoTelhado)=>void;onCancelar:()=>void;enderecoBusca?:string;coordenadaInicial?:{latitude:number;longitude:number};googleAtivo?:boolean;
 }) {
   const [d,setD]=useState<LevantamentoTelhado>(()=>structuredClone(valor??novoLevantamento(potenciaWp)));
+  const [catalogo,setCatalogo]=useState<PlacaSolar[]>([]);
+  const [erroCatalogo,setErroCatalogo]=useState('');
+  const [carregandoCatalogo,setCarregandoCatalogo]=useState(true);
+  useEffect(()=>{let ativo=true;listarPlacas().then(p=>{if(ativo)setCatalogo(p);}).catch(e=>{if(ativo)setErroCatalogo(e instanceof Error?e.message:'Falha ao carregar placas.');}).finally(()=>{if(ativo)setCarregandoCatalogo(false);});return()=>{ativo=false;};},[]);
   const [consulta,setConsulta]=useState(valor?.localizacao?.endereco||enderecoBusca);
   const [latBusca,setLatBusca]=useState(String(valor?.localizacao?.latitude??coordenadaInicial?.latitude??''));
   const [lngBusca,setLngBusca]=useState(String(valor?.localizacao?.longitude??coordenadaInicial?.longitude??''));
@@ -69,7 +75,12 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
   const imagemAtual=useRef<string | undefined>(undefined);
   const rodada=useRef(0);
   useEffect(()=>()=>{rodada.current++;if(imagemAtual.current)URL.revokeObjectURL(imagemAtual.current);},[]);
-  const [ferramenta,setFerramenta]=useState<'agua'|'obstaculo'|'remover'|'calibrar'>('agua');
+  const [ferramenta,setFerramenta]=useState<'agua'|'obstaculo'|'placa'|'remover'|'calibrar'>('agua');
+  const [revisaoFerramenta,setRevisaoFerramenta]=useState(0);
+  const [aba,setAba]=useState<'telhado'|'modulos'|'imagem'|'dados'>('telhado');
+  const [aguaSelecionada,setAguaSelecionada]=useState('');
+  const [obstaculoSelecionado,setObstaculoSelecionado]=useState('');
+  const [solAberto,setSolAberto]=useState(false);
   const [rascunho,setRascunho]=useState<PontoLocal[]>([]);
   const [erro,setErro]=useState('');
   const [paisagem,setPaisagem]=useState(false);
@@ -105,15 +116,17 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
       const escala=escalaSatelite(latitude,zoomBusca);
       setHistorico([]);setRascunho([]);setConfirmarTroca(false);
       setLatBusca(String(latitude));setLngBusca(String(longitude));
-      setD({...d,...escala,norte:0,imagem:undefined,imagemNome:undefined,dataImagem:undefined,aguas:[],obstaculos:[],placas:[],escalaConfirmada:false,
+      setD({...d,...escala,norte:0,imagem:undefined,imagemNome:undefined,dataImagem:undefined,aguas:[],obstaculos:[],placas:[],escalaConfirmada:true,
         localizacao:{latitude,longitude,endereco},satelite:{latitude,longitude,zoom:zoomBusca,larguraPx:640,alturaPx:640}});
     }catch(e){if(turno===rodada.current)setErro(e instanceof Error?e.message:'Falha ao buscar a imagem.');}
     finally{if(turno===rodada.current)setCarregando(false);}
   };
   const fecharPoligono=()=>{
     if(!poligonoValido(rascunho)){setErro('Desenhe pelo menos três pontos, sem cruzar as bordas.');return;}
-    if(ferramenta==='agua') atualizar({aguas:[...d.aguas,{id:crypto.randomUUID(),nome:`Água ${d.aguas.length+1}`,pontos:rascunho,inclinacao:0,azimute:0}]});
-    if(ferramenta==='obstaculo') atualizar({obstaculos:[...d.obstaculos,{id:crypto.randomUUID(),pontos:rascunho,alturaM:1}]});
+    const id=crypto.randomUUID();
+    if(ferramenta==='agua'){atualizar({aguas:[...d.aguas,{id,nome:`Água ${d.aguas.length+1}`,pontos:rascunho,inclinacao:0,azimute:0}]});setAguaSelecionada(id);}
+    if(ferramenta==='obstaculo'){atualizar({obstaculos:[...d.obstaculos,{id,pontos:rascunho,alturaM:1}]});setObstaculoSelecionado(id);}
+    setAba('telhado');
     setRascunho([]);
   };
   const importar=async(file?:File)=>{
@@ -143,57 +156,108 @@ export function LevantamentoManual({valor,potenciaWp,hsp,perdasPct,alvo,onAplica
     atualizar({larguraM:d.larguraM*f,alturaM:d.alturaM*f,aguas:d.aguas.map(a=>({...a,pontos:a.pontos.map(escalar)})),obstaculos:d.obstaculos.map(o=>({...o,pontos:o.pontos.map(escalar)})),escalaConfirmada:true});setRascunho([]);
   };
   const gerar=()=>{
+    if(!d.modulo.produtoId&&!valor){setErro('Selecione uma placa cadastrada na aba Placas.');setAba('modulos');return;}
     if(!d.escalaConfirmada||!d.aguas.length){setErro('Confirme a escala e desenhe uma água antes de distribuir.');return;}
     const placas=distribuir(d,qtd,paisagem);atualizar({placas},false);
     if(placas.length<qtd)setErro(`Foram posicionados ${placas.length} dos ${qtd} módulos solicitados, respeitando contornos e recuos.`);
   };
   const potencia=d.placas.length*d.modulo.potenciaWp/1000;
   const mensal=potencia*hsp*30*(1-perdasPct/100);
-  return <div className="fixed inset-0 z-[70] bg-slate-950/70 flex items-center justify-center p-2 md:p-6" role="dialog" aria-modal="true" aria-label="Levantamento do telhado" onKeyDown={e=>{if(e.key==='Escape')onCancelar();}}>
-    <div className="bg-white rounded-2xl w-full max-w-7xl max-h-full overflow-auto p-4 md:p-6 space-y-4">
-      <div className="flex justify-between gap-4"><div><h2 className="font-bold text-lg text-slate-900">Levantamento do telhado</h2><p className="text-xs text-slate-600">Use imagem aérea/ortofoto autorizada, desenhe sobre a grade ou escolha a integração Google.</p></div><button type="button" onClick={onCancelar} className="font-bold">Cancelar</button></div>
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
-        <div className="flex flex-wrap items-end gap-2"><label className="flex-1 min-w-48 text-xs">Endereço do imóvel<input className={campo} value={consulta} maxLength={300} onChange={e=>{setConsulta(e.target.value);setConfirmarTroca(false);}} placeholder="Rua, número, bairro, cidade e UF"/></label><label className="text-xs">Aproximação<select className={campo} value={zoomBusca} onChange={e=>{setZoomBusca(Number(e.target.value));setConfirmarTroca(false);}}><option value={18}>Ampla</option><option value={19}>Intermediária</option><option value={20}>Detalhada</option></select></label><button type="button" disabled={carregando} className="rounded-lg bg-[#004276] px-4 py-2 text-sm font-bold text-white disabled:opacity-50 hover:bg-[#003159]" onClick={()=>void buscarSatelite()}>{carregando?'Carregando imagem…':'Buscar Via Satélite'}</button></div>
-        <details><summary className="cursor-pointer text-xs text-slate-600">Buscar por coordenadas / ajustar o ponto</summary><div className="flex flex-wrap gap-2 items-end pt-2"><label className="text-xs">Latitude<input className={campo} value={latBusca} onChange={e=>setLatBusca(e.target.value)}/></label><label className="text-xs">Longitude<input className={campo} value={lngBusca} onChange={e=>setLngBusca(e.target.value)}/></label><button type="button" disabled={carregando} className="bg-sky-100 rounded-lg p-2 text-sm" onClick={()=>void buscarSatelite(true)}>Carregar coordenadas</button></div></details>
-        <p className="text-xs text-slate-500">A imagem entra diretamente no desenho. Consultas Google podem gerar consumo. A escala é aproximada ao nível do solo; valide uma medida conhecida.</p>
-        {confirmarTroca&&<button type="button" className="text-xs underline text-slate-600" onClick={()=>{setConfirmarTroca(false);setErro('');}}>Manter a imagem e o desenho atuais</button>}
+  const agua=d.aguas.find(a=>a.id===aguaSelecionada)??d.aguas[0];
+  const obstaculo=d.obstaculos.find(o=>o.id===obstaculoSelecionado)??d.obstaculos[0];
+  const areaRascunho=rascunho.length>=3?areaPoligono(rascunho):0;
+  const editarAgua=(patch:Partial<typeof agua>)=>{if(agua)atualizar({aguas:d.aguas.map(a=>a.id===agua.id?{...a,...patch}:a)});};
+  const pontoNoMapa=(p:PontoLocal)=>{
+    setConfirmarTroca(false);
+    if(ferramenta==='placa'){
+      if(!d.escalaConfirmada){setErro('Informe uma escala em metros na aba Dados ou busque a imagem por satélite.');setAba('dados');return;}
+      const placa=inserirPlaca(d,p,paisagem);
+      if(!placa){setErro('A placa precisa ficar inteira dentro de uma água, sem sobrepor outras placas, obstáculos ou recuos.');return;}
+      atualizar({placas:[...d.placas,placa]},false);return;
+    }
+    if(ferramenta==='agua'||ferramenta==='obstaculo')setRascunho(r=>[...r,p]);
+    if(ferramenta==='calibrar')setRascunho(r=>r.length>=2?[p]:[...r,p]);
+  };
+  const instrucao=ferramenta==='placa'?'Clique dentro de uma água para inserir um módulo.':ferramenta==='calibrar'?'Marque dois pontos de uma distância conhecida.':ferramenta==='remover'?'Clique na placa que deseja remover.':'Marque os vértices; feche pelo primeiro ponto verde ou pelo botão Concluir.';
+  return <div className="fixed inset-0 z-[70] bg-slate-950/70 md:p-2" role="dialog" aria-modal="true" aria-label="Levantamento do telhado" onKeyDown={e=>{if(e.key==='Escape')onCancelar();}}>
+    <div className="bg-white md:rounded-xl w-full h-[100dvh] md:h-[calc(100dvh-16px)] flex flex-col overflow-hidden">
+      <header className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b">
+        <div><h2 className="font-bold text-lg text-slate-900">Levantamento do telhado</h2><p className="text-xs text-slate-500">Medição, módulos e luz solar sobre a mesma imagem.</p></div>
+        <button type="button" onClick={onCancelar} className="rounded-lg border px-3 py-2 text-sm">Fechar</button>
+      </header>
+      <div className="shrink-0 flex flex-wrap items-end gap-2 px-3 py-2 border-b bg-slate-50">
+        <label className="flex-1 min-w-40 text-xs">Endereço do imóvel<input className={campo} value={consulta} maxLength={300} onChange={e=>{setConsulta(e.target.value);setConfirmarTroca(false);}} placeholder="Rua, número, bairro, cidade e UF"/></label>
+        <label className="text-xs">Enquadramento<select className={campo} value={zoomBusca} onChange={e=>{setZoomBusca(Number(e.target.value));setConfirmarTroca(false);}}><option value={18}>Amplo</option><option value={19}>Intermediário</option><option value={20}>Detalhado</option></select></label>
+        <button type="button" disabled={carregando} className="rounded-lg bg-[#004276] px-4 py-2 text-sm font-bold text-white disabled:opacity-50 hover:bg-[#003159]" onClick={()=>void buscarSatelite()}>{carregando?'Carregando…':'Buscar Via Satélite'}</button>
       </div>
-      <div className="grid lg:grid-cols-[1fr_320px] gap-5 lg:h-[calc(100dvh-320px)] lg:min-h-[360px]">
-        <div className="space-y-3 lg:overflow-y-auto lg:pr-1">
-          <div className="flex flex-wrap gap-2">{(['agua','obstaculo','remover','calibrar'] as const).map(t=><button type="button" key={t} onClick={()=>{setFerramenta(t);setRascunho([]);}} className={`px-3 py-2 rounded-lg text-xs font-bold ${ferramenta===t?'bg-sky-800 text-white':'bg-slate-100 text-slate-700'}`}>{({agua:'Desenhar água',obstaculo:'Obstáculo',remover:'Remover módulo',calibrar:'Calibrar escala'})[t]}</button>)}</div>
-          <FiguraLevantamento dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={p=>{setConfirmarTroca(false);if(ferramenta==='agua'||ferramenta==='obstaculo')setRascunho(r=>[...r,p]);if(ferramenta==='calibrar')setRascunho(r=>r.length>=2?[p]:[...r,p]);}} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
-          <p className="text-xs text-slate-600">{ferramenta==='calibrar'?'Marque dois pontos de uma distância conhecida.':ferramenta==='remover'?'Clique no módulo que deseja retirar.':'Clique nos vértices do contorno e conclua o polígono.'} Grade: 1 m. Norte informado: {d.norte}° em relação ao topo da imagem.</p>
-          <div className="flex flex-wrap gap-2 items-end">
-            {ferramenta==='calibrar'?<><Numero label="Distância conhecida (m)" value={distancia} onChange={setDistancia} min={0.1}/><button type="button" className="bg-sky-100 p-2 rounded" disabled={rascunho.length!==2} onClick={calibrar}>Aplicar escala</button></>:<button type="button" className="bg-sky-100 p-2 rounded text-sm" onClick={fecharPoligono} disabled={rascunho.length<3}>Concluir contorno</button>}
-            <button type="button" className="p-2 text-sm" onClick={()=>setRascunho(r=>r.slice(0,-1))}>Retirar último ponto</button>
-            <button type="button" className="p-2 text-sm" disabled={!historico.length} onClick={()=>{setD(historico[historico.length-1]);setHistorico(h=>h.slice(0,-1));setRascunho([]);}}>Desfazer alteração</button>
+      <div className="flex-1 min-h-0 grid grid-rows-[minmax(180px,1fr)_minmax(0,30dvh)] md:grid-rows-1 md:grid-cols-[minmax(0,1fr)_300px]">
+        <main className="min-h-0 min-w-0 flex flex-col gap-2 p-2 bg-slate-50">
+          <div className="shrink-0 flex flex-wrap gap-1.5 items-center">
+            {(['agua','obstaculo','placa','remover','calibrar'] as const).map(t=><button type="button" key={t} aria-pressed={ferramenta===t} onClick={()=>{setFerramenta(t);setRevisaoFerramenta(v=>v+1);setRascunho([]);if(t==='placa')setAba('modulos');}} className={`px-2 py-1.5 rounded-lg text-xs font-bold ${ferramenta===t?'bg-sky-800 text-white':'bg-white border text-slate-700'}`}>{({agua:'Desenhar água',obstaculo:'Obstáculo',placa:'Inserir placa',remover:'Remover placa',calibrar:'Calibrar'})[t]}</button>)}
+            {(ferramenta==='agua'||ferramenta==='obstaculo')&&<button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" onClick={fecharPoligono} disabled={rascunho.length<3}>Concluir contorno</button>}
+            <button type="button" className="border rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-40" disabled={!historico.length} onClick={()=>{setD(historico[historico.length-1]);setHistorico(h=>h.slice(0,-1));setRascunho([]);}}>Desfazer</button>
+            <button type="button" aria-pressed={solAberto} className={`border rounded-lg px-2 py-1.5 text-xs font-bold ${solAberto?'bg-amber-200':'bg-white'}`} onClick={()=>setSolAberto(v=>!v)}>Luz solar</button>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm bg-slate-50 rounded-lg p-3"><span>{d.placas.length} módulos</span><span>{potencia.toFixed(2)} kWp</span><span>{Math.round(mensal)} kWh/mês</span><span>{Math.round(mensal*12)} kWh/ano</span></div>
-          <p className="text-xs text-slate-500">Estimativa por HSP {hsp} e perdas {perdasPct}%. Orientação e sombras não estão incorporadas nesta estimativa. Área de superfície: {areaSuperficie(d).toFixed(2)} m². Peso dos módulos: {d.modulo.pesoKg?`${(d.modulo.pesoKg*d.placas.length).toFixed(1)} kg`:'não informado'}.</p>
-          {erro&&<p role="alert" className="text-sm text-amber-900 bg-amber-50 p-3 rounded">{erro}</p>}
-        </div>
-        <div className="space-y-4 text-sm lg:overflow-y-auto lg:pr-2">
-          <label className="block text-xs">Imagem própria (até 10 MB)<input type="file" accept="image/jpeg,image/png,image/webp" className="block w-full mt-1" disabled={carregando} onChange={e=>{void importar(e.target.files?.[0]);e.target.value='';}}/></label>
-          {d.imagemNome&&<p className="text-xs text-slate-500">{d.imagemNome} · prévia comprimida salva com a proposta. Importar outra imagem reinicia os contornos.</p>}
-          <div className="grid grid-cols-2 gap-2"><Numero label="Largura da planta (m)" value={d.larguraM} min={1} onChange={v=>{atualizar({larguraM:v,aguas:[],obstaculos:[],escalaConfirmada:false});setRascunho([]);}}/><Numero label="Altura da planta (m)" value={d.alturaM} min={1} onChange={v=>{atualizar({alturaM:v,aguas:[],obstaculos:[],escalaConfirmada:false});setRascunho([]);}}/></div>
-          <label className="flex gap-2 text-xs"><input type="checkbox" checked={d.escalaConfirmada} onChange={e=>atualizar({escalaConfirmada:e.target.checked})}/>Confirmo as dimensões/escala com medida conhecida</label>
-          <Numero label="Norte: graus horários desde o topo" value={d.norte} max={359.99} onChange={v=>atualizar({norte:v})}/>
-          <label className="block text-xs">Tipologia<select className={campo} value={d.tipologia} onChange={e=>atualizar({tipologia:e.target.value},false)}>{['Não informado','Plano','Meia água','Duas águas','Quatro águas','Outro'].map(t=><option key={t}>{t}</option>)}</select></label>
-          <label className="block text-xs">Ano da construção (informado)<input className={campo} type="number" min="1500" max={new Date().getFullYear()} value={d.anoConstrucao??''} onChange={e=>atualizar({anoConstrucao:e.target.value?Number(e.target.value):undefined},false)}/></label>
-          <label className="block text-xs">Data de captura conhecida<input className={campo} type="date" value={d.dataImagem??''} onChange={e=>atualizar({dataImagem:e.target.value||undefined},false)}/></label>
-          <label className="block text-xs">Modelo do módulo<input className={campo} maxLength={200} value={d.modulo.modelo} onChange={e=>atualizar({modulo:{...d.modulo,modelo:e.target.value}},false)}/></label>
-          <p className="text-xs text-amber-800">Confira dimensões e potência no datasheet antes de aplicar.</p>
-          <div className="grid grid-cols-2 gap-2"><Numero label="Largura módulo (m)" min={0.2} max={10} value={d.modulo.larguraM} onChange={v=>atualizar({modulo:{...d.modulo,larguraM:v}})}/><Numero label="Comprimento (m)" min={0.2} max={10} value={d.modulo.alturaM} onChange={v=>atualizar({modulo:{...d.modulo,alturaM:v}})}/><Numero label="Potência (Wp)" min={1} max={3000} step={1} value={d.modulo.potenciaWp} onChange={v=>atualizar({modulo:{...d.modulo,potenciaWp:v}},false)}/><Numero label="Peso módulo (kg)" min={0} max={200} value={d.modulo.pesoKg??0} onChange={v=>atualizar({modulo:{...d.modulo,pesoKg:v}},false)}/><Numero label="Recuo / obstáculos (m)" max={10} value={d.recuoM} onChange={v=>atualizar({recuoM:v})}/><Numero label="Entre módulos (m)" max={5} value={d.espacamentoM} onChange={v=>atualizar({espacamentoM:v})}/></div>
-          {d.aguas.map((a,i)=><div key={a.id} className="border rounded-lg p-2 space-y-2"><div className="flex justify-between"><strong>{a.nome} · {areaPoligono(a.pontos).toFixed(1)} m² em planta</strong><button type="button" aria-label={`Excluir ${a.nome}`} onClick={()=>atualizar({aguas:d.aguas.filter(x=>x.id!==a.id)})}>Excluir</button></div><div className="grid grid-cols-2 gap-2"><Numero label="Inclinação (°)" max={75} value={a.inclinacao} onChange={v=>atualizar({aguas:d.aguas.map((x,j)=>j===i?{...x,inclinacao:v}:x)})}/><Numero label="Azimute (0° norte)" max={359.99} value={a.azimute} onChange={v=>atualizar({aguas:d.aguas.map((x,j)=>j===i?{...x,azimute:v}:x)})}/></div></div>)}
-          {d.obstaculos.map((o,i)=><div key={o.id} className="border rounded-lg p-2 space-y-2"><div className="flex justify-between text-xs"><span>Obstáculo {i+1} · excluído do layout</span><button type="button" onClick={()=>atualizar({obstaculos:d.obstaculos.filter(x=>x.id!==o.id)})}>Excluir</button></div><Numero label="Altura acima do plano do telhado (m)" max={100} value={o.alturaM} onChange={v=>atualizar({obstaculos:d.obstaculos.map(x=>x.id===o.id?{...x,alturaM:v}:x)},false)}/></div>)}
-          <SimulacaoSolar dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/>
-          <Numero label="Quantidade desejada" min={1} max={2000} step={1} value={qtd} onChange={v=>setQtd(Math.floor(v))}/>
-          <label className="flex gap-2 text-xs"><input type="checkbox" checked={paisagem} onChange={e=>setPaisagem(e.target.checked)}/>Módulos em paisagem</label>
-          <button type="button" className="w-full bg-slate-800 text-white rounded-lg p-3 font-bold" onClick={gerar}>Distribuir módulos</button>
-          <p className="text-xs text-slate-500">Alterações de geometria removem os módulos para nova distribuição. Fotos oblíquas precisam de retificação. O desenho não verifica capacidade estrutural.</p>
-        </div>
+          <div className="flex-1 min-h-0 relative">
+            <FiguraLevantamento expandido interacao={`${ferramenta}-${revisaoFerramenta}`} dados={d} imagemUrl={d.satelite?imagemSatelite:undefined} rascunho={rascunho} onPonto={pontoNoMapa} onFecharContorno={ferramenta==='agua'||ferramenta==='obstaculo'?fecharPoligono:undefined} onRemover={ferramenta==='remover'?id=>atualizar({placas:d.placas.filter(p=>p.id!==id)},false):undefined}/>
+            {solAberto&&<div className="absolute bottom-2 right-2 z-10 w-[min(300px,calc(100%-16px))] max-h-[calc(100%-56px)] overflow-auto shadow-xl rounded-xl"><SimulacaoSolar compact dados={d} onChange={patch=>{setD(atual=>({...atual,...patch}));setConfirmarTroca(false);}}/></div>}
+          </div>
+          <div className="shrink-0 flex flex-wrap gap-2 items-center text-xs text-slate-600">
+            <p className="flex-1 min-w-40">{instrucao}</p>
+            {rascunho.length>0&&<><span>{rascunho.length} pontos · {areaRascunho.toFixed(2)} m² em desenho</span><button type="button" className="underline" onClick={()=>setRascunho(r=>r.slice(0,-1))}>Retirar ponto</button></>}
+            {ferramenta==='calibrar'&&<><label>Distância (m)<input type="number" min={0.1} step={0.1} className="border rounded w-20 px-1" value={distancia} onChange={e=>{if(e.target.valueAsNumber>0)setDistancia(e.target.valueAsNumber);}}/></label><button type="button" className="bg-sky-100 rounded px-2 py-1 disabled:opacity-40" disabled={rascunho.length!==2} onClick={calibrar}>Aplicar escala</button></>}
+          </div>
+        </main>
+        <aside className="min-h-0 flex flex-col border-t md:border-t-0 md:border-l bg-white">
+          <div className="shrink-0 grid grid-cols-4 text-xs border-b" role="tablist" aria-label="Ajustes do levantamento">{(['telhado','modulos','imagem','dados'] as const).map(t=><button type="button" key={t} role="tab" aria-selected={aba===t} onClick={()=>setAba(t)} className={`px-1 py-3 font-bold ${aba===t?'text-[#004276] bg-sky-50 border-b-2 border-[#004276]':'text-slate-500'}`}>{({telhado:'Telhado',modulos:'Placas',imagem:'Imagem',dados:'Dados'})[t]}</button>)}</div>
+          <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3 text-sm" role="tabpanel">
+            {aba==='telhado'&&<>
+              <div className="bg-sky-50 rounded-lg p-3"><p className="text-xs text-slate-600">Área total de superfície</p><strong className="text-xl text-[#004276]">{areaSuperficie(d).toFixed(2)} m²</strong><p className="text-xs text-slate-500">Calculada ao fechar os pontos; corrigida pela inclinação informada.</p></div>
+              {d.aguas.length?<><label className="block text-xs">Água selecionada<select className={campo} value={agua?.id??''} onChange={e=>setAguaSelecionada(e.target.value)}>{d.aguas.map(a=><option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
+                {agua&&<><div className="grid grid-cols-2 gap-2"><Numero label="Inclinação (°)" max={75} value={agua.inclinacao} onChange={v=>editarAgua({inclinacao:v})}/><Numero label="Azimute (0° norte)" max={359.99} value={agua.azimute} onChange={v=>editarAgua({azimute:v})}/></div><p className="text-xs text-slate-600">Em planta: {areaPoligono(agua.pontos).toFixed(2)} m² · {d.placas.filter(p=>p.aguaId===agua.id).length} placas</p><button type="button" className="text-xs text-red-700 underline" onClick={()=>atualizar({aguas:d.aguas.filter(a=>a.id!==agua.id)})}>Excluir água selecionada</button></>}
+              </>:<p className="text-xs text-slate-600">Escolha Desenhar água, marque os vértices e conclua o contorno. A escala do mapa será usada automaticamente.</p>}
+              {obstaculo&&<><label className="block text-xs">Obstáculo<select className={campo} value={obstaculo.id} onChange={e=>setObstaculoSelecionado(e.target.value)}>{d.obstaculos.map((o,i)=><option key={o.id} value={o.id}>Obstáculo {i+1}</option>)}</select></label><Numero label="Altura acima do telhado (m)" max={100} value={obstaculo.alturaM} onChange={v=>atualizar({obstaculos:d.obstaculos.map(o=>o.id===obstaculo.id?{...o,alturaM:v}:o)},false)}/><button type="button" className="text-xs text-red-700 underline" onClick={()=>atualizar({obstaculos:d.obstaculos.filter(o=>o.id!==obstaculo.id)})}>Excluir obstáculo</button></>}
+            </>}
+            {aba==='modulos'&&<>
+              <label className="block text-xs">Placa cadastrada<select className={campo} value={d.modulo.placaId??d.modulo.produtoId??''} disabled={carregandoCatalogo} onChange={e=>{const p=catalogo.find(p=>p.id===e.target.value&&p.ativo&&p.disponivel!==false);if(!p)return;atualizar({modulo:{placaId:p.id,produtoId:p.produtoId??undefined,modelo:(p.fabricante+' '+p.modelo).slice(0,200),larguraM:p.larguraM,alturaM:p.alturaM,potenciaWp:p.potenciaWp,pesoKg:p.pesoKg}});}}>
+                <option value="" disabled>{carregandoCatalogo?'Carregando placas…':'Selecione uma placa'}</option>
+                {d.modulo.produtoId&&!catalogo.some(p=>p.id===(d.modulo.placaId??d.modulo.produtoId)&&p.ativo&&p.disponivel!==false)&&<option value={d.modulo.placaId??d.modulo.produtoId}>{d.modulo.modelo} (dados salvos)</option>}
+                {catalogo.filter(p=>p.ativo&&p.disponivel!==false).map(p=><option key={p.id} value={p.id}>{p.fabricante} {p.modelo} · {p.potenciaWp} Wp</option>)}
+              </select></label>
+              {erroCatalogo&&<p role="alert" className="text-xs text-red-700">{erroCatalogo}</p>}
+              {!carregandoCatalogo&&!erroCatalogo&&!catalogo.some(p=>p.ativo&&p.disponivel!==false)&&<p className="text-xs text-amber-700">Cadastre uma placa ativa em Parâmetros → Placas.</p>}
+              <p className="text-xs text-slate-600">{d.modulo.produtoId||valor ? <>{d.modulo.modelo} · {d.modulo.potenciaWp} Wp · {d.modulo.larguraM} × {d.modulo.alturaM} m · {d.modulo.pesoKg??'—'} kg</> : 'Selecione o modelo para preencher as informações técnicas.'}</p>
+              {valor&&!d.modulo.produtoId&&<p className="text-xs text-amber-700">Dados anteriores preservados. Selecione uma placa cadastrada para substituir.</p>}
+              <div className="grid grid-cols-2 gap-2"><Numero label="Recuo (m)" max={10} value={d.recuoM} onChange={v=>atualizar({recuoM:v})}/><Numero label="Entre placas (m)" max={5} value={d.espacamentoM} onChange={v=>atualizar({espacamentoM:v})}/></div>
+              <p className="text-xs text-slate-500">Trocar a placa remove a distribuição atual. Redistribua os módulos após selecionar outro modelo.</p>
+              <Numero label="Quantidade para distribuir" min={1} max={2000} step={1} value={qtd} onChange={v=>setQtd(Math.floor(v))}/>
+              <label className="flex gap-2 text-xs"><input type="checkbox" checked={paisagem} onChange={e=>setPaisagem(e.target.checked)}/>Orientação paisagem</label>
+              <div className="grid grid-cols-2 gap-2"><button type="button" className="bg-[#004276] text-white rounded-lg p-2 font-bold text-xs" onClick={()=>{if(!d.modulo.produtoId&&!valor){setErro('Selecione uma placa cadastrada na aba Placas.');return;}setFerramenta('placa');setRevisaoFerramenta(v=>v+1);setRascunho([]);}}>Inserir por clique</button><button type="button" className="bg-slate-800 text-white rounded-lg p-2 font-bold text-xs" onClick={gerar}>Distribuir placas</button></div>
+              <p className="text-xs text-slate-500">Dimensões do datasheet. Inclusão respeita contornos, obstáculos e recuos; a distribuição substitui as placas atuais.</p>
+            </>}
+            {aba==='imagem'&&<>
+              <label className="block text-xs">Imagem própria (até 10 MB)<input type="file" accept="image/jpeg,image/png,image/webp" className="block w-full mt-1" disabled={carregando} onChange={e=>{void importar(e.target.files?.[0]);e.target.value='';}}/></label>
+              <p className="text-xs text-slate-500">{d.satelite?'Google Static Maps, até 1280 × 1280 px. Ampliar com zoom não acrescenta detalhes à imagem.':d.imagemNome||'Imagem própria ou planta em metros.'}</p>
+              <label className="block text-xs">Latitude<input className={campo} value={latBusca} onChange={e=>{setLatBusca(e.target.value);setConfirmarTroca(false);}}/></label><label className="block text-xs">Longitude<input className={campo} value={lngBusca} onChange={e=>{setLngBusca(e.target.value);setConfirmarTroca(false);}}/></label>
+              <button type="button" disabled={carregando} className="w-full bg-sky-100 rounded-lg p-2 text-xs font-bold" onClick={()=>void buscarSatelite(true)}>Carregar coordenadas</button>
+              <p className="text-xs text-slate-500">Consultas Google podem gerar consumo. Trocar a imagem reinicia o desenho; a data de captura só é conhecida quando informada.</p>
+            </>}
+            {aba==='dados'&&<>
+              <div className="grid grid-cols-2 gap-2"><Numero label="Largura da planta (m)" value={d.larguraM} min={1} onChange={v=>{atualizar({larguraM:v,aguas:[],obstaculos:[],escalaConfirmada:false});setRascunho([]);}}/><Numero label="Altura da planta (m)" value={d.alturaM} min={1} onChange={v=>{atualizar({alturaM:v,aguas:[],obstaculos:[],escalaConfirmada:false});setRascunho([]);}}/></div>
+              {d.satelite&&d.escalaConfirmada?<p className="text-xs bg-sky-50 p-2 rounded text-sky-900">Escala automática da projeção do mapa. Medidas aproximadas ao nível do solo; calibre com uma distância conhecida para conferir.</p>:<label className="flex gap-2 text-xs"><input type="checkbox" checked={d.escalaConfirmada} onChange={e=>atualizar({escalaConfirmada:e.target.checked},false)}/>Usar estas dimensões como escala em metros</label>}
+              <Numero label="Norte: graus desde o topo" value={d.norte} max={359.99} onChange={v=>atualizar({norte:v})}/>
+              <label className="block text-xs">Tipologia<select className={campo} value={d.tipologia} onChange={e=>atualizar({tipologia:e.target.value},false)}>{['Não informado','Plano','Meia água','Duas águas','Quatro águas','Outro'].map(t=><option key={t}>{t}</option>)}</select></label>
+              <label className="block text-xs">Ano de construção<input className={campo} type="number" min="1500" max={new Date().getFullYear()} value={d.anoConstrucao??''} onChange={e=>atualizar({anoConstrucao:e.target.value?Number(e.target.value):undefined},false)}/></label>
+              <label className="block text-xs">Data de captura conhecida<input className={campo} type="date" value={d.dataImagem??''} onChange={e=>atualizar({dataImagem:e.target.value||undefined},false)}/></label>
+            </>}
+          </div>
+        </aside>
       </div>
-      <div className="flex justify-end gap-3 border-t pt-4"><button type="button" onClick={onCancelar}>Cancelar</button><button type="button" disabled={carregando||!d.escalaConfirmada||!d.aguas.length||!d.placas.length} className="bg-sky-800 disabled:opacity-40 text-white rounded-lg px-5 py-3 font-bold" onClick={()=>onAplicar(d)}>Aplicar levantamento à proposta</button></div>
+      {erro&&<div role="alert" className="shrink-0 text-xs text-amber-900 bg-amber-50 px-3 py-2 border-t">{erro}{confirmarTroca&&<button type="button" className="ml-2 underline" onClick={()=>{setConfirmarTroca(false);setErro('');}}>Manter desenho atual</button>}</div>}
+      <footer className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 bg-white">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700"><strong>{d.placas.length} placas · {potencia.toFixed(2)} kWp</strong><span>{areaSuperficie(d).toFixed(2)} m² de telhado</span><span>{Math.round(mensal)} kWh/mês (HSP)</span></div>
+        <button type="button" disabled={carregando||!d.escalaConfirmada||!d.aguas.length||!d.placas.length} className="bg-[#004276] disabled:opacity-40 text-white rounded-lg px-4 py-2 text-sm font-bold" onClick={()=>{if(!d.modulo.produtoId&&!valor){setErro('Selecione uma placa cadastrada na aba Placas.');setAba('modulos');return;}onAplicar(d);}}>Aplicar levantamento</button>
+      </footer>
     </div>
   </div>;
 }

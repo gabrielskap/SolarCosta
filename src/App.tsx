@@ -7,6 +7,7 @@ import {
   Kit, User, LeadStage, Agendamento, AuditEntry, Obra, AppNotification,
 } from './types';
 import { Sidebar } from './components/Sidebar';
+import { PlacasView } from './components/PlacasView';
 import { LoginView } from './components/LoginView';
 import { NotificationCenter } from './components/NotificationCenter';
 import { ToastContainer, ToastMessage } from './components/Toast';
@@ -968,6 +969,8 @@ export default function App() {
                   }
                 />
 
+                <Route
+                  path="parametros/placas" element={<PlacasView />} />
                 <Route
                   path="fornecedores"
                   element={
