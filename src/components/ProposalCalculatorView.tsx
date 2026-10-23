@@ -37,7 +37,7 @@ interface ProposalCalculatorViewProps {
   propostaExistente?: Proposta;
   /** Parâmetros e domínios vindos do banco (substituem os antigos literais). */
   config: ConfigApp | null;
-  onSaveProposal: (proposta: Proposta) => void;
+  onSaveProposal: (proposta: Proposta) => Promise<Proposta | undefined>;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
@@ -97,6 +97,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * proposta muda, então isto nunca vira de false para true com o formulário
    * já preenchido.
    */
+  const propostaSalva = useRef(propostaExistente);
+  const salvando = useRef(false);
+  const [ultimaVersaoSalva, setUltimaVersaoSalva] = useState<Date | null>(null);
+  const [salvamentoEmCurso, setSalvamentoEmCurso] = useState(false);
   const editando = !!propostaExistente;
   const [levantamentoTelhado, setLevantamentoTelhado] = useState<LevantamentoTelhado | undefined>(propostaExistente?.levantamentoTelhado);
   const [editorManualAberto, setEditorManualAberto] = useState(false);
@@ -599,7 +603,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
   // Espelha os requisitos mínimos do backend (propostaSchema): sem isso, o
   // POST falha depois que o PDF já foi aberto/impresso com dados fictícios.
-  const validarProposta = (): boolean => {
+  const validarProposta = (rascunho = false, silencioso = false): boolean => {
+    if (silencioso && (!clienteNome.trim() || cpfInvalido || consumoKwh <= 0 || tarifaKwh <= 0 || hsp <= 0)) return false;
     if (!clienteNome.trim()) {
       showToast('Campos incompletos', 'error', 'Informe o nome do cliente.');
       return false;
@@ -620,11 +625,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       showToast('Campos incompletos', 'error', 'Informe o HSP (horas de sol pleno) da cidade.');
       return false;
     }
-    if (kitItens.length === 0) {
+    if (!rascunho && kitItens.length === 0) {
       showToast('Kit vazio', 'error', 'Adicione pelo menos um item do catálogo antes de gerar a proposta.');
       return false;
     }
-    if (levantamentoTelhado) {
+    if (!rascunho && levantamentoTelhado) {
       const contar = (itens: PropostaItem[]): number => itens.reduce((s,item)=>s+
         (item.componentes?.length ? contar(item.componentes) :
           (item.produtoId && slugDoTipoProduto(produtos.find(p=>p.id===item.produtoId)?.tipo)==='modulo' ? item.qtd : 0)),0);
@@ -647,8 +652,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     // Retomando um rascunho, é este id que faz o Api.saveProposta mandar um PUT
     // em vez de um POST — ou seja, é o que impede cada salvamento de virar mais
     // uma proposta na lista.
-    id: propostaExistente?.id ?? `prop-${Date.now()}`,
-    numero: propostaExistente?.numero ?? '', // gerado pelo banco ao salvar
+    id: propostaSalva.current?.id ?? `prop-${Date.now()}`,
+    numero: propostaSalva.current?.numero ?? '', // gerado pelo banco ao salvar
     leadId: linkedLead?.id || '',
     clienteNome,
     cpfCnpj,
@@ -689,7 +694,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     bancoFinanciamento,
     // A data de criação é do banco; aqui ela só não pode ser reinventada a
     // cada edição do rascunho.
-    dataCriacao: propostaExistente?.dataCriacao ?? new Date().toLocaleDateString('pt-BR'),
+    dataCriacao: propostaSalva.current?.dataCriacao ?? new Date().toLocaleDateString('pt-BR'),
     status,
     observacoes,
     customLogoUrl,
@@ -708,24 +713,31 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     levantamentoTelhado,
   });
 
-  const handleSaveDraft = () => {
-    if (!validarProposta()) return;
-    // Salvar não rebaixa o status: uma proposta já enviada que voltou para
-    // ajuste continua enviada.
-    onSaveProposal(montarProposta(propostaExistente?.status ?? 'rascunho'));
-    showToast(
-      editando ? 'Alterações salvas' : 'Rascunho salvo',
-      'success',
-      'Proposta de orçamento gravada com sucesso.',
-    );
+  const salvar = async (gerarPDF = false, automatico = false) => {
+    if (salvando.current || !validarProposta(!gerarPDF, automatico)) return;
+    salvando.current = true;
+    setSalvamentoEmCurso(true);
+    try {
+      const salva = await onSaveProposal(montarProposta(
+        gerarPDF ? 'enviada' : propostaSalva.current?.status ?? 'rascunho',
+      ));
+      if (!salva) return;
+      propostaSalva.current = salva;
+      setUltimaVersaoSalva(new Date());
+      if (gerarPDF) onOpenPDF('proposta', salva);
+    } finally {
+      salvando.current = false;
+      setSalvamentoEmCurso(false);
+    }
   };
-
-  const handleGeneratePDF = () => {
-    if (!validarProposta()) return;
-    const prop = montarProposta('enviada');
-    onSaveProposal(prop);
-    onOpenPDF('proposta', prop);
-  };
+  const salvarAutomaticamente = useRef(() => { void salvar(false, true); });
+  salvarAutomaticamente.current = () => { void salvar(false, true); };
+  useEffect(() => {
+    const intervalo = window.setInterval(() => salvarAutomaticamente.current(), 30_000);
+    return () => window.clearInterval(intervalo);
+  }, []);
+  const handleSaveDraft = () => { void salvar(); };
+  const handleGeneratePDF = () => { void salvar(true); };
 
   return (
     <div className="space-y-6">
@@ -757,12 +769,14 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
         <div className="flex flex-wrap items-center gap-3 gap-y-2">
           <button
             onClick={handleSaveDraft}
+            disabled={salvamentoEmCurso}
             className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition"
           >
             {editando ? 'Salvar alterações' : 'Salvar rascunho'}
           </button>
           <button
             onClick={handleGeneratePDF}
+            disabled={salvamentoEmCurso}
             className="px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow transition flex items-center gap-2"
           >
             <FileText className="w-4 h-4" />
@@ -770,6 +784,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </button>
         </div>
       </div>
+
+      {ultimaVersaoSalva && (
+        <p className="text-xs text-slate-500" role="status">
+          Última versão salva às {ultimaVersaoSalva.toLocaleTimeString('pt-BR')}
+        </p>
+      )}
 
       {/* Main Form Layout (7/12 Form, 5/12 Sidebar) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1161,10 +1181,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             </div>
           )}
           <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-            <h3 className="font-bold text-slate-800">LOCALIZAÇÃO E LAYOUT DO TELHADO</h3>
-            <p className="text-xs text-slate-600">Faça o levantamento sobre uma imagem própria ou uma planta em metros, sem serviços pagos.</p>
+            <h3 className="font-bold text-slate-800">LEVANTAMENTO DO TELHADO</h3>
+            <p className="text-xs text-slate-600">Busque a imagem de satélite ou importe uma imagem própria para medir o telhado, simular a luz solar e distribuir os módulos no mesmo editor.</p>
             <div className="flex flex-wrap gap-3">
-              <button type="button" className="bg-sky-800 text-white rounded-lg px-4 py-2 font-bold text-sm" onClick={()=>setEditorManualAberto(true)}>{levantamentoTelhado?'Editar levantamento manual':'Desenhar telhado / importar imagem'}</button>
+              <button type="button" className="bg-sky-800 text-white rounded-lg px-4 py-2 font-bold text-sm" onClick={()=>setEditorManualAberto(true)}>{levantamentoTelhado?'Editar levantamento':'Abrir levantamento do telhado'}</button>
             </div>
             {levantamentoTelhado&&<>
               <FiguraLevantamento dados={levantamentoTelhado}/>
@@ -1173,18 +1193,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <button type="button" className="text-xs text-red-700 underline" onClick={()=>setLevantamentoTelhado(undefined)}>Remover levantamento manual</button>
             </>}
           </div>
-          {editorManualAberto&&<LevantamentoManual valor={levantamentoTelhado} potenciaWp={moduloWp} hsp={hsp} perdasPct={perdasPct} alvo={modulosQtdCalculada} onCancelar={()=>setEditorManualAberto(false)} onAplicar={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);setDadosTelhado(null);setEditorManualAberto(false);showToast('Levantamento aplicado','success','Potência e geração recalculadas. Confira os equipamentos do kit.');}} painelSatelite={<PainelTelhado
-            endereco={endereco}
-            cidade={cidade}
-            numeroEndereco={numeroEndereco}
-            localizacaoPronta={localizacaoPronta}
-            consultaAuto={null}
-            coordenadaConhecida={null}
-            modulosQtd={modulosQtdCalculada}
-            config={config}
-            onResultado={r=>{setDadosTelhado(r);if(r)setLevantamentoTelhado(undefined);}}
-            showToast={showToast}
-          />}/>}
+          {editorManualAberto&&<LevantamentoManual valor={levantamentoTelhado} potenciaWp={moduloWp} hsp={hsp} perdasPct={perdasPct} alvo={modulosQtdCalculada} enderecoBusca={consultaAuto||[endereco,numeroEndereco,cidade].filter(Boolean).join(', ')} coordenadaInicial={coordenadaLead??undefined} googleAtivo={config?.google_maps_ativo!==false} onCancelar={()=>setEditorManualAberto(false)} onAplicar={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);setDadosTelhado(null);setEditorManualAberto(false);showToast('Levantamento aplicado','success','Potência e geração recalculadas. Confira os equipamentos do kit.');}}/>}
           </div>
 
           {/* Section 3: Kit de equipamentos e serviços */}

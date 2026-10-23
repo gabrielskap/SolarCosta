@@ -11,6 +11,9 @@ export const levantamentoTelhadoSchema=z.object({
   // Prévia raster limitada; nenhum SVG ou URL externa é aceito.
   imagem:z.string().max(450000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).optional(),
   imagemNome:z.string().max(255).optional(),dataImagem:z.string().date().optional(),
+  localizacao:z.object({latitude:z.number().min(-85).max(85),longitude:z.number().min(-180).max(180),endereco:z.string().max(300).optional()}).optional(),
+  simulacao:z.object({data:z.string().date(),hora:z.number().min(0).max(23.75),fuso:z.number().int().min(-5).max(-2),mostrarIncidencia:z.boolean(),mostrarSombras:z.boolean()}).optional(),
+  satelite:z.object({latitude:z.number().min(-85).max(85),longitude:z.number().min(-180).max(180),zoom:z.number().int().min(16).max(20),larguraPx:z.number().int().min(100).max(640),alturaPx:z.number().int().min(100).max(640)}).optional(),
   escalaConfirmada:z.literal(true),
   aguas:z.array(z.object({id:z.string().uuid(),nome:z.string().max(100),pontos:poligono,inclinacao:z.number().min(0).max(75),azimute:z.number().min(0).lt(360)})).min(1).max(100),
   obstaculos:z.array(z.object({id:z.string().uuid(),pontos:poligono,alturaM:z.number().min(0).max(100)})).max(200),

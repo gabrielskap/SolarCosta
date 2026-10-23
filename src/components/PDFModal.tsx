@@ -1176,7 +1176,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                       <div className="space-y-4">
                         <h2 className="text-2xl font-black text-[#004276]">LEVANTAMENTO DO TELHADO</h2>
                         <p>{prop.endereco}, {prop.cidade}</p>
-                        <FiguraLevantamento dados={prop.levantamentoTelhado}/>
+                        <FiguraLevantamento dados={prop.levantamentoTelhado} tokenPublico={tokenPublico}/>
                         <div className="grid grid-cols-2 gap-3 text-sm">
                           <p>Módulos: {prop.levantamentoTelhado.placas.length} · {prop.levantamentoTelhado.modulo.potenciaWp} Wp</p>
                           <p>Modelo: {prop.levantamentoTelhado.modulo.modelo}</p>

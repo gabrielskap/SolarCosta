@@ -148,7 +148,7 @@ const propostaSchema = z.object({
     })
     .nullish(),
 
-  itens: z.array(itemSchema).min(1, 'A proposta precisa de pelo menos um item.'),
+  itens: z.array(itemSchema),
 
   // Valor negociado. NULL = usa a soma dos itens. `valor_total` continua fora
   // do schema de propósito: quem o escreve é o trigger, a partir deste campo.

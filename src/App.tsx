@@ -105,7 +105,7 @@ interface NovaPropostaRouteProps {
   kits: Kit[];
   leads: Lead[];
   config: ConfigApp | null;
-  onSaveProposal: (proposta: Proposta) => void;
+  onSaveProposal: (proposta: Proposta) => Promise<Proposta | undefined>;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
@@ -404,14 +404,15 @@ export default function App() {
 
   /* -------------------------------------------------------- propostas -- */
 
-  const handleSaveProposal = async (proposta: Proposta) => {
+  const handleSaveProposal = async (proposta: Proposta): Promise<Proposta | undefined> => {
     try {
-      setPropostas(await Api.saveProposta(proposta));
-      setLeads(await Api.getLeads());
-      showToast('Proposta salva', 'success', `Proposta de ${proposta.clienteNome}.`);
+      const salva = await Api.persistProposta(proposta);
+      setPropostas(anteriores => [salva, ...anteriores.filter(p => p.id !== salva.id)]);
+      void Api.getLeads().then(setLeads).catch(erro => tratarErro(erro, 'Erro ao atualizar leads'));
       void atualizarAuditoria();
+      return salva;
     } catch (erro) {
-      tratarErro(erro, 'Não foi possível salvar a proposta');
+      tratarErro(erro, 'Erro ao salvar proposta');
     }
   };
 

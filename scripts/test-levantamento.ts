@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { areaPoligono, areaSuperficie, cabe, distribuir, poligonoValido, sobrepoe, type LevantamentoTelhado } from '../src/utils/levantamentoTelhado.ts';
+import { areaPoligono, areaSuperficie, cabe, distribuir, escalaSatelite, poligonoValido, sobrepoe, type LevantamentoTelhado } from '../src/utils/levantamentoTelhado.ts';
+import {posicaoSolar,incidenciaDireta} from '../src/utils/posicaoSolar.ts';
 import { dimensionar } from '../src/utils/solar.ts';
 import { levantamentoTelhadoSchema } from '../server/src/schemas/levantamentoTelhado.ts';
 const ret=(x:number,y:number,w:number,h:number)=>[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
@@ -28,3 +29,15 @@ assert(!levantamentoTelhadoSchema.safeParse({...salvo,imagem:'data:image/svg+xml
 assert(!levantamentoTelhadoSchema.safeParse({...salvo,escalaConfirmada:false}).success);
 assert(!levantamentoTelhadoSchema.safeParse({...salvo,placas:[placas[0],placas[0]]}).success);
 console.log('OK: área, concavidade, obstáculos, recuos, colisões, escala, inclinação, dimensionamento e contrato de persistência.');
+const s20=escalaSatelite(-19.9,20),s19=escalaSatelite(-19.9,19);
+assert(Math.abs(s19.larguraM-2*s20.larguraM)<1e-8,'zoom mantém escala física correta');
+assert(Math.abs(escalaSatelite(0,20).larguraM-95.546285)<0.001);
+const inverno=posicaoSolar('2026-06-21',12,-19.9,-43.9,-3);
+assert(Math.abs(inverno.elevacao-46.66)<0.5,'altura solar ao meio-dia no inverno em BH');
+assert(posicaoSolar('2026-06-21',0,-19.9,-43.9,-3).elevacao<0,'noite não recebe luz direta');
+const am=posicaoSolar('2026-03-20',9,0,0,0),pm=posicaoSolar('2026-03-20',15,0,0,0);
+assert(am.azimute>80&&am.azimute<100&&pm.azimute>260&&pm.azimute<280,'Sol nasce a leste e se põe a oeste no equinócio');
+assert(incidenciaDireta(inverno.elevacao,inverno.azimute,30,0)>incidenciaDireta(inverno.elevacao,inverno.azimute,30,180));
+assert.equal(incidenciaDireta(-10,0,0,0),0);
+assert(levantamentoTelhadoSchema.safeParse({...salvo,satelite:{latitude:-19.9,longitude:-43.9,zoom:20,larguraPx:640,alturaPx:640},localizacao:{latitude:-19.9,longitude:-43.9},simulacao:{data:'2026-06-21',hora:12,fuso:-3,mostrarIncidencia:true,mostrarSombras:true}}).success);
+console.log('OK: escala Web Mercator, posição solar, noite, orientação e persistência da simulação.');

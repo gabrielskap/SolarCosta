@@ -265,18 +265,20 @@ export const Api = {
     return paraProposta(r.proposta);
   },
 
-  saveProposta: async (p: Proposta): Promise<Proposta[]> => {
+  persistProposta: async (p: Proposta): Promise<Proposta> => {
+    let id = p.id;
     const corpo = deProposta(p);
     if (p.id && !p.id.startsWith('prop-') && !p.id.startsWith('novo-')) {
       await http.put(`/api/propostas/${p.id}`, corpo);
       if (p.status) await http.patch(`/api/propostas/${p.id}/status`, { status: p.status });
     } else {
       const criada = await http.post<any>('/api/propostas', corpo);
+      id = criada.proposta.id;
       if (p.status && p.status !== 'rascunho') {
         await http.patch(`/api/propostas/${criada.proposta.id}/status`, { status: p.status });
       }
     }
-    return Api.getPropostas();
+    return Api.getProposta(id);
   },
 
   /* -------------------------------------------------------- contratos -- */

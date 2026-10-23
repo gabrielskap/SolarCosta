@@ -459,13 +459,15 @@ publicoRouter.get(
       return;
     }
 
-    const p = await consultarUm<{ latitude: number | null; longitude: number | null; mapa_zoom: number | null }>(
-      `SELECT latitude, longitude, mapa_zoom FROM "SolarCosta_Propostas"
+    const p = await consultarUm<{ latitude: number | null; longitude: number | null; mapa_zoom: number | null; levantamento_telhado: {satelite?:{latitude:number;longitude:number;zoom:number;larguraPx:number;alturaPx:number}} | null }>(
+      `SELECT latitude, longitude, mapa_zoom, levantamento_telhado FROM "SolarCosta_Propostas"
         WHERE id = $1 AND excluido_em IS NULL`,
       [link.referencia_id],
     );
 
-    if (!p?.latitude || !p.longitude) {
+    const sat=p?.levantamento_telhado?.satelite;
+    const latitude=sat?.latitude??p?.latitude,longitude=sat?.longitude??p?.longitude;
+    if (latitude==null || longitude==null) {
       documentoNaoEncontrado(res);
       return;
     }
@@ -477,7 +479,7 @@ publicoRouter.get(
       })
       .parse(req.query);
 
-    const imagem = await imagemSatelite(p.latitude, p.longitude, p.mapa_zoom ?? 20, largura, altura);
+    const imagem = await imagemSatelite(latitude, longitude, sat?.zoom??p?.mapa_zoom??20, sat?.larguraPx??largura, sat?.alturaPx??altura);
 
     // A imagem de um ponto fixo não muda; o ToS do Google permite cache
     // temporário e 24h é o mesmo teto que o googleSolar.ts já usa em memória.

@@ -24,6 +24,9 @@ export interface LevantamentoTelhado {
   imagem?: string;
   imagemNome?: string;
   dataImagem?: string;
+  localizacao?: { latitude: number; longitude: number; endereco?: string };
+  satelite?: { latitude: number; longitude: number; zoom: number; larguraPx: number; alturaPx: number };
+  simulacao?: { data: string; hora: number; fuso: number; mostrarIncidencia: boolean; mostrarSombras: boolean };
   escalaConfirmada: boolean;
   aguas: AguaManual[];
   obstaculos: { id: string; pontos: PontoLocal[]; alturaM: number }[];
@@ -31,6 +34,11 @@ export interface LevantamentoTelhado {
   espacamentoM: number;
   recuoM: number;
   placas: PlacaManual[];
+}
+/** Escala no solo para pixels lógicos do Web Mercator; scale=2 altera resolução, não extensão. */
+export function escalaSatelite(latitude:number,zoom:number,larguraPx=640,alturaPx=640) {
+  const mpp=2*Math.PI*6378137*Math.cos(latitude*Math.PI/180)/(256*2**zoom);
+  return {larguraM:larguraPx*mpp,alturaM:alturaPx*mpp};
 }
 const EPS = 1e-8;
 const cross = (a: PontoLocal, b: PontoLocal, c: PontoLocal) => (b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
