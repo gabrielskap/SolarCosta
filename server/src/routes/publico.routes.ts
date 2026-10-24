@@ -336,10 +336,12 @@ publicoRouter.get(
       return;
     }
 
+    // representante_* é o fallback do contrato legado sem cópia da contratada.
     const empresa = await consultarUm(
       `SELECT razao_social, nome_fantasia, cnpj, endereco, bairro, cidade, uf, cep,
               telefone, whatsapp, email::text AS email, site, logo_url,
-              responsavel_tecnico, crea
+              responsavel_tecnico, crea,
+              representante_nome, representante_nacionalidade, representante_rg, representante_cpf
          FROM "SolarCosta_Empresa" LIMIT 1`,
     );
 
@@ -406,15 +408,21 @@ publicoRouter.get(
       return;
     }
 
+    // modelo_versao, contratada e termos (V024) são o contrato inteiro no
+    // modelo Solar Costa — sem eles aqui, o link do cliente e o PDF do
+    // WhatsApp cairiam nos padrões do modelo enquanto o CRM imprimiria o que
+    // foi negociado. telefone entra pelo mesmo motivo: a qualificação do
+    // contratante o usa.
     const contrato = await consultarUm(
-      `SELECT id, numero, cliente_nome, cpf_cnpj, rg_inscricao, endereco, cep,
+      `SELECT id, numero, proposta_id, cliente_nome, cpf_cnpj, rg_inscricao, endereco, cep, telefone,
               potencia_kwp, modulos_qtd, modulo_modelo, inversor_modelo, estrutura,
               prazo_execucao, local_instalacao,
               valor_total, forma_pagamento, entrada, parcelas_info, banco_agente,
               primeiro_vencimento, multa_atraso, foro_eleito,
               garantia_modulos, garantia_inversores, garantia_instalacao,
               garantia_homologacao, responsavel_tecnico, crea,
-              status::text AS status, data_emissao, data_assinatura, observacoes
+              status::text AS status, data_emissao, data_assinatura, observacoes,
+              modelo_versao, contratada, termos
          FROM "SolarCosta_Contratos" WHERE id = $1 AND excluido_em IS NULL`,
       [link.referencia_id],
     );

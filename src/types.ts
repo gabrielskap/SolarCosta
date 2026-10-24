@@ -354,10 +354,126 @@ export interface Proposta {
   layoutModulo?: MedidaModulo;
 }
 
+/*
+ * Contrato no modelo oficial da Solar Costa (V024). O texto das cláusulas mora
+ * em src/contrato/modeloSolarCosta.ts; aqui ficam só os DADOS que variam de um
+ * contrato para outro. Os dois objetos vão para o banco como jsonb, em
+ * camelCase, do jeito que estão — o zod de server/src/schemas/contrato.ts é o
+ * espelho destas interfaces.
+ */
+
+/** Seções do modelo cujo texto pode ser personalizado em um contrato. */
+export type ChaveSecaoContrato =
+  | 'preambulo'
+  | 'considerandos'
+  | 'clausula_1'
+  | 'clausula_2'
+  | 'clausula_3'
+  | 'clausula_4'
+  | 'clausula_5'
+  | 'clausula_6'
+  | 'clausula_7'
+  | 'clausula_8'
+  | 'clausula_9'
+  | 'clausula_10'
+  | 'encerramento';
+
+/** Cópia da empresa e do representante legal no momento da emissão. */
+export interface ContratadaContrato {
+  razaoSocial: string;
+  cnpj: string;
+  endereco: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+  cep: string;
+  telefone: string;
+  email: string;
+  representanteNome: string;
+  representanteNacionalidade: string;
+  representanteRg: string;
+  representanteCpf: string;
+}
+
+/** Uma linha da tabela da cláusula 7.2. */
+export interface GarantiaContrato {
+  equipamento: string;
+  prazo: string;
+  causa: string;
+}
+
+export interface TestemunhaContrato {
+  nome: string;
+  rg: string;
+  cpf: string;
+}
+
+/** Uma linha do Anexo I. `qtd` é texto: o modelo imprime "08" e há itens sem quantidade. */
+export interface ItemAnexoContrato {
+  qtd: string;
+  descricao: string;
+}
+
+/**
+ * Tudo o que o modelo deixa variar. Plano (sem objetos opcionais aninhados)
+ * de propósito: o tsconfig da raiz não é strict e degrada a inferência do zod
+ * em objetos aninhados.
+ */
+export interface TermosContrato {
+  contratanteNacionalidade: string;
+  contratanteEmail: string;
+  /** Cláusula 2.1. */
+  enderecoEntrega: string;
+  /** Cláusulas 2.3 e 2.3.1. */
+  prazoDespachoDias: number;
+  /** Cláusula 2.4 (dias corridos). */
+  prazoExecucaoDias: number;
+  /** Vazio = calculado a partir do valor total. */
+  valorExtenso: string;
+  /** Cláusula 3.1, texto livre. */
+  condicoesPagamento: string;
+  jurosMoraMesPct: number;
+  multaMoratoriaPct: number;
+  garantias: GarantiaContrato[];
+  /** Cláusula 7.3. */
+  garantiaLegalDias: number;
+  /** Cláusula 9.1 a. */
+  forcaMaiorDias: number;
+  /** Cláusula 9.1 b. */
+  prazoCuraDias: number;
+  multaRescisoriaContratantePct: number;
+  multaRescisoriaContratadaPct: number;
+  /** Cláusula 9.3 (dias úteis). */
+  prazoPagamentoEstruturasDiasUteis: number;
+  /** Cláusula 9.4. */
+  concessionaria: string;
+  /** Cláusula 10.8. */
+  emailContratada: string;
+  /** Cláusula 10.12 — comarca. */
+  foro: string;
+  /** "Belo Horizonte/MG" do fecho. */
+  localAssinatura: string;
+  /** AAAA-MM-DD; vazio imprime a data em branco. */
+  dataDocumento: string;
+  numeroVias: number;
+  testemunhas: TestemunhaContrato[];
+  anexoItens: ItemAnexoContrato[];
+  /** Só as seções personalizadas neste contrato; o resto segue o modelo. */
+  textos: Partial<Record<ChaveSecaoContrato, string>>;
+}
+
 export interface Contrato {
   id: string;
   numero: string;
   leadId: string;
+  /** Proposta de origem; vazio quando o contrato foi preenchido à mão. */
+  propostaId?: string;
+  /** null = contrato legado, anterior ao modelo Solar Costa (V024). */
+  modeloVersao?: number | null;
+  contratada?: ContratadaContrato | null;
+  termos?: TermosContrato | null;
+  /** DD/MM/AAAA. */
+  dataAssinatura?: string;
   clienteNome: string;
   cpfCnpj: string;
   rgInscricao: string;

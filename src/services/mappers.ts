@@ -606,13 +606,24 @@ export function paraContrato(linha: any): Contrato {
     clausulas: (linha.clausulas ?? []).map((c: any) => c.titulo),
     status: linha.status === 'cancelado' ? 'aguardando' : linha.status,
     dataEmissao: paraDataBR(linha.data_emissao),
+    dataAssinatura: paraDataBR(linha.data_assinatura),
     situacaoPagamento: linha.situacao_pagamento ?? null,
+    propostaId: linha.proposta_id ?? '',
+    // jsonb já vem em camelCase (é gravado assim pelo deContrato).
+    modeloVersao: linha.modelo_versao ?? null,
+    contratada: linha.contratada ?? null,
+    termos: linha.termos ?? null,
   };
 }
 
 export function deContrato(c: Contrato): Record<string, unknown> {
   return {
     lead_id: c.leadId || null,
+    // Sem isto todo contrato gerado a partir de proposta perdia o vínculo.
+    proposta_id: c.propostaId || null,
+    modelo_versao: c.modeloVersao ?? null,
+    contratada: c.contratada ?? null,
+    termos: c.termos ?? null,
     cliente_nome: c.clienteNome,
     cpf_cnpj: c.cpfCnpj,
     rg_inscricao: c.rgInscricao || null,

@@ -295,22 +295,36 @@ export const Api = {
     return completos.map((c) => paraContrato(c.contrato));
   },
 
-  saveContrato: async (c: Contrato): Promise<Contrato[]> => {
+  saveContrato: async (c: Contrato): Promise<Contrato[]> => (await Api.salvarContrato(c)).contratos,
+
+  /**
+   * Como saveContrato, mas devolve também o contrato salvo. O editor precisa
+   * do id e do número que o banco gerou: sem eles o próximo "Salvar" criaria
+   * outro contrato, e o PDF abriria sem número.
+   */
+  salvarContrato: async (c: Contrato): Promise<{ contrato: Contrato; contratos: Contrato[] }> => {
     const corpo = deContrato(c);
     const existente = c.id && !c.id.startsWith('cont-') && !c.id.startsWith('novo-');
 
+    let r: any;
     if (existente) {
-      await http.put(`/api/contratos/${c.id}`, corpo);
+      r = await http.put<any>(`/api/contratos/${c.id}`, corpo);
       if (c.status === 'assinado') {
-        await http.post(`/api/contratos/${c.id}/assinar`, {});
+        r = await http.post<any>(`/api/contratos/${c.id}/assinar`, {});
       }
     } else {
-      const criado = await http.post<any>('/api/contratos', corpo);
+      r = await http.post<any>('/api/contratos', corpo);
       if (c.status === 'assinado') {
-        await http.post(`/api/contratos/${criado.contrato.id}/assinar`, {});
+        r = await http.post<any>(`/api/contratos/${r.contrato.id}/assinar`, {});
       }
     }
-    return Api.getContratos();
+    return { contrato: paraContrato(r.contrato), contratos: await Api.getContratos() };
+  },
+
+  /** Assina e trava o contrato. `data` em AAAA-MM-DD; sem ela, hoje. */
+  assinarContrato: async (id: string, data?: string): Promise<{ contrato: Contrato; contratos: Contrato[] }> => {
+    const r = await http.post<any>(`/api/contratos/${id}/assinar`, data ? { data_assinatura: data } : {});
+    return { contrato: paraContrato(r.contrato), contratos: await Api.getContratos() };
   },
 
   deleteContrato: async (id: string): Promise<Contrato[]> => {
