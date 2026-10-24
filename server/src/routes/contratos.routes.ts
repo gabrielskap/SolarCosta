@@ -10,6 +10,9 @@ import { z } from 'zod';
 import { consultar, consultarUm, emTransacao } from '../db.js';
 import { AppError, asyncHandler, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
+import {
+  MODELO_CONTRATO_VERSAO, contratadaContratoSchema, termosContratoSchema,
+} from '../schemas/contrato.js';
 
 export const contratosRouter = Router();
 contratosRouter.use(exigirLogin);
@@ -52,9 +55,48 @@ const contratoSchema = z.object({
   crea: z.string().max(40).nullish(),
   observacoes: z.string().nullish(),
 
-  // Títulos vindos de SolarCosta_ClausulasPadrao, na ordem escolhida.
+  // Títulos vindos de SolarCosta_ClausulasPadrao, na ordem escolhida. Só o
+  // contrato legado usa: no modelo Solar Costa o texto vem do front e o que
+  // foi personalizado vai em `termos.textos`.
   clausulas: z.array(z.string().min(1)).default([]),
+
+  // Modelo Solar Costa (V024). Ausentes = contrato legado.
+  modelo_versao: z.literal(MODELO_CONTRATO_VERSAO).nullish(),
+  contratada: contratadaContratoSchema.nullish(),
+  termos: termosContratoSchema.nullish(),
 });
+
+type ContratoEntrada = z.infer<typeof contratoSchema>;
+
+/**
+ * Prazo, multa, foro e local de instalação continuam existindo como colunas
+ * porque Obras, a listagem e a rota pública leem delas. No modelo Solar Costa
+ * eles nascem de `termos`; derivar aqui, e não no front, garante que coluna e
+ * documento nunca divirjam.
+ */
+function colunasDerivadas(d: ContratoEntrada) {
+  const t = d.termos;
+  if (!t) {
+    return {
+      prazo_execucao: d.prazo_execucao ?? null,
+      multa_atraso: d.multa_atraso ?? null,
+      foro_eleito: d.foro_eleito ?? null,
+      local_instalacao: d.local_instalacao ?? null,
+    };
+  }
+  const pct = (n: number) => `${String(n).replace('.', ',')}%`;
+  return {
+    prazo_execucao: `${t.prazoExecucaoDias} dias corridos`,
+    multa_atraso: `${pct(t.multaMoratoriaPct)} + ${pct(t.jurosMoraMesPct)} a.m.`,
+    foro_eleito: t.foro || d.foro_eleito || null,
+    local_instalacao: d.local_instalacao || t.enderecoEntrega || null,
+  };
+}
+
+/** jsonb vai como texto; `null` explícito para o contrato legado. */
+function json(valor: unknown): string | null {
+  return valor == null ? null : JSON.stringify(valor);
+}
 
 async function carregarContrato(id: string) {
   const contrato = await consultarUm(
@@ -187,6 +229,7 @@ contratosRouter.post(
   exigirPermissao('emitir_contratos'),
   asyncHandler(async (req: RequestAutenticado, res) => {
     const d = contratoSchema.parse(req.body);
+    const derivadas = colunasDerivadas(d);
 
     const id = await emTransacao(async (cliente) => {
       const { rows } = await cliente.query(
@@ -197,7 +240,8 @@ contratosRouter.post(
             valor_total, forma_pagamento, entrada, parcelas_info, banco_agente,
             primeiro_vencimento, multa_atraso, foro_eleito,
             garantia_modulos, garantia_inversores, garantia_instalacao, garantia_homologacao,
-            responsavel_tecnico_id, responsavel_tecnico, crea, observacoes, criado_por_id, status
+            responsavel_tecnico_id, responsavel_tecnico, crea, observacoes, criado_por_id, status,
+            modelo_versao, contratada, termos
          ) VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,
             $9,$10,$11,$12,$13,
@@ -206,20 +250,22 @@ contratosRouter.post(
             $21::date,$22,$23,
             $24,$25,$26,$27,
             COALESCE($28::uuid, (SELECT id FROM "SolarCosta_Usuarios" WHERE nome = $29 AND excluido_em IS NULL)),
-            $29,$30,$31,$32,'aguardando'
+            $29,$30,$31,$32,'aguardando',
+            $33,$34::jsonb,$35::jsonb
          ) RETURNING id, numero`,
         [
           d.lead_id ?? null, d.proposta_id ?? null, d.cliente_nome, d.cpf_cnpj,
           d.rg_inscricao ?? null, d.endereco, d.cep ?? null, d.telefone ?? null,
           d.potencia_kwp, d.modulos_qtd, d.modulo_modelo ?? null, d.inversor_modelo ?? null,
-          d.estrutura ?? null, d.prazo_execucao ?? null, d.local_instalacao ?? null,
+          d.estrutura ?? null, derivadas.prazo_execucao, derivadas.local_instalacao,
           d.valor_total, d.forma_pagamento ?? null, d.entrada ?? null,
           d.parcelas_info ?? null, d.banco_agente ?? null,
-          d.primeiro_vencimento ?? null, d.multa_atraso ?? null, d.foro_eleito ?? null,
+          d.primeiro_vencimento ?? null, derivadas.multa_atraso, derivadas.foro_eleito,
           d.garantia_modulos ?? null, d.garantia_inversores ?? null,
           d.garantia_instalacao ?? null, d.garantia_homologacao ?? null,
           d.responsavel_tecnico_id ?? null, d.responsavel_tecnico ?? null,
           d.crea ?? null, d.observacoes ?? null, req.usuario.id,
+          d.modelo_versao ?? null, json(d.contratada), json(d.termos),
         ],
       );
       const novoId = rows[0]!.id as string;
@@ -243,6 +289,7 @@ contratosRouter.put(
   asyncHandler(async (req: RequestAutenticado, res) => {
     const id = z.string().uuid().parse(req.params.id);
     const d = contratoSchema.parse(req.body);
+    const derivadas = colunasDerivadas(d);
 
     await emTransacao(async (cliente) => {
       const { rows: atual } = await cliente.query(
@@ -268,20 +315,23 @@ contratosRouter.put(
             garantia_modulos = $23, garantia_inversores = $24,
             garantia_instalacao = $25, garantia_homologacao = $26,
             responsavel_tecnico_id = COALESCE($27::uuid, responsavel_tecnico_id),
-            responsavel_tecnico = $28, crea = $29, observacoes = $30
+            responsavel_tecnico = $28, crea = $29, observacoes = $30,
+            proposta_id = COALESCE($31::uuid, proposta_id),
+            modelo_versao = $32, contratada = $33::jsonb, termos = $34::jsonb
           WHERE id = $1`,
         [
           id, d.cliente_nome, d.cpf_cnpj, d.rg_inscricao ?? null, d.endereco,
           d.cep ?? null, d.telefone ?? null,
           d.potencia_kwp, d.modulos_qtd, d.modulo_modelo ?? null, d.inversor_modelo ?? null,
-          d.estrutura ?? null, d.prazo_execucao ?? null, d.local_instalacao ?? null,
+          d.estrutura ?? null, derivadas.prazo_execucao, derivadas.local_instalacao,
           d.valor_total, d.forma_pagamento ?? null, d.entrada ?? null, d.parcelas_info ?? null,
           d.banco_agente ?? null, d.primeiro_vencimento ?? null,
-          d.multa_atraso ?? null, d.foro_eleito ?? null,
+          derivadas.multa_atraso, derivadas.foro_eleito,
           d.garantia_modulos ?? null, d.garantia_inversores ?? null,
           d.garantia_instalacao ?? null, d.garantia_homologacao ?? null,
           d.responsavel_tecnico_id ?? null, d.responsavel_tecnico ?? null,
           d.crea ?? null, d.observacoes ?? null,
+          d.proposta_id ?? null, d.modelo_versao ?? null, json(d.contratada), json(d.termos),
         ],
       );
 

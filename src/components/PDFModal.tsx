@@ -11,6 +11,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Line
 import logoFull from '../assets/logo-full.png';
 import logoIcon from '../assets/logo-icon.png';
 import { TelhadoSatelite } from './mapa/TelhadoSatelite';
+import { DocumentoContrato } from './contrato/DocumentoContrato';
+import { ContratoLegado, usaLayoutLegado } from './contrato/ContratoLegado';
 import { FiguraLevantamento } from './mapa/LevantamentoManual';
 import { areaSuperficie } from '../utils/levantamentoTelhado';
 import { imagemTelhado } from '../services/solar';
@@ -418,7 +420,12 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               </span>
               <h3 className="font-extrabold text-sm sm:text-base tracking-wide text-white">
                 {type === 'proposta' && `Proposta Comercial Solar nº ${(data as Proposta).numero || '2026-0184'}`}
-                {type === 'contrato' && `Contrato de Prestação nº ${(data as Contrato).numero || '2026-0184'}`}
+                {/* Sem número é rascunho: inventar um ("2026-0184") fazia o
+                    documento parecer emitido. */}
+                {type === 'contrato' &&
+                  ((data as Contrato).numero
+                    ? `Contrato de Prestação nº ${(data as Contrato).numero}`
+                    : 'Contrato de Prestação — rascunho não salvo')}
                 {type === 'boleto' && `Boleto Bancário nº ${(data as Boleto).parcela}`}
               </h3>
             </div>
@@ -1401,47 +1408,13 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               );
             })()}
 
-            {/* CONTRATO DE PRESTAÇÃO DE SERVIÇOS VIEW */}
+            {/* CONTRATO — modelo oficial da Solar Costa (V024). Legado já
+                assinado continua no layout em que foi assinado. */}
             {type === 'contrato' && (() => {
               const cont = data as Contrato;
-              return (
-                <div className="bg-white rounded-2xl shadow-xl print:shadow-none p-8 max-w-3xl mx-auto border border-slate-200 space-y-6 text-slate-800 text-xs leading-relaxed">
-                  <div className="text-center border-b pb-4">
-                    <h2 className="font-extrabold text-xl text-[#004276] uppercase">
-                      CONTRATO DE FORNECIMENTO E INSTALAÇÃO DE SISTEMA FOTOVOLTAICO
-                    </h2>
-                    <p className="font-bold text-slate-600">CONTRATO Nº {cont.numero}</p>
-                  </div>
-
-                  <div>
-                    <h3 className="font-bold text-sm text-[#004276] mb-1">1. DAS PARTES</h3>
-                    <p className="text-justify">
-                      <strong>CONTRATADA:</strong> SOLAR COSTA ENERGIA SOLAR LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 42.890.112/0001-90, com sede na Rua Alzira Maria Ferreira, 241 – Santa Mônica, Belo Horizonte/MG.
-                    </p>
-                    <p className="text-justify mt-1">
-                      <strong>CONTRATANTE:</strong> <strong>{cont.clienteNome}</strong>, inscrito no CPF/CNPJ sob o nº {cont.cpfCnpj}, RG/IE nº {cont.rgInscricao}, residente e domiciliado na {cont.endereco}, CEP {cont.cep}, telefone {cont.telefone}.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h3 className="font-bold text-sm text-[#004276] mb-1">2. DO OBJETO DO CONTRATO</h3>
-                    <p className="text-justify">
-                      O presente contrato tem por objeto o fornecimento, projeto, instalação e homologação de um Sistema Gerador Fotovoltaico com potência nominal de <strong>{cont.potenciaKwp} kWp</strong>, composto por <strong>{cont.modulosQtd} módulos fotovoltaicos {cont.moduloModelo}</strong>, inversor(es) <strong>{cont.inversorModelo}</strong> e estrutura de fixação do tipo <strong>{cont.estrutura}</strong>, no local indicado: {cont.localInstalacao}.
-                    </p>
-                  </div>
-
-                  <div className="pt-8 grid grid-cols-2 gap-8 text-center">
-                    <div className="border-t border-slate-400 pt-2">
-                      <p className="font-bold text-slate-900">SOLAR COSTA ENERGIA SOLAR</p>
-                      <p className="text-slate-500">Contratada</p>
-                    </div>
-                    <div className="border-t border-slate-400 pt-2">
-                      <p className="font-bold text-slate-900">{cont.clienteNome}</p>
-                      <p className="text-slate-500">Contratante</p>
-                    </div>
-                  </div>
-                </div>
-              );
+              return usaLayoutLegado(cont)
+                ? <ContratoLegado contrato={cont} />
+                : <DocumentoContrato contrato={cont} empresa={empresa} />;
             })()}
 
             {/* BOLETO BANCO DO BRASIL VIEW

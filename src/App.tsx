@@ -430,14 +430,36 @@ export default function App() {
 
   /* -------------------------------------------------------- contratos -- */
 
-  const handleSaveContract = async (contrato: Contrato) => {
+  /**
+   * Devolve o contrato como o banco gravou: o editor precisa do id e do
+   * número para que o próximo "Salvar" vire PUT e o PDF saia numerado. O
+   * aviso de sucesso fica com o editor; o de erro, aqui — e o erro é
+   * relançado para o editor não seguir para o PDF de um contrato não salvo.
+   */
+  const handleSalvarContrato = async (contrato: Contrato): Promise<Contrato> => {
     try {
-      setContratos(await Api.saveContrato(contrato));
+      const r = await Api.salvarContrato(contrato);
+      setContratos(r.contratos);
       setLeads(await Api.getLeads());
-      showToast('Contrato salvo', 'success', `Contrato de ${contrato.clienteNome}.`);
       void atualizarAuditoria();
+      return r.contrato;
     } catch (erro) {
       tratarErro(erro, 'Não foi possível salvar o contrato');
+      throw erro;
+    }
+  };
+
+  const handleAssinarContrato = async (id: string, data: string): Promise<void> => {
+    try {
+      const r = await Api.assinarContrato(id, data);
+      setContratos(r.contratos);
+      // Contrato assinado fecha o lead (contratos.routes.ts).
+      setLeads(await Api.getLeads());
+      showToast('Contrato assinado', 'success', `Contrato nº ${r.contrato.numero} travado para edição.`);
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível marcar o contrato como assinado');
+      throw erro;
     }
   };
 
@@ -965,9 +987,11 @@ export default function App() {
                       contratos={contratos}
                       leads={leads}
                       propostas={propostas}
-                      onSaveContract={handleSaveContract}
+                      onSalvarContrato={handleSalvarContrato}
+                      onAssinarContrato={handleAssinarContrato}
                       onDeleteContract={handleDeleteContract}
                       config={config}
+                      onConfigAlterada={setConfig}
                       onOpenPDF={handleOpenPDF}
                       currentUser={currentUser}
                       showToast={showToast}

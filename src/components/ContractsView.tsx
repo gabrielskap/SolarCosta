@@ -1,35 +1,56 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Send, FileText, Plus, MessageCircle, Search, X, Trash2, AlertTriangle } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { CheckCircle2, FileText, Plus, MessageCircle, Search, X, Trash2, AlertTriangle, PencilLine, Eye, Settings2 } from 'lucide-react';
 import { Contrato, Lead, Proposta, User } from '../types';
-import { param, type ConfigApp } from '../services/api';
+import { type ConfigApp } from '../services/api';
 import { EnviarPorWhatsApp } from './whatsapp/EnviarPorWhatsApp';
+import { EditorContrato } from './contrato/EditorContrato';
+import { PadroesContrato } from './contrato/PadroesContrato';
+import { hojeISO } from '../contrato/padroes';
+import { rascunhoDeContrato } from '../contrato/rascunho';
 
 interface ContractsViewProps {
   contratos: Contrato[];
   leads: Lead[];
   /** Propostas disponíveis para gerar o contrato a partir do dimensionamento. */
   propostas?: Proposta[];
-  /** Empresa, parâmetros e cláusulas padrão vindos do banco. */
+  /** Empresa, parâmetros e domínios vindos do banco. */
   config: ConfigApp | null;
-  onSaveContract: (contrato: Contrato) => void;
+  /** Salva e devolve o contrato gravado — o editor continua com id e número. */
+  onSalvarContrato: (contrato: Contrato) => Promise<Contrato>;
+  /** `data` em AAAA-MM-DD. */
+  onAssinarContrato: (contratoId: string, data: string) => Promise<void>;
   onDeleteContract?: (contratoId: string) => Promise<void> | void;
   onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
+  /** Padrões do contrato salvos: empresa e parâmetros novos. */
+  onConfigAlterada?: (config: ConfigApp) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
+
+type Aba = 'lista' | 'editor' | 'padroes';
 
 export const ContractsView: React.FC<ContractsViewProps> = ({
   contratos,
   leads,
   propostas = [],
   config,
-  onSaveContract,
+  onSalvarContrato,
+  onAssinarContrato,
   onDeleteContract,
   onOpenPDF,
+  onConfigAlterada,
   currentUser,
   showToast
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'novo' | 'lista'>('lista');
+  const [aba, setAba] = useState<Aba>('lista');
+
+  /**
+   * Contrato aberto no editor; null com o editor aberto = contrato novo. A
+   * `chaveEditor` remonta o editor a cada abertura, para um contrato novo não
+   * herdar o estado do anterior.
+   */
+  const [emEdicao, setEmEdicao] = useState<Contrato | null>(null);
+  const [chaveEditor, setChaveEditor] = useState(0);
 
   /** Contrato escolhido para envio; null com o modal fechado. */
   const [enviando, setEnviando] = useState<Contrato | null>(null);
@@ -38,19 +59,25 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   const [contratoParaExcluir, setContratoParaExcluir] = useState<Contrato | null>(null);
   const [excluindo, setExcluindo] = useState(false);
 
+  /** Confirmação de assinatura: trava o contrato, então pede a data e confirma. */
+  const [contratoParaAssinar, setContratoParaAssinar] = useState<Contrato | null>(null);
+  const [dataAssinatura, setDataAssinatura] = useState(hojeISO());
+  const [assinando, setAssinando] = useState(false);
+
   /** Filtros de busca e status da lista */
   const [termoBusca, setTermoBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState<'todos' | Contrato['status']>('todos');
   const [pagamentoFiltro, setPagamentoFiltro] = useState<string>('todos');
 
-  const podeEnviarWhatsApp =
-    currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.usarWhatsapp;
-
-  const podeExcluir =
-    currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.emitirContratos;
+  const ehAdmin = currentUser.cargo === 'Administrador';
+  const podeEnviarWhatsApp = ehAdmin || !!currentUser.permissoes?.usarWhatsapp;
+  const podeEmitir = ehAdmin || !!currentUser.permissoes?.emitirContratos;
+  const podeExcluir = podeEmitir;
+  // Mesma permissão que PATCH /api/config/empresa e /parametros exigem.
+  const podeEditarPadroes = ehAdmin || !!currentUser.permissoes?.gerenciarUsuarios;
 
   const normalizarBusca = (texto: string) =>
-    (texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    (texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
   const contratosFiltrados = useMemo(() => {
     const termo = normalizarBusca(termoBusca.trim());
@@ -71,6 +98,12 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   const aguardandoAssinatura = contratos.filter((c) => c.status === 'aguardando').length;
   const valorTotalFiltrado = contratosFiltrados.reduce((acc, c) => acc + (c.valorTotal || 0), 0);
 
+  const abrirEditor = (contrato: Contrato | null) => {
+    setEmEdicao(contrato);
+    setChaveEditor((k) => k + 1);
+    setAba('editor');
+  };
+
   const confirmarExclusao = async () => {
     if (!contratoParaExcluir || !onDeleteContract) return;
     try {
@@ -84,942 +117,312 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
     }
   };
 
-  // Origem do contrato: escolher uma proposta preenche o formulário inteiro.
-  // Antes, o formulário nascia com um cliente fixo de demonstração.
-  const [propostaOrigemId, setPropostaOrigemId] = useState('');
-  const [buscaProposta, setBuscaProposta] = useState('');
-  const [propostasAbertas, setPropostasAbertas] = useState(false);
-  const [indiceProposta, setIndiceProposta] = useState(0);
-  const propostasFiltradas = propostas.filter((p) =>
-    normalizarBusca(`${p.numero} ${p.clienteNome}`).includes(normalizarBusca(buscaProposta)),
-  );
-  const opcoesProposta = [
-    { id: '', label: 'Nenhuma — preencher manualmente' },
-    ...propostasFiltradas.map((p) => ({
-      id: p.id,
-      label: `${p.numero} · ${p.clienteNome} · ${p.potenciaKwp} kWp`,
-    })),
-  ];
-  const selecionarProposta = (id: string) => {
-    setPropostaOrigemId(id);
-    setBuscaProposta('');
-    setPropostasAbertas(false);
+  const pedirAssinatura = (c: Contrato) => {
+    setDataAssinatura(hojeISO());
+    setContratoParaAssinar(c);
   };
 
-  // Form State
-  const [clienteNome, setClienteNome] = useState('');
-  const [cpfCnpj, setCpfCnpj] = useState('');
-  const [rgInscricao, setRgInscricao] = useState('');
-  const [endereco, setEndereco] = useState('');
-  const [cep, setCep] = useState('');
-  const [telefone, setTelefone] = useState('');
-
-  // System Specs
-  const [potenciaKwp, setPotenciaKwp] = useState(0);
-  const [modulosQtd, setModulosQtd] = useState(0);
-  const [moduloModelo, setModuloModelo] = useState('');
-  const [inversorModelo, setInversorModelo] = useState('');
-  const [estrutura, setEstrutura] = useState('');
-  const [prazoExecucao, setPrazoExecucao] = useState('');
-  const [localInstalacao, setLocalInstalacao] = useState('');
-
-  // Values & Payment
-  const [valorTotal, setValorTotal] = useState(0);
-  const [formaPagamento, setFormaPagamento] = useState('');
-  const [entrada, setEntrada] = useState('');
-  const [parcelasInfo, setParcelasInfo] = useState('');
-  const [bancoAgente, setBancoAgente] = useState('');
-  const [primeiroVencimento, setPrimeiroVencimento] = useState('');
-  const [multaAtraso, setMultaAtraso] = useState('');
-  const [foroEleito, setForoEleito] = useState('');
-
-  // Warranties & Tech Resp
-  const [garantiaModulos, setGarantiaModulos] = useState('');
-  const [garantiaInversores, setGarantiaInversores] = useState('');
-  const [garantiaInstalacao, setGarantiaInstalacao] = useState('');
-  const [garantiaHomologacao, setGarantiaHomologacao] = useState('');
-  const [responsavelTecnico, setResponsavelTecnico] = useState('');
-  const [crea, setCrea] = useState('');
-
-  // Cláusulas selecionadas (títulos). A biblioteca vem de SolarCosta_ClausulasPadrao.
-  const [clausulas, setClausulas] = useState<string[]>([]);
-
-  // Prazo, multa, garantias, foro, responsável técnico e CREA saem dos
-  // parâmetros e do cadastro da empresa — não mais de literais no componente.
-  useEffect(() => {
-    if (!config) return;
-    setPrazoExecucao(param(config, 'contrato.prazo_execucao', ''));
-    setMultaAtraso(param(config, 'contrato.multa_atraso', ''));
-    setGarantiaModulos(param(config, 'contrato.garantia_modulos', ''));
-    setGarantiaInversores(param(config, 'contrato.garantia_inversores', ''));
-    setGarantiaInstalacao(param(config, 'contrato.garantia_instalacao', ''));
-    setGarantiaHomologacao(param(config, 'contrato.garantia_homologacao', ''));
-    setForoEleito(config.empresa?.foro_padrao ?? '');
-    setResponsavelTecnico(config.empresa?.responsavel_tecnico ?? '');
-    setCrea(config.empresa?.crea ?? '');
-  }, [config]);
-
-  // Escolher a proposta traz cliente, dimensionamento e condições comerciais.
-  useEffect(() => {
-    const p = propostas.find((x) => x.id === propostaOrigemId);
-    if (!p) return;
-    const lead = leads.find((l) => l.id === p.leadId);
-
-    setClienteNome(p.clienteNome || '');
-    setCpfCnpj(p.cpfCnpj || '');
-    setRgInscricao(lead?.rgInscricao || '');
-    setEndereco(p.endereco || '');
-    setCep(lead?.cep || '');
-    setTelefone(p.telefone || '');
-
-    setPotenciaKwp(p.potenciaKwp || 0);
-    setModulosQtd(p.modulosQtd || 0);
-    setEstrutura(p.telhado || '');
-    setLocalInstalacao(p.endereco || '');
-
-    setValorTotal(p.valorTotal || 0);
-    setFormaPagamento(
-      p.formaPagamento === 'financiamento'
-        ? 'Financiamento bancário'
-        : p.formaPagamento === 'cartao'
-          ? 'Cartão de crédito'
-          : 'À vista',
-    );
-    if (p.entradaFinanciamentoValor) {
-      setEntrada(
-        `${p.entradaFinanciamentoValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` +
-          (p.entradaFinanciamentoPct ? ` (${p.entradaFinanciamentoPct}%)` : ''),
-      );
-    }
-    if (p.parcelasFinanciamento) setParcelasInfo(`${p.parcelasFinanciamento}x`);
-    setBancoAgente(p.bancoFinanciamento || '');
-
-    // Responsável técnico: o que a PROPOSTA escolheu (V017) ganha do cadastro
-    // da empresa. O cliente recebeu a proposta assinada por um engenheiro e o
-    // contrato que nasce dela não pode trazer outro sem ninguém notar. Os `if`
-    // preservam o padrão da empresa quando a proposta não escolheu — sem eles,
-    // proposta anterior à V017 limparia os dois campos ao ser selecionada.
-    if (p.responsavelTecnico) setResponsavelTecnico(p.responsavelTecnico);
-    if (p.crea) setCrea(p.crea);
-  }, [propostaOrigemId, propostas, leads]);
-
-  // Biblioteca de cláusulas cadastrada no banco; as marcadas como `padrao`
-  // já vêm selecionadas.
-  const clausulasDisponiveis = config?.clausulas ?? [];
-
-  useEffect(() => {
-    if (!config || clausulas.length > 0) return;
-    setClausulas(config.clausulas.filter((c) => c.padrao).map((c) => c.titulo));
-  }, [config, clausulas.length]);
-
-  const toggleClausula = (clause: string) => {
-    if (clausulas.includes(clause)) {
-      setClausulas(clausulas.filter(c => c !== clause));
-    } else {
-      setClausulas([...clausulas, clause]);
-    }
-  };
-
-  const propostaOrigem = propostas.find((p) => p.id === propostaOrigemId);
-
-  const currentContractObj: Contrato = {
-    // Sem id: a API entende como contrato novo e o banco gera o número.
-    id: '',
-    numero: '',
-    leadId: propostaOrigem?.leadId ?? '',
-    clienteNome,
-    cpfCnpj,
-    rgInscricao,
-    endereco,
-    cep,
-    telefone,
-    potenciaKwp,
-    modulosQtd,
-    moduloModelo,
-    inversorModelo,
-    estrutura,
-    prazoExecucao,
-    localInstalacao,
-    valorTotal,
-    formaPagamento,
-    entrada,
-    parcelasInfo,
-    bancoAgente,
-    primeiroVencimento,
-    multaAtraso,
-    foroEleito,
-    garantias: {
-      modulos: garantiaModulos,
-      inversores: garantiaInversores,
-      instalacao: garantiaInstalacao,
-      homologacao: garantiaHomologacao
-    },
-    responsavelTecnico,
-    crea,
-    clausulas,
-    status: 'aguardando',
-    dataEmissao: new Date().toLocaleDateString('pt-BR')
-  };
-
-  // Mesmas obrigatoriedades do schema do backend (contratos.routes.ts), checadas
-  // aqui antes para não deixar o usuário gerar/imprimir um PDF com contratante,
-  // CPF/CNPJ ou endereço em branco quando o salvamento vai ser recusado.
-  const validarContrato = (): boolean => {
-    if (!clienteNome.trim()) {
-      showToast('Campos incompletos', 'error', 'Informe o contratante.');
-      return false;
-    }
-    if (!cpfCnpj.trim()) {
-      showToast('Campos incompletos', 'error', 'CPF/CNPJ é obrigatório no contrato.');
-      return false;
-    }
-    if (!endereco.trim()) {
-      showToast('Campos incompletos', 'error', 'Informe o endereço.');
-      return false;
-    }
-    return true;
-  };
-
-  const handleSaveDraft = () => {
-    if (!validarContrato()) return;
-    onSaveContract(currentContractObj);
-    showToast('Rascunho do contrato salvo', 'success', 'Contrato armazenado no sistema.');
-  };
-
-  const handleGeneratePDF = () => {
-    if (!validarContrato()) return;
-    onSaveContract(currentContractObj);
-    onOpenPDF('contrato', currentContractObj);
-  };
-
-  /**
-   * Salva e leva para a lista, de onde o contrato é enviado.
-   *
-   * O envio NÃO acontece aqui porque `currentContractObj.id` é sempre '' — o
-   * formulário monta um contrato novo e quem gera o id é o banco. Sem id não
-   * há como criar o link público, e era isso que a versão anterior escondia:
-   * ela mostrava "link de assinatura enviado via SMS/E-mail" sem nenhuma
-   * chamada de API atrás, para um canal que nunca existiu no sistema.
-   */
-  const handleSalvarParaEnviar = () => {
-    if (!validarContrato()) return;
-    onSaveContract(currentContractObj);
-    setActiveSubTab('lista');
-    showToast(
-      'Contrato salvo',
-      'success',
-      'Use "Enviar" na lista para mandar o contrato pelo WhatsApp do cliente.',
-    );
-  };
-
-  const handleToggleStatus = (id: string) => {
-    const updated = contratos.map(c => {
-      if (c.id === id) {
-        return {
-          ...c,
-          status: (c.status === 'assinado' ? 'aguardando' : 'assinado') as 'aguardando' | 'assinado'
-        };
+  const confirmarAssinatura = async () => {
+    if (!contratoParaAssinar) return;
+    try {
+      setAssinando(true);
+      // Contrato legado (anterior ao modelo Solar Costa) é exibido e impresso
+      // no modelo novo enquanto não é assinado. Gravar essa conversão antes de
+      // assinar é o que faz o documento assinado ser o mesmo que se viu.
+      if (!contratoParaAssinar.termos) {
+        await onSalvarContrato(rascunhoDeContrato(contratoParaAssinar, config));
       }
-      return c;
-    });
-    const c = updated.find(x => x.id === id);
-    if (c) onSaveContract(c);
-    showToast('Status alterado', 'info', 'Situação do contrato atualizada.');
+      await onAssinarContrato(contratoParaAssinar.id, dataAssinatura);
+      const assinado = contratoParaAssinar;
+      setContratoParaAssinar(null);
+      // Assinado no editor: volta para a lista, onde ele aparece travado.
+      if (aba === 'editor' && emEdicao?.id === assinado.id) setAba('lista');
+    } catch {
+      // O App já mostrou o erro.
+    } finally {
+      setAssinando(false);
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-[#004276]">
-            {activeSubTab === 'lista' ? 'Contratos' : 'Contrato de prestação de serviço'}
-          </h1>
-          <p className="text-xs text-slate-500 font-semibold mt-0.5">
-            {activeSubTab === 'lista' ? (
-              <>
-                {contratosFiltrados.length}{' '}
-                {contratosFiltrados.length === 1 ? 'contrato listado' : 'contratos listados'}
-                {contratosFiltrados.length !== contratos.length && ` (de ${contratos.length})`}
-                {' · '}
-                R$ {valorTotalFiltrado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                {' · '}
-                {aguardandoAssinatura} aguardando assinatura
-              </>
-            ) : propostaOrigem ? (
-              `Gerado a partir da proposta nº ${propostaOrigem.numero} · ${propostaOrigem.clienteNome}`
-            ) : (
-              'Novo contrato · número gerado ao emitir'
-            )}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 gap-y-2">
-          {activeSubTab === 'lista' ? (
-            <button
-              onClick={() => setActiveSubTab('novo')}
-              className="inline-flex items-center gap-2 px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow transition"
-            >
-              <Plus className="w-4 h-4" />
-              Cadastrar novo contrato
-            </button>
-          ) : (
-            <button
-              onClick={() => setActiveSubTab('lista')}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Voltar para contratos
-            </button>
-          )}
-
-          {activeSubTab === 'novo' && (
-            <>
-              <button
-                onClick={handleSaveDraft}
-                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition"
-              >
-                Salvar rascunho
-              </button>
-              <button
-                onClick={handleGeneratePDF}
-                className="px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow transition"
-              >
-                Gerar PDF do contrato
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {activeSubTab === 'novo' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* LEFT FORM (7/12 or 8/12) */}
-          <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-            
-            {/* 1. Contratante */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
-                  1
-                </span>
-                <h3 className="font-bold text-slate-900 text-base">Contratante</h3>
-              </div>
-
-              {/* Escolher a proposta preenche cliente, sistema e condições. */}
-              <div className="relative" onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                  setPropostasAbertas(false);
-                  setBuscaProposta('');
-                }
-              }}>
-                <label htmlFor="proposta-origem" className="block font-bold text-slate-500 uppercase mb-1 text-xs">
-                  GERAR A PARTIR DA PROPOSTA
-                </label>
-                <input
-                  id="proposta-origem"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={propostasAbertas}
-                  aria-controls="opcoes-proposta"
-                  aria-activedescendant={propostasAbertas ? `opcao-proposta-${indiceProposta}` : undefined}
-                  autoComplete="off"
-                  placeholder="Buscar por número ou cliente"
-                  value={propostasAbertas ? buscaProposta : propostaOrigem
-                    ? `${propostaOrigem.numero} · ${propostaOrigem.clienteNome} · ${propostaOrigem.potenciaKwp} kWp`
-                    : ''}
-                  onFocus={() => { setPropostasAbertas(true); setIndiceProposta(0); }}
-                  onClick={() => { setPropostasAbertas(true); setIndiceProposta(0); }}
-                  onChange={(e) => {
-                    setBuscaProposta(e.target.value);
-                    setPropostasAbertas(true);
-                    setIndiceProposta(0);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      setPropostasAbertas(true);
-                      setIndiceProposta((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + opcoesProposta.length) % opcoesProposta.length);
-                    } else if (e.key === 'Enter' && propostasAbertas) {
-                      e.preventDefault();
-                      selecionarProposta(opcoesProposta[indiceProposta]?.id ?? '');
-                    } else if (e.key === 'Escape') {
-                      setPropostasAbertas(false);
-                      setBuscaProposta('');
-                    }
-                  }}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-                />
-                {propostasAbertas && (
-                  <ul id="opcoes-proposta" role="listbox" aria-label="Propostas disponíveis"
-                    className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                    {opcoesProposta.map((opcao, indice) => (
-                      <li key={opcao.id} id={`opcao-proposta-${indice}`} role="option"
-                        aria-selected={opcao.id === propostaOrigemId}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onMouseEnter={() => setIndiceProposta(indice)}
-                        onClick={() => selecionarProposta(opcao.id)}
-                        className={`cursor-pointer px-3 py-2.5 text-xs font-semibold ${indice === indiceProposta ? 'bg-blue-50 text-[#004276]' : 'text-slate-700'}`}>
-                        {opcao.label}
-                      </li>
-                    ))}
-                    {propostasFiltradas.length === 0 && (
-                      <li className="px-3 py-2.5 text-xs text-slate-500">Nenhuma proposta encontrada.</li>
-                    )}
-                  </ul>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">NOME / RAZÃO SOCIAL</label>
-                  <input
-                    type="text"
-                    value={clienteNome}
-                    onChange={(e) => setClienteNome(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">CPF / CNPJ</label>
-                  <input
-                    type="text"
-                    value={cpfCnpj}
-                    onChange={(e) => setCpfCnpj(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">RG / INSCRIÇÃO</label>
-                  <input
-                    type="text"
-                    value={rgInscricao}
-                    onChange={(e) => setRgInscricao(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-500 uppercase mb-1">ENDEREÇO COMPLETO</label>
-                  <input
-                    type="text"
-                    value={endereco}
-                    onChange={(e) => setEndereco(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">CEP</label>
-                  <input
-                    type="text"
-                    value={cep}
-                    onChange={(e) => setCep(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Objeto do contrato */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
-                    2
-                  </span>
-                  <h3 className="font-bold text-slate-900 text-base">Objeto do contrato</h3>
-                </div>
-                <span className="text-xs text-slate-400 font-medium">preenchido pela proposta</span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">POTÊNCIA (KWP)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={potenciaKwp}
-                    onChange={(e) => setPotenciaKwp(Number(e.target.value))}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">Nº DE MÓDULOS</label>
-                  <input
-                    type="number"
-                    value={modulosQtd}
-                    onChange={(e) => setModulosQtd(Number(e.target.value))}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">MÓDULO</label>
-                  <input
-                    type="text"
-                    value={moduloModelo}
-                    onChange={(e) => setModuloModelo(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">INVERSOR</label>
-                  <input
-                    type="text"
-                    value={inversorModelo}
-                    onChange={(e) => setInversorModelo(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">ESTRUTURA</label>
-                  <select
-                    value={estrutura}
-                    onChange={(e) => setEstrutura(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  >
-                    <option value="Laje">Laje</option>
-                    <option value="Colonial">Colonial</option>
-                    <option value="Metálico">Metálico</option>
-                    <option value="Fibrocimento">Fibrocimento</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">PRAZO DE EXECUÇÃO</label>
-                  <input
-                    type="text"
-                    value={prazoExecucao}
-                    onChange={(e) => setPrazoExecucao(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block font-bold text-slate-500 uppercase mb-1">LOCAL DA INSTALAÇÃO</label>
-                  <input
-                    type="text"
-                    value={localInstalacao}
-                    onChange={(e) => setLocalInstalacao(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Valores e forma de pagamento */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
-                  3
-                </span>
-                <h3 className="font-bold text-slate-900 text-base">Valores e forma de pagamento</h3>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">VALOR TOTAL</label>
-                  <input
-                    type="text"
-                    value={`R$ ${valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                    onChange={(e) => {
-                      const num = Number(e.target.value.replace(/[^0-9]/g, '')) / 100;
-                      if (!isNaN(num)) setValorTotal(num);
-                    }}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-slate-900"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">FORMA DE PAGAMENTO</label>
-                  <input
-                    type="text"
-                    value={formaPagamento}
-                    onChange={(e) => setFormaPagamento(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">ENTRADA</label>
-                  <input
-                    type="text"
-                    value={entrada}
-                    onChange={(e) => setEntrada(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">PARCELAS</label>
-                  <input
-                    type="text"
-                    value={parcelasInfo}
-                    onChange={(e) => setParcelasInfo(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">BANCO / AGENTE</label>
-                  <input
-                    type="text"
-                    value={bancoAgente}
-                    onChange={(e) => setBancoAgente(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">1º VENCIMENTO</label>
-                  <input
-                    type="text"
-                    value={primeiroVencimento}
-                    onChange={(e) => setPrimeiroVencimento(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">MULTA POR ATRASO</label>
-                  <input
-                    type="text"
-                    value={multaAtraso}
-                    onChange={(e) => setMultaAtraso(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">FORO ELEITO</label>
-                  <input
-                    type="text"
-                    value={foroEleito}
-                    onChange={(e) => setForoEleito(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 4. Garantias e responsável técnico */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
-                  4
-                </span>
-                <h3 className="font-bold text-slate-900 text-base">Garantias e responsável técnico</h3>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">MÓDULOS</label>
-                  <input
-                    type="text"
-                    value={garantiaModulos}
-                    onChange={(e) => setGarantiaModulos(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">INVERSORES</label>
-                  <input
-                    type="text"
-                    value={garantiaInversores}
-                    onChange={(e) => setGarantiaInversores(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">INSTALAÇÃO</label>
-                  <input
-                    type="text"
-                    value={garantiaInstalacao}
-                    onChange={(e) => setGarantiaInstalacao(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-500 uppercase mb-1">HOMOLOGAÇÃO</label>
-                  <input
-                    type="text"
-                    value={garantiaHomologacao}
-                    onChange={(e) => setGarantiaHomologacao(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block font-bold text-slate-500 uppercase mb-1">RESPONSÁVEL TÉCNICO</label>
-                  <input
-                    type="text"
-                    value={responsavelTecnico}
-                    onChange={(e) => setResponsavelTecnico(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block font-bold text-slate-500 uppercase mb-1">CREA</label>
-                  <input
-                    type="text"
-                    value={crea}
-                    onChange={(e) => setCrea(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT SIDEBAR (5/12 or 4/12) */}
-          <div className="lg:col-span-5 xl:col-span-4 space-y-6">
-            
-            {/* Resumo do contrato em edição */}
-            <div className="bg-[#004276] text-white p-6 rounded-2xl shadow-xl space-y-4">
-              <span className="text-[10px] font-bold text-[#FFD100] uppercase tracking-widest block">
-                CONTRATO A EMITIR
-              </span>
-
-              <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-blue-200">Contratante</span>
-                  <span className="font-extrabold text-white">{clienteNome}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-blue-200">Sistema</span>
-                  <span className="font-extrabold text-white">{potenciaKwp} kWp - {modulosQtd} módulos</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-blue-200">Forma</span>
-                  <span className="font-extrabold text-white">{formaPagamento.split(' ')[0]}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-blue-200">Emissão</span>
-                  <span className="font-extrabold text-white">30/07/2026</span>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-blue-900/60">
-                <span className="text-[11px] text-blue-200">Valor do contrato</span>
-                <h2 className="text-3xl font-black text-white mt-0.5">
-                  R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </h2>
-              </div>
-            </div>
-
-            {/* Cláusulas incluídas */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-              <h4 className="font-bold text-slate-900 text-sm">Cláusulas incluídas</h4>
-              
-              <div className="space-y-2 text-xs">
-                {clausulasDisponiveis.length === 0 && (
-                  <p className="text-slate-400 italic">
-                    Nenhuma cláusula cadastrada. Configure em SolarCosta_ClausulasPadrao.
-                  </p>
-                )}
-                {clausulasDisponiveis.map(({ titulo }) => (
-                  <label key={titulo} className="flex items-start gap-2 cursor-pointer text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={clausulas.includes(titulo)}
-                      onChange={() => toggleClausula(titulo)}
-                      className="mt-0.5 rounded text-[#004276] focus:ring-[#004276]"
-                    />
-                    <span>{titulo}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Prévio do documento */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h4 className="font-bold text-slate-900 text-sm">Prévia do documento</h4>
-              
-              <div className="bg-slate-100 border border-slate-200 rounded-xl h-36 flex items-center justify-center text-xs text-slate-400 font-mono italic">
-                prévia do contrato - 4 páginas
-              </div>
-
-              <div className="space-y-2">
-                <button
-                  onClick={handleGeneratePDF}
-                  className="w-full bg-[#004276] hover:bg-[#003159] text-white font-bold py-3 rounded-xl text-xs shadow transition flex items-center justify-center gap-2"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>Gerar PDF do contrato</span>
-                </button>
-
-                <button
-                  onClick={handleSalvarParaEnviar}
-                  className="w-full bg-white hover:bg-slate-50 text-[#004276] border border-slate-300 font-bold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2"
-                >
-                  <Send className="w-4 h-4 text-blue-600" />
-                  <span>Salvar e enviar por WhatsApp</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {aba === 'editor' ? (
+        <EditorContrato
+          key={chaveEditor}
+          inicial={emEdicao}
+          propostas={propostas}
+          leads={leads}
+          config={config}
+          podeEditar={podeEmitir}
+          podeEnviar={podeEnviarWhatsApp}
+          onSalvar={async (c) => {
+            const salvo = await onSalvarContrato(c);
+            setEmEdicao(salvo);
+            return salvo;
+          }}
+          onAssinar={pedirAssinatura}
+          onAbrirPDF={(c) => onOpenPDF('contrato', c)}
+          onEnviar={setEnviando}
+          onVoltar={() => setAba('lista')}
+          showToast={showToast}
+        />
       ) : (
-        /* LIST OF EMITTED CONTRACTS */
-        <div className="space-y-4">
-          {/* Barra de Filtros e Busca */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            {/* Campo de Busca */}
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={termoBusca}
-                onChange={(e) => setTermoBusca(e.target.value)}
-                placeholder="Buscar por cliente, nº do contrato, CPF/CNPJ, telefone, cidade..."
-                className="w-full pl-9 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#004276] focus:ring-1 focus:ring-[#004276] shadow-sm transition"
-              />
-              {termoBusca && (
-                <button
-                  type="button"
-                  onClick={() => setTermoBusca('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                  title="Limpar busca"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+        <>
+          {/* Top Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-extrabold text-[#004276]">
+                {aba === 'lista' ? 'Contratos' : 'Padrões do contrato'}
+              </h1>
+              <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                {aba === 'lista' ? (
+                  <>
+                    {contratosFiltrados.length}{' '}
+                    {contratosFiltrados.length === 1 ? 'contrato listado' : 'contratos listados'}
+                    {contratosFiltrados.length !== contratos.length && ` (de ${contratos.length})`}
+                    {' · '}
+                    R$ {valorTotalFiltrado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {' · '}
+                    {aguardandoAssinatura} aguardando assinatura
+                  </>
+                ) : (
+                  'Dados da Solar Costa, prazos, multas e garantias que todo contrato novo traz preenchidos.'
+                )}
+              </p>
             </div>
 
-            {/* Filtro por Status e Pagamento */}
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={statusFiltro}
-                onChange={(e) => setStatusFiltro(e.target.value as 'todos' | Contrato['status'])}
-                className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#004276] shadow-sm"
-              >
-                <option value="todos">Status: Todos</option>
-                <option value="aguardando">Status: Aguardando assinatura</option>
-                <option value="assinado">Status: Assinado</option>
-              </select>
-
-              <select
-                value={pagamentoFiltro}
-                onChange={(e) => setPagamentoFiltro(e.target.value)}
-                className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#004276] shadow-sm"
-              >
-                <option value="todos">Pagamento: Todos</option>
-                <option value="pago">Pagamento: Pago</option>
-                <option value="aguardando">Pagamento: Aguardando</option>
-                <option value="vencido">Pagamento: Vencido</option>
-                <option value="sem_cobranca">Pagamento: Sem cobrança</option>
-              </select>
-
-              {(termoBusca || statusFiltro !== 'todos' || pagamentoFiltro !== 'todos') && (
+            <div className="flex flex-wrap items-center gap-2 gap-y-2">
+              <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 text-xs font-bold">
                 <button
                   type="button"
-                  onClick={() => {
-                    setTermoBusca('');
-                    setStatusFiltro('todos');
-                    setPagamentoFiltro('todos');
-                  }}
-                  className="text-xs font-bold text-slate-500 hover:text-slate-800 px-2 py-2 rounded-lg hover:bg-slate-100 transition whitespace-nowrap"
+                  onClick={() => setAba('lista')}
+                  className={`px-3 py-1.5 rounded-lg transition ${aba === 'lista' ? 'bg-[#004276] text-white' : 'text-slate-600 hover:text-[#004276]'}`}
                 >
-                  Limpar filtros
+                  Lista
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAba('padroes')}
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg transition ${aba === 'padroes' ? 'bg-[#004276] text-white' : 'text-slate-600 hover:text-[#004276]'}`}
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                  Padrões do contrato
+                </button>
+              </div>
+              {podeEmitir && (
+                <button
+                  onClick={() => abrirEditor(null)}
+                  className="inline-flex items-center gap-2 px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  Cadastrar novo contrato
                 </button>
               )}
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <h3 className="font-bold text-slate-900 text-base">Contratos cadastrados</h3>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <table className="tabela-mobile w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
-                    <th className="p-3">Contrato</th>
-                    <th className="p-3">Cliente</th>
-                    <th className="p-3">Potência</th>
-                    <th className="p-3">Valor</th>
-                    <th className="p-3">Data</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Pagamento</th>
-                    <th className="p-3 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {contratosFiltrados.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-500">
-                        {contratos.length === 0
-                          ? 'Nenhum contrato cadastrado. Clique em “Cadastrar novo contrato” para começar.'
-                          : 'Nenhum contrato encontrado para os filtros aplicados.'}
-                      </td>
-                    </tr>
+          {aba === 'padroes' ? (
+            <PadroesContrato
+              config={config}
+              podeEditar={podeEditarPadroes}
+              onConfigAlterada={(c) => onConfigAlterada?.(c)}
+              showToast={showToast}
+            />
+          ) : (
+            /* LIST OF EMITTED CONTRACTS */
+            <div className="space-y-4">
+              {/* Barra de Filtros e Busca */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                {/* Campo de Busca */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={termoBusca}
+                    onChange={(e) => setTermoBusca(e.target.value)}
+                    placeholder="Buscar por cliente, nº do contrato, CPF/CNPJ, telefone, cidade..."
+                    className="w-full pl-9 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#004276] focus:ring-1 focus:ring-[#004276] shadow-sm transition"
+                  />
+                  {termoBusca && (
+                    <button
+                      type="button"
+                      onClick={() => setTermoBusca('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                      title="Limpar busca"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   )}
-                  {contratosFiltrados.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50">
-                      <td data-label="Contrato" className="p-3 font-bold text-[#004276]">Nº {c.numero}</td>
-                      <td data-label="Cliente" className="p-3 font-semibold text-slate-900">{c.clienteNome}</td>
-                      <td data-label="Potência" className="p-3">{c.potenciaKwp} kWp</td>
-                      <td data-label="Valor" className="p-3 font-bold text-slate-900">R$ {c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td data-label="Data" className="p-3 text-slate-500">{c.dataEmissao}</td>
-                      <td data-label="Status" className="p-3">
-                        <button
-                          onClick={() => handleToggleStatus(c.id)}
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            c.status === 'assinado'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          {c.status === 'assinado' ? 'Assinado' : 'Aguardando assinatura'}
-                        </button>
-                      </td>
-                      <td data-label="Pagamento" className="p-3">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            c.situacaoPagamento === 'pago'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : c.situacaoPagamento === 'vencido'
-                              ? 'bg-red-100 text-red-800'
-                              : c.situacaoPagamento === 'aguardando'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-slate-100 text-slate-500'
-                          }`}
-                        >
-                          {c.situacaoPagamento === 'pago'
-                            ? 'Pago'
-                            : c.situacaoPagamento === 'vencido'
-                            ? 'Pagamento vencido'
-                            : c.situacaoPagamento === 'aguardando'
-                            ? 'Aguardando pagamento'
-                            : 'Sem cobrança'}
-                        </span>
-                      </td>
-                      <td data-label="Ações" className="p-3 text-right font-bold space-x-3">
-                        <button
-                          onClick={() => onOpenPDF('contrato', c)}
-                          className="text-blue-600 hover:underline"
-                        >
-                          Visualizar PDF
-                        </button>
-                        {podeEnviarWhatsApp && (
-                          <button
-                            onClick={() => setEnviando(c)}
-                            className="text-emerald-700 hover:underline inline-flex items-center gap-1"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            Enviar
-                          </button>
-                        )}
-                        {podeExcluir && onDeleteContract && (
-                          <button
-                            type="button"
-                            onClick={() => setContratoParaExcluir(c)}
-                            className="text-rose-600 hover:text-rose-800 hover:underline inline-flex items-center gap-1"
-                            title="Excluir contrato"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            Excluir
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                </div>
+
+                {/* Filtro por Status e Pagamento */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={statusFiltro}
+                    onChange={(e) => setStatusFiltro(e.target.value as 'todos' | Contrato['status'])}
+                    className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#004276] shadow-sm"
+                  >
+                    <option value="todos">Status: Todos</option>
+                    <option value="aguardando">Status: Aguardando assinatura</option>
+                    <option value="assinado">Status: Assinado</option>
+                  </select>
+
+                  <select
+                    value={pagamentoFiltro}
+                    onChange={(e) => setPagamentoFiltro(e.target.value)}
+                    className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#004276] shadow-sm"
+                  >
+                    <option value="todos">Pagamento: Todos</option>
+                    <option value="pago">Pagamento: Pago</option>
+                    <option value="aguardando">Pagamento: Aguardando</option>
+                    <option value="vencido">Pagamento: Vencido</option>
+                    <option value="sem_cobranca">Pagamento: Sem cobrança</option>
+                  </select>
+
+                  {(termoBusca || statusFiltro !== 'todos' || pagamentoFiltro !== 'todos') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTermoBusca('');
+                        setStatusFiltro('todos');
+                        setPagamentoFiltro('todos');
+                      }}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-800 px-2 py-2 rounded-lg hover:bg-slate-100 transition whitespace-nowrap"
+                    >
+                      Limpar filtros
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 className="font-bold text-slate-900 text-base">Contratos cadastrados</h3>
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="tabela-mobile w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
+                        <th className="p-3">Contrato</th>
+                        <th className="p-3">Cliente</th>
+                        <th className="p-3">Potência</th>
+                        <th className="p-3">Valor</th>
+                        <th className="p-3">Data</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3">Pagamento</th>
+                        <th className="p-3 text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {contratosFiltrados.length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="p-8 text-center text-slate-500">
+                            {contratos.length === 0
+                              ? 'Nenhum contrato cadastrado. Clique em “Cadastrar novo contrato” para começar.'
+                              : 'Nenhum contrato encontrado para os filtros aplicados.'}
+                          </td>
+                        </tr>
+                      )}
+                      {contratosFiltrados.map((c) => {
+                        const assinado = c.status === 'assinado';
+                        return (
+                          <tr key={c.id} className="hover:bg-slate-50">
+                            <td data-label="Contrato" className="p-3 font-bold text-[#004276]">Nº {c.numero}</td>
+                            <td data-label="Cliente" className="p-3 font-semibold text-slate-900">{c.clienteNome}</td>
+                            <td data-label="Potência" className="p-3">{c.potenciaKwp} kWp</td>
+                            <td data-label="Valor" className="p-3 font-bold text-slate-900">R$ {c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                            <td data-label="Data" className="p-3 text-slate-500">{c.dataEmissao}</td>
+                            <td data-label="Status" className="p-3">
+                              {assinado ? (
+                                <span
+                                  className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800"
+                                  title={c.dataAssinatura ? `Assinado em ${c.dataAssinatura}` : undefined}
+                                >
+                                  Assinado{c.dataAssinatura ? ` · ${c.dataAssinatura}` : ''}
+                                </span>
+                              ) : podeEmitir ? (
+                                <button
+                                  type="button"
+                                  onClick={() => pedirAssinatura(c)}
+                                  className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 hover:bg-amber-200"
+                                  title="Marcar como assinado"
+                                >
+                                  Aguardando assinatura
+                                </button>
+                              ) : (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                                  Aguardando assinatura
+                                </span>
+                              )}
+                            </td>
+                            <td data-label="Pagamento" className="p-3">
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  c.situacaoPagamento === 'pago'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : c.situacaoPagamento === 'vencido'
+                                    ? 'bg-red-100 text-red-800'
+                                    : c.situacaoPagamento === 'aguardando'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-500'
+                                }`}
+                              >
+                                {c.situacaoPagamento === 'pago'
+                                  ? 'Pago'
+                                  : c.situacaoPagamento === 'vencido'
+                                  ? 'Pagamento vencido'
+                                  : c.situacaoPagamento === 'aguardando'
+                                  ? 'Aguardando pagamento'
+                                  : 'Sem cobrança'}
+                              </span>
+                            </td>
+                            <td data-label="Ações" className="p-3 text-right font-bold space-x-3 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => abrirEditor(c)}
+                                className="text-[#004276] hover:underline inline-flex items-center gap-1"
+                              >
+                                {assinado || !podeEmitir ? <Eye className="w-3.5 h-3.5" /> : <PencilLine className="w-3.5 h-3.5" />}
+                                {assinado || !podeEmitir ? 'Ver' : 'Editar'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onOpenPDF('contrato', c)}
+                                className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                PDF
+                              </button>
+                              {podeEnviarWhatsApp && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEnviando(c)}
+                                  className="text-emerald-700 hover:underline inline-flex items-center gap-1"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  Enviar
+                                </button>
+                              )}
+                              {podeExcluir && onDeleteContract && (
+                                <button
+                                  type="button"
+                                  onClick={() => setContratoParaExcluir(c)}
+                                  className="text-rose-600 hover:text-rose-800 hover:underline inline-flex items-center gap-1"
+                                  title="Excluir contrato"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Excluir
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {enviando && (
@@ -1031,6 +434,69 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
           onFechar={() => setEnviando(null)}
           showToast={showToast}
         />
+      )}
+
+      {/* Confirmação de assinatura */}
+      {contratoParaAssinar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-assinar-contrato"
+            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 id="titulo-assinar-contrato" className="text-lg font-bold text-slate-900">Marcar como assinado?</h3>
+                <p className="text-xs text-slate-500">
+                  O contrato fica travado: nenhum dado ou texto poderá ser alterado depois.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
+              <p className="text-slate-700"><span className="font-semibold">Nº:</span> {contratoParaAssinar.numero}</p>
+              <p className="text-slate-700"><span className="font-semibold">Cliente:</span> {contratoParaAssinar.clienteNome}</p>
+            </div>
+
+            <div>
+              <label htmlFor="data-assinatura" className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                Data da assinatura
+              </label>
+              <input
+                id="data-assinatura"
+                type="date"
+                value={dataAssinatura}
+                max={hojeISO()}
+                onChange={(e) => setDataAssinatura(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setContratoParaAssinar(null)}
+                disabled={assinando}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarAssinatura()}
+                disabled={assinando || !dataAssinatura}
+                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {assinando ? 'Assinando...' : 'Sim, marcar como assinado'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal de confirmação de exclusão */}

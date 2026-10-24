@@ -191,6 +191,11 @@ configRouter.patch(
         responsavel_tecnico: z.string().max(200).nullish(),
         crea: z.string().max(40).nullish(),
         foro_padrao: z.string().max(120).nullish(),
+        // Quem assina o contrato pela empresa (V024).
+        representante_nome: z.string().max(200).nullish(),
+        representante_nacionalidade: z.string().max(60).nullish(),
+        representante_rg: z.string().max(40).nullish(),
+        representante_cpf: z.string().max(20).nullish(),
       })
       .parse(req.body);
 
@@ -213,7 +218,11 @@ configRouter.patch(
             logo_url            = COALESCE($14, logo_url),
             responsavel_tecnico = COALESCE($15, responsavel_tecnico),
             crea                = COALESCE($16, crea),
-            foro_padrao         = COALESCE($17, foro_padrao)
+            foro_padrao         = COALESCE($17, foro_padrao),
+            representante_nome          = COALESCE($18, representante_nome),
+            representante_nacionalidade = COALESCE($19, representante_nacionalidade),
+            representante_rg            = COALESCE($20, representante_rg),
+            representante_cpf           = COALESCE($21, representante_cpf)
           WHERE registro_unico
           RETURNING *`,
         [
@@ -222,6 +231,8 @@ configRouter.patch(
           d.cidade ?? null, d.uf ?? null, d.cep ?? null, d.telefone ?? null,
           d.whatsapp ?? null, d.email ?? null, d.site ?? null, d.logo_url ?? null,
           d.responsavel_tecnico ?? null, d.crea ?? null, d.foro_padrao ?? null,
+          d.representante_nome ?? null, d.representante_nacionalidade ?? null,
+          d.representante_rg ?? null, d.representante_cpf ?? null,
         ],
       );
       if (rows.length === 0) throw naoEncontrado('Cadastro da empresa');
