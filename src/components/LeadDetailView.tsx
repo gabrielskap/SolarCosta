@@ -82,6 +82,15 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
   const linkedContract = contratos.find(c => c.leadId === lead.id);
   const clientBoletos = boletos.filter(b => b.clienteNome.toLowerCase().includes(lead.nome.toLowerCase()));
 
+  /*
+    Consumo e telhado deixaram de ser perguntados no cadastro do lead: quem os
+    levanta é a proposta. A proposta vinculada manda; o valor do próprio lead
+    sobra como fallback para os leads que ainda o trazem — os do site, que
+    recebem o consumo declarado pelo cliente, e os anteriores a esta mudança.
+  */
+  const consumoExibido = linkedProposal?.consumoKwh || lead.consumoKwh;
+  const telhadoExibido = linkedProposal?.telhado || lead.telhado;
+
   const podeAnexar = currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.anexarDocumentos;
   const ehAdministrador = currentUser.cargo === 'Administrador';
 
@@ -354,7 +363,9 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
                   <span className="font-bold text-slate-400 uppercase">CONSUMO MÉDIO</span>
-                  <p className="font-extrabold text-slate-900 text-sm">{lead.consumoKwh.toLocaleString('pt-BR')} kWh</p>
+                  <p className="font-extrabold text-slate-900 text-sm">
+                    {consumoExibido ? `${consumoExibido.toLocaleString('pt-BR')} kWh` : '—'}
+                  </p>
                 </div>
                 <div>
                   <span className="font-bold text-slate-400 uppercase">CONCESSIONÁRIA</span>
@@ -365,7 +376,7 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="font-bold text-slate-400 uppercase">TELHADO</span>
-                  <p className="font-bold text-slate-900">{lead.telhado}</p>
+                  <p className="font-bold text-slate-900">{telhadoExibido || '—'}</p>
                 </div>
                 <div>
                   <span className="font-bold text-slate-400 uppercase">ORIGEM</span>

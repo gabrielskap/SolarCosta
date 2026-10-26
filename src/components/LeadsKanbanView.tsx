@@ -91,7 +91,6 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
 
   // Calculate totals
   const totalLeads = filteredLeads.length;
-  const pipelineValue = filteredLeads.reduce((acc, l) => acc + l.valor, 0);
 
   const getInitials = (name: string) => {
     const parts = name.split(' ');
@@ -198,7 +197,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
         <div>
           <h1 className="text-2xl font-extrabold text-[#004276]">Leads</h1>
           <p className="text-xs font-semibold text-slate-500 mt-0.5">
-            {totalLeads} leads ativos · R$ {pipelineValue.toLocaleString('pt-BR')} em pipeline · 8 propostas aguardando retorno
+            {totalLeads} leads ativos · 8 propostas aguardando retorno
           </p>
         </div>
 
@@ -338,7 +337,6 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4 flex-1 min-h-0 overflow-x-auto overflow-y-hidden pb-2">
         {STAGES.map((stage) => {
           const stageLeads = filteredLeads.filter(l => l.etapa === stage);
-          const stageTotal = stageLeads.reduce((acc, l) => acc + l.valor, 0);
 
           return (
             <div
@@ -359,9 +357,6 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                   {stageLeads.length}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-bold text-left -mt-2 shrink-0">
-                R$ {stageTotal.toLocaleString('pt-BR')}
-              </p>
 
               {/* Cards List */}
               <div className="flex-1 min-h-0 space-y-3 overflow-y-auto overscroll-contain">
@@ -380,12 +375,6 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
                       <p className="text-xs text-slate-500 flex items-center gap-1">
                         <MapPin className="w-3 h-3 text-slate-400" />
                         {lead.cidade}
-                      </p>
-                      <p className="text-xs text-slate-500 font-medium">
-                        {lead.consumoKwh} kWh/mês
-                      </p>
-                      <p className="text-base font-extrabold text-[#004276] pt-1">
-                        R$ {lead.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </p>
                     </div>
 

@@ -30,9 +30,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
   const [email, setEmail] = useState(lead?.email ?? '');
   const [cidade, setCidade] = useState(lead?.cidade ?? 'Belo Horizonte/MG');
   const [endereco, setEndereco] = useState(lead?.endereco ?? '');
-  const [consumo, setConsumo] = useState(lead?.consumoKwh ?? 800);
   const [concessionaria, setConcessionaria] = useState(lead?.concessionaria ?? 'CEMIG');
-  const [telhado, setTelhado] = useState(lead?.telhado ?? 'Colonial');
   const [origem, setOrigem] = useState(lead?.origem ?? 'Google Ads');
   const [responsavel, setResponsavel] = useState(lead?.responsavel ?? currentUser.nome);
   const [cep, setCep] = useState(lead?.cep ?? '');
@@ -81,27 +79,19 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
       cidade,
       endereco,
       cep: cep || undefined,
-      consumoKwh: Number(consumo),
       concessionaria,
-      telhado,
       origem,
       responsavel,
     };
 
     if (lead) {
-      // Edição: preserva id/numero/etapa/valor/documentos/histórico do lead original —
-      // esses campos não fazem parte do formulário, então não podem ser sobrescritos aqui.
+      // Edição: preserva id/numero/etapa/valor/consumo/telhado/documentos/histórico do lead
+      // original — nada disso faz parte do formulário, então não pode ser sobrescrito aqui.
       onUpdateLead?.({ ...lead, ...camposComuns });
     } else {
-      // Estimated value: kWp calculation ~ consumo / 117 * 21000
-      const estKwp = Number((consumo / 117.3).toFixed(2));
-      const estValor = Math.round(estKwp * 2639);
-
-      onCreateLead?.({
-        ...camposComuns,
-        etapa: 'Novo lead',
-        valor: estValor > 10000 ? estValor : 18500,
-      });
+      // Sem valor no cadastro: consumo e telhado são levantados na proposta, e é ela que
+      // devolve o valor real ao lead (propagarDadosAoLead, em propostas.routes.ts).
+      onCreateLead?.({ ...camposComuns, etapa: 'Novo lead', valor: 0 });
     }
 
     onClose();
@@ -235,36 +225,6 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
                 placeholder="Rua, número, bairro..."
                 className={`${fieldBase} ${okBorder}`}
               />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Consumo Médio (kWh/mês)
-              </label>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={consumo}
-                onChange={(e) => setConsumo(Number(e.target.value))}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Tipo de Telhado
-              </label>
-              <select
-                value={telhado}
-                onChange={(e) => setTelhado(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
-              >
-                <option value="Colonial">Colonial</option>
-                <option value="Laje">Laje</option>
-                <option value="Metálico">Metálico</option>
-                <option value="Fibrocimento">Fibrocimento</option>
-                <option value="Solo/Estrutura">Solo/Estrutura</option>
-              </select>
             </div>
 
             <div>

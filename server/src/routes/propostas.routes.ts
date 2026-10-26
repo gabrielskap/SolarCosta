@@ -186,6 +186,44 @@ async function propagarCoordenadaAoLead(
   );
 }
 
+/**
+ * Devolve ao lead o que a proposta dimensionou: valor, consumo e telhado.
+ *
+ * O cadastro do lead não pergunta mais consumo nem telhado, e não estima mais
+ * valor nenhum — a proposta é a única fonte desses três números. Sem isto
+ * `valor_estimado` ficaria zerado para sempre e levaria junto o funil do
+ * dashboard e a "vw_DesempenhoVendedor", que somam essa coluna.
+ *
+ * Escreve dentro da transação da proposta pelo mesmo motivo de
+ * `propagarCoordenadaAoLead`: um PATCH /api/leads disparado pelo front exigiria
+ * `criar_editar_leads` e daria 403 no consultor que só tem `emitir_propostas`.
+ *
+ * Tem que ser chamada DEPOIS de `inserirItens`: quem escreve `valor_total` é o
+ * trigger "SolarCosta_fn_recalcular_total_proposta" (V018), que dispara na
+ * gravação dos itens e já resolve o COALESCE com o valor negociado. Ler a
+ * coluna por subselect aqui pega o número pós-trigger.
+ *
+ * O COALESCE do telhado é deliberado: proposta sem telhado escolhido não apaga
+ * o telhado de um lead antigo. Consumo e valor sobrescrevem — o schema da
+ * proposta já exige `consumo_kwh` positivo.
+ */
+async function propagarDadosAoLead(
+  cliente: import('../db.js').Cliente,
+  leadId: string | null | undefined,
+  propostaId: string,
+) {
+  if (!leadId) return;
+  await cliente.query(
+    `UPDATE "SolarCosta_Leads" l
+        SET valor_estimado  = p.valor_total,
+            consumo_kwh     = p.consumo_kwh,
+            tipo_telhado_id = COALESCE(p.tipo_telhado_id, l.tipo_telhado_id)
+       FROM "SolarCosta_Propostas" p
+      WHERE p.id = $2 AND l.id = $1 AND l.excluido_em IS NULL`,
+    [leadId, propostaId],
+  );
+}
+
 async function carregarProposta(id: string) {
   const proposta = await consultarUm(
     `SELECT p.*, l.numero AS lead_numero, c.nome AS concessionaria, t.nome AS telhado,
@@ -338,6 +376,7 @@ propostasRouter.post(
 
       await inserirItens(cliente, novoId, d.itens);
       await propagarCoordenadaAoLead(cliente, d.lead_id, d);
+      await propagarDadosAoLead(cliente, d.lead_id, novoId);
 
       const { rows: n } = await cliente.query(
         `SELECT numero FROM "SolarCosta_Propostas" WHERE id = $1`, [novoId]);
@@ -443,6 +482,7 @@ propostasRouter.put(
       await cliente.query(`DELETE FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1`, [id]);
       await inserirItens(cliente, id, d.itens);
       await propagarCoordenadaAoLead(cliente, d.lead_id, d);
+      await propagarDadosAoLead(cliente, d.lead_id, id);
 
       await cliente.query(
         `SELECT "SolarCosta_fn_auditar"('editar','Proposta',$1,$2,NULL)`,

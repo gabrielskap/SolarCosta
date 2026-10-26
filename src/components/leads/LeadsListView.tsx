@@ -34,8 +34,6 @@ export const LeadsListView: React.FC<LeadsListViewProps> = ({
     });
   }, [leads, searchTerm, etapaFilter]);
 
-  const valorFiltrado = filteredLeads.reduce((acc, l) => acc + l.valor, 0);
-
   const handleDelete = (lead: Lead) => {
     if (!window.confirm(`Excluir o lead "${lead.nome}"? Ele deixa de aparecer no Kanban e na lista de leads.`)) return;
     onDeleteLead(lead.id);
@@ -62,12 +60,6 @@ export const LeadsListView: React.FC<LeadsListViewProps> = ({
     },
     { chave: 'responsavel', titulo: 'Responsável', prioridade: 'secundaria', celula: (l) => <span className="text-slate-600">{l.responsavel || '—'}</span> },
     {
-      chave: 'valor',
-      titulo: 'Valor estimado',
-      alinhamento: 'direita',
-      celula: (l) => <span className="font-bold text-slate-900">R$ {l.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>,
-    },
-    {
       chave: 'acoes',
       titulo: 'Ações',
       alinhamento: 'direita',
@@ -90,7 +82,7 @@ export const LeadsListView: React.FC<LeadsListViewProps> = ({
         <div>
           <h1 className="text-2xl font-extrabold text-[#004276]">Leads</h1>
           <p className="text-xs font-semibold text-slate-500 mt-0.5">
-            {filteredLeads.length} de {leads.length} leads · R$ {valorFiltrado.toLocaleString('pt-BR')} em pipeline
+            {filteredLeads.length} de {leads.length} leads
           </p>
         </div>
 
