@@ -33,7 +33,21 @@ COPY server/src ./src
 RUN npm run build
 
 # -----------------------------------------------------------------------------
-# Estágio 3: runtime de produção — só o necessário para rodar
+# Estágio 3: dependências de produção da API
+#
+# Em estágio próprio, e não dentro do runner, para o BuildKit resolvê-lo EM
+# PARALELO com o `apk add` do chromium — que sozinho domina o tempo de build.
+# Em sequência depois do apk, este `npm ci` era tempo somado no fim de um build
+# que já raspa o timeout de deploy do Easypanel (ver nota no estágio 4).
+# -----------------------------------------------------------------------------
+FROM node:20-alpine AS prod-deps
+WORKDIR /app
+
+COPY server/package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# -----------------------------------------------------------------------------
+# Estágio 4: runtime de produção — só o necessário para rodar
 # -----------------------------------------------------------------------------
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -52,18 +66,39 @@ ENV NODE_ENV=production
 # `puppeteer-core` (e não `puppeteer`) é dependência de propósito: o pacote
 # completo baixa o próprio Chromium no npm install, o que somaria um segundo
 # navegador de ~170 MB ao lado deste.
+#
+# ESTA É A CAMADA MAIS CARA DO BUILD. Sem cache ela leva ~12 min: o chromium do
+# Alpine arrasta mesa, llvm, ffmpeg e pipewire junto — 188 pacotes, ~754 MB. Com
+# cache o deploy inteiro sai em ~3 min; no dia em que o cache cai (imagem base
+# nova, builder novo, prune no host) o mesmo commit passa de 3 para ~15 min e
+# morre no timeout do Easypanel. Ver EASYPANEL.md, "Tempo de build".
+#
+# Por isso ela é a PRIMEIRA instrução do estágio: nada antes dela depende do
+# código, então nenhum commit a invalida. Não insira COPY acima deste RUN.
+#
+# `libcap` entra na mesma camada, e não num `apk add` próprio depois, para o
+# setcap não custar um segundo índice + triggers do apk num build apertado. Ele
+# é removido no fim do RUN: nada do chromium depende dele.
+#
+# O setcap existe porque a porta 80 é privilegiada (<1024) e o bind exigiria
+# root. Em vez de rodar o processo inteiro como root, concede só ao binário do
+# node a capability de abrir portas privilegiadas; USER continua não-root para
+# tudo o mais.
 RUN apk add --no-cache \
       chromium \
       nss \
       freetype \
       harfbuzz \
       ca-certificates \
-      ttf-freefont
+      ttf-freefont \
+      libcap && \
+    setcap 'cap_net_bind_service=+ep' "$(readlink -f "$(which node)")" && \
+    apk del libcap
 ENV CHROMIUM_PATH=/usr/bin/chromium-browser
 
 # Dependências de produção da API (pg, express, jwt, puppeteer-core, etc.)
 COPY server/package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 # Backend compilado (tsc -> dist/)
 COPY --from=backend-builder /app/server/dist ./dist
@@ -71,13 +106,6 @@ COPY --from=backend-builder /app/server/dist ./dist
 COPY --from=frontend-builder /app/dist ./public
 # SQL das migrations, aplicado por dist/migrate.js antes da API subir
 COPY database/migrations ./database/migrations
-
-# Porta 80 é privilegiada (<1024) — bind exigiria root. Em vez de rodar o
-# processo inteiro como root, concede só ao binário do node a capability de
-# abrir portas privilegiadas; USER continua não-root para tudo o mais.
-RUN apk add --no-cache libcap && \
-    setcap 'cap_net_bind_service=+ep' "$(readlink -f "$(which node)")" && \
-    apk del libcap
 
 # Não roda como root.
 USER node

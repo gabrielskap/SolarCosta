@@ -117,6 +117,36 @@ Node e do pool do Postgres.
 > imagem e se `CHROMIUM_PATH` aponta para o binário certo. O log da API traz o
 > caminho tentado e a mensagem crua do sistema.
 
+### Tempo de build — aumente o timeout do Easypanel
+
+O mesmo Chromium que custa 300 MB de imagem custa **~12 minutos de build quando
+a camada dele não está em cache**: o pacote do Alpine arrasta mesa, llvm, ffmpeg
+e pipewire, dando 188 pacotes e ~754 MB só naquele `apk add`.
+
+Isso faz o deploy ter **duas durações muito diferentes**, e é normal:
+
+| Situação | Duração |
+|---|---|
+| Camada do chromium em cache (o caso comum) | ~2–5 min |
+| Cache frio — imagem base nova, builder novo, prune no host | **~13–15 min** |
+
+O cache frio não é causado pelo commit: ele cai sozinho quando o `node:20-alpine`
+é republicado ou quando o host limpa o cache do builder. Quando isso acontece com
+o timeout no padrão de 15 minutos, o build **termina e é morto na exportação** —
+o log mostra tudo verde até `unpacking ... done` e então `CANCELED: context
+canceled`, sem nenhum erro de compilação. O sintoma engana porque parece falha de
+código.
+
+> **Deixe o timeout de build do Easypanel em 30 minutos.** É a única defesa real:
+> o build frio desta imagem leva ~13 min por natureza, e 15 min deixa uma margem
+> de segundos. O `Dockerfile` já faz o que dá do lado dele — o `apk add` do
+> chromium é a primeira instrução do estágio final (nenhum commit o invalida), as
+> dependências de produção saem de um estágio paralelo e o `setcap` divide a
+> camada do `apk` em vez de abrir outra.
+
+Se precisar forçar um build frio para reproduzir, desligue o cache no Easypanel —
+mas conte 15 minutos antes de concluir que alguma coisa quebrou.
+
 ---
 
 Depois de ligar, ainda falta **dar a permissão**: a coluna `usar_whatsapp` nasce
