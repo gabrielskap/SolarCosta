@@ -180,7 +180,6 @@ GOOGLE_MAPS_BROWSER_KEY=CHAVE_DE_BROWSER_RESTRITA_POR_REFERRER
 
 # --------------------------------------------------------------- whatsapp --
 UAZAPI_URL=https://SEU-CONTAINER.uazapi.com
-UAZAPI_URL=https://SEU-CONTAINER.uazapi.com
 WHATSAPP_CRIPTO_KEY=CHAVE_AES_DE_32_BYTES
 ```
 
@@ -263,8 +262,8 @@ primeiro deploy bem-sucedido:
 
 ### Se for usar o WhatsApp
 
-- [ ] `UAZAPI_URL`, `UAZAPI_URL`, `APP_URL` e `WHATSAPP_CRIPTO_KEY` gravadas **juntas** (só uma delas derruba a API na subida)
-- [ ] `WHATSAPP_CRIPTO_KEY` guardada em backup — sem ela o número precisa ser reconectado
+- [ ] `UAZAPI_URL` e `APP_URL` configuradas; token da instância existente cadastrado no banco
+- [ ] Se houver tokens antigos cifrados, preservar `WHATSAPP_CRIPTO_KEY` para leitura
 - [ ] Toggle "Usar WhatsApp" ligado em **Usuários** para quem vai atender
 - [ ] `/sistema/whatsapp` sem o aviso âmbar e com "Conectar número" clicável
 - [ ] QR escaneado e o card mostrando "Conectado" com número e nome de perfil

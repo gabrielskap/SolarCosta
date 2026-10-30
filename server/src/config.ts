@@ -101,7 +101,7 @@ const schema = z.object({
   // no fluxo OAuth2 client_credentials (services/bb/auth.ts). Ao contrário do
   // token da uazapi, não precisam de cifragem no banco: são credenciais
   // estáticas da aplicação, não algo gerado em runtime por instância, e vivem
-  // só aqui, como UAZAPI_URL.
+  // só aqui, na configuração do servidor.
   BB_CLIENT_ID: z.string().min(1).optional(),
   BB_CLIENT_SECRET: z.string().min(1).optional(),
 
@@ -155,7 +155,6 @@ const schema = z.object({
     if (!v.UAZAPI_URL) return;
 
     const faltando: Array<[keyof typeof v, string]> = [
-      ['UAZAPI_URL', 'o endereço do seu container uazapi'],
       ['APP_URL', 'a URL pública, para o webhook e para o link da proposta'],
     ];
 

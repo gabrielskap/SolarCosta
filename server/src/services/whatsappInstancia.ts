@@ -55,7 +55,7 @@ export function exigirToken(linha: LinhaInstancia): string {
   if (!linha.token_cifrado) {
     throw new AppError(
       409,
-      'Nenhum número conectado. Conecte o WhatsApp pelo QR code antes.',
+      'Token da instância não cadastrado no banco. Cadastre o token da instância existente antes de conectar.',
       'whatsapp_nao_conectado',
     );
   }
