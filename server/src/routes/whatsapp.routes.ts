@@ -23,7 +23,6 @@ import { config } from '../config.js';
 import { consultar, consultarUm, emTransacao, type Cliente } from '../db.js';
 import { asyncHandler, AppError, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
-import { decifrar } from '../services/segredos.js';
 import { obterOuCriarLink } from '../services/linksPublicos.js';
 import { gerarPdfDocumento } from '../services/pdfDocumento.js';
 import { telefoneInternacional } from '../utils/telefone.js';
@@ -81,7 +80,7 @@ async function salvarEstado(
     [
       id,
       i.id,
-      i.token || null,
+      null,
       i.status,
       i.numero,
       i.profileName,
@@ -118,12 +117,7 @@ whatsappRouter.get(
 /**
  * Inicia o pareamento e devolve o QR code.
  *
- * Três passos, nesta ordem, e a ordem importa:
- *   1. cria a instância se ainda não existe (é o único momento em que a uazapi
- *      revela o token da instância — perdê-lo aqui obrigaria a recriar tudo);
- *   2. registra o webhook ANTES de conectar, para não existir janela em que o
- *      número já recebe mensagem e nós ainda não sabemos para onde ela vai;
- *   3. pede o QR.
+ * Usa o token já cadastrado no banco, registra o webhook e pede o QR.
  */
 whatsappRouter.post(
   '/instancia/conectar',
@@ -132,22 +126,14 @@ whatsappRouter.post(
     if (!config.whatsappAtivo) {
       throw new AppError(
         503,
-        'Integração com WhatsApp desligada: UAZAPI_ADMIN_TOKEN não configurada no servidor.',
+        'Integração com WhatsApp desligada: UAZAPI_URL não configurada no servidor.',
         'whatsapp_desligado',
       );
     }
 
     const linha = await carregarInstancia();
 
-    // 1. Instância
-    let token: string;
-    if (linha.token_cifrado && linha.instancia_id) {
-      token = decifrar(linha.token_cifrado);
-    } else {
-      const criada = await uazapi.criarInstancia(linha.nome_instancia);
-      token = criada.token!;
-      await emTransacao((cliente) => salvarEstado(cliente, linha.id, criada), ator(req));
-    }
+    const token = exigirToken(linha);
 
     // 2. Webhook
     await uazapi.configurarWebhook(token, urlWebhook(linha.webhook_segredo));

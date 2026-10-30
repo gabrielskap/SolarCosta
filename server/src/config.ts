@@ -77,14 +77,6 @@ const schema = z.object({
   // para testar o fluxo do QR e nada mais — ele apaga a instância em 1 hora.
   UAZAPI_URL: z.string().url('UAZAPI_URL precisa ser uma URL completa.').optional(),
 
-  // Token de ADMINISTRADOR do container (header `admintoken`). Só cria e lista
-  // instâncias; todo o resto usa o token da instância, que nasce do
-  // /instance/create e fica cifrado no banco.
-  //
-  // Este token é raiz: GET /instance/all devolve o token de TODAS as
-  // instâncias do container em texto puro. Nunca exponha por rota nenhuma.
-  UAZAPI_ADMIN_TOKEN: z.string().min(1).optional(),
-
   // Chave que cifra o token da instância em SolarCosta_WhatsAppInstancia
   // (AES-256-GCM, ver services/segredos.ts). Gere com:
   //   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
@@ -109,7 +101,7 @@ const schema = z.object({
   // no fluxo OAuth2 client_credentials (services/bb/auth.ts). Ao contrário do
   // token da uazapi, não precisam de cifragem no banco: são credenciais
   // estáticas da aplicação, não algo gerado em runtime por instância, e vivem
-  // só aqui, como UAZAPI_ADMIN_TOKEN.
+  // só aqui, como UAZAPI_URL.
   BB_CLIENT_ID: z.string().min(1).optional(),
   BB_CLIENT_SECRET: z.string().min(1).optional(),
 
@@ -160,7 +152,7 @@ const schema = z.object({
   // que é o pior lugar possível para descobrir uma variável faltando. Quem
   // não usa a integração não ganha variável obrigatória nenhuma.
   .superRefine((v, ctx) => {
-    if (!v.UAZAPI_ADMIN_TOKEN) return;
+    if (!v.UAZAPI_URL) return;
 
     const faltando: Array<[keyof typeof v, string]> = [
       ['UAZAPI_URL', 'o endereço do seu container uazapi'],
@@ -172,7 +164,7 @@ const schema = z.object({
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [chave],
-          message: `obrigatória quando UAZAPI_ADMIN_TOKEN está definida — ${porque}.`,
+          message: `obrigatória quando UAZAPI_URL está definida — ${porque}.`,
         });
       }
     }
@@ -229,7 +221,7 @@ export const config = {
    * acima garante que, sendo verdadeiro, UAZAPI_URL e
    * APP_URL também estão preenchidas — o resto do código conta com isso.
    */
-  whatsappAtivo: Boolean(parsed.data.UAZAPI_ADMIN_TOKEN),
+  whatsappAtivo: Boolean(parsed.data.UAZAPI_URL),
   /**
    * Falso quando a integração com a API de Cobranças do BB não foi
    * configurada. O superRefine acima garante que, sendo verdadeiro, convênio,

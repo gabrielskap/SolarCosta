@@ -1,4 +1,7 @@
 -- Mantem o nome da coluna por compatibilidade com instalacoes existentes.
 -- Valores legados cifrados continuam legiveis pela API com a chave original.
-COMMENT ON COLUMN "SolarCosta_WhatsAppInstancia".token_cifrado IS
-  'Token da instancia em texto puro. Nome legado mantido por compatibilidade; valores antigos v1 podem permanecer cifrados ate a substituicao do token.';
+-- A mudanca de formato e feita pela API, sem alterar o schema ou os dados.
+-- Nao executar COMMENT ON COLUMN: exige propriedade da tabela e pode impedir
+-- o boot em instalacoes onde a tabela pertence a outro papel.
+-- Mantem a versao para instalacoes que ja registraram a V025.
+SELECT 1;

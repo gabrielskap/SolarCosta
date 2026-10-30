@@ -5,12 +5,7 @@
 // traduzido para AppError antes de sair daqui. Nenhuma rota fala com a uazapi
 // direto — tudo passa por este arquivo.
 //
-// DOIS TOKENS, e confundi-los é o erro fácil:
-//   · `admintoken` (header) — do CONTAINER. Só cria e lista instâncias. É raiz:
-//     GET /instance/all devolve o token de todas as instâncias em texto puro.
-//     Vem do .env e nunca sai daqui.
-//   · `token` (header) — da INSTÂNCIA. Faz todo o resto, inclusive apagar a
-//     própria instância. Nasce do /instance/create e vive cifrado no banco.
+// Usa apenas o token da instância existente no banco. Não cria instâncias.
 //
 // O que esta camada NÃO faz: tocar no banco. Ela traduz HTTP em tipos nossos e
 // para por aí; quem persiste é whatsapp.routes.ts. É o mesmo corte do
@@ -75,22 +70,11 @@ function baseUrl(): string {
   return config.UAZAPI_URL.replace(/\/+$/, '');
 }
 
-function tokenAdmin(): string {
-  if (!config.UAZAPI_ADMIN_TOKEN) {
-    throw new AppError(
-      503,
-      'WhatsApp indisponível: UAZAPI_ADMIN_TOKEN não configurada.',
-      'whatsapp_desligado',
-    );
-  }
-  return config.UAZAPI_ADMIN_TOKEN;
-}
-
 interface OpcoesChamada {
   metodo?: 'GET' | 'POST' | 'DELETE';
   corpo?: unknown;
-  /** Header de autenticação. `admin` usa o token do container. */
-  auth: { tipo: 'admin' } | { tipo: 'instancia'; token: string };
+  /** Autenticação da instância existente. */
+  auth: { tipo: 'instancia'; token: string };
   /** Sobrescreve o TIMEOUT_MS padrão. Só quem sobe arquivo precisa disto. */
   timeoutMs?: number;
 }
@@ -99,8 +83,7 @@ async function chamar<T>(caminho: string, opcoes: OpcoesChamada): Promise<T> {
   const { metodo = 'POST', corpo, auth, timeoutMs = TIMEOUT_MS } = opcoes;
 
   const cabecalhos: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (auth.tipo === 'admin') cabecalhos.admintoken = tokenAdmin();
-  else cabecalhos.token = auth.token;
+  cabecalhos.token = auth.token;
 
   let resposta: Response;
   try {
@@ -154,7 +137,7 @@ function traduzirErro(resposta: Response, corpo: string): AppError {
     case 403:
       return new AppError(
         502,
-        'O servidor de WhatsApp recusou nossas credenciais. Confira UAZAPI_ADMIN_TOKEN, ou reconecte o número.',
+        'O servidor de WhatsApp recusou nossas credenciais. Confira o token da instância cadastrado no banco.',
         'whatsapp_credencial_recusada',
       );
 
@@ -269,28 +252,6 @@ function normalizar(r: RespostaInstancia): InstanciaUazapi {
 }
 
 /* ========================================================= INSTÂNCIA == */
-
-/**
- * Cria a instância no container. Devolve o token que ela usará daqui para a
- * frente — é a ÚNICA vez que ele aparece, então quem chama tem que persistir.
- */
-export async function criarInstancia(nome: string): Promise<InstanciaUazapi> {
-  const r = await chamar<RespostaInstancia>('/instance/create', {
-    auth: { tipo: 'admin' },
-    corpo: { name: nome },
-  });
-
-  const instancia = normalizar(r);
-  if (!instancia.token) {
-    console.error('[uazapi] /instance/create não devolveu token', JSON.stringify(r).slice(0, 300));
-    throw new AppError(
-      502,
-      'O servidor de WhatsApp criou a instância mas não devolveu o token de acesso.',
-      'whatsapp_sem_token',
-    );
-  }
-  return instancia;
-}
 
 /**
  * Inicia o pareamento e devolve o QR code.

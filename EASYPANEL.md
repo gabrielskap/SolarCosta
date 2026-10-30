@@ -64,28 +64,10 @@ Vazias, a API sobe normalmente e só o WhatsApp fica desligado: a tela
 `/sistema/whatsapp` mostra "Integração desligada no servidor" e o botão de
 conectar fica inerte. O resto do sistema funciona igual.
 
-> **CUIDADO: preencher só uma delas IMPEDE A API DE SUBIR.** O `superRefine` de
-> [server/src/config.ts](server/src/config.ts) torna as outras três obrigatórias
-> assim que `UAZAPI_ADMIN_TOKEN` existe, e configuração inválida derruba o
-> processo na inicialização — de propósito. Ligar a integração pela metade daria
-> erro no meio de um envio, que é o pior lugar possível para descobrir uma
-> variável faltando. **Grave as quatro na mesma gravação.**
-
-| Variável | Exemplo | Observação |
-|---|---|---|
-| `UAZAPI_ADMIN_TOKEN` | — | Token de **administrador do container** uazapi (header `admintoken`). É a variável que liga a integração. **É raiz**: `GET /instance/all` devolve o token de todas as instâncias do container em texto puro. Ele nunca sai de `server/src/services/uazapi.ts`. |
-| `UAZAPI_URL` | `https://SEU-CONTAINER.uazapi.com` | Host do **seu** container uazapi, **sem barra final**. O `free.uazapi.com` serve para testar o fluxo do QR e nada mais — ele apaga a instância depois de 1 hora. |
-| `APP_URL` | `https://crm.solarcosta.com.br` | URL pública, com protocolo e **sem barra final**. Duas coisas dependem dela e nenhuma consegue adivinhá-la a partir de um request: o endereço do webhook que registramos na uazapi, e o link público da proposta que vai para o cliente. |
-| `WHATSAPP_CRIPTO_KEY` | — | Chave AES-256-GCM que cifra o token da instância no banco. Gere com `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
-
-> **Guarde a `WHATSAPP_CRIPTO_KEY` no mesmo lugar onde guarda as senhas do
-> banco.** O token da instância nasce do `POST /instance/create` — disparado pelo
-> clique em "Conectar número" — e vive cifrado com esta chave. Perder a chave
-> torna o token indecifrável, e a única saída é reconectar o número pelo QR.
->
-> Ela é separada do `JWT_SECRET` de propósito: rotacionar o segredo do JWT é
-> operação de rotina e só derruba as sessões. Se ele também cifrasse este token,
-> a mesma troca desconectaria o WhatsApp da empresa sem aviso.
+Configure `UAZAPI_URL` (host da uazapi) e `APP_URL` (URL pública do CRM) juntas.
+A integração usa o token da instância existente cadastrado no banco.
+Não cria instâncias e não requer token administrativo ou token no `.env`.
+`WHATSAPP_CRIPTO_KEY` é opcional, apenas para ler tokens antigos cifrados.
 
 ### PDF da proposta — Chromium no container
 
@@ -198,7 +180,7 @@ GOOGLE_MAPS_BROWSER_KEY=CHAVE_DE_BROWSER_RESTRITA_POR_REFERRER
 
 # --------------------------------------------------------------- whatsapp --
 UAZAPI_URL=https://SEU-CONTAINER.uazapi.com
-UAZAPI_ADMIN_TOKEN=ADMINTOKEN_DO_CONTAINER
+UAZAPI_URL=https://SEU-CONTAINER.uazapi.com
 WHATSAPP_CRIPTO_KEY=CHAVE_AES_DE_32_BYTES
 ```
 
@@ -281,7 +263,7 @@ primeiro deploy bem-sucedido:
 
 ### Se for usar o WhatsApp
 
-- [ ] `UAZAPI_ADMIN_TOKEN`, `UAZAPI_URL`, `APP_URL` e `WHATSAPP_CRIPTO_KEY` gravadas **juntas** (só uma delas derruba a API na subida)
+- [ ] `UAZAPI_URL`, `UAZAPI_URL`, `APP_URL` e `WHATSAPP_CRIPTO_KEY` gravadas **juntas** (só uma delas derruba a API na subida)
 - [ ] `WHATSAPP_CRIPTO_KEY` guardada em backup — sem ela o número precisa ser reconectado
 - [ ] Toggle "Usar WhatsApp" ligado em **Usuários** para quem vai atender
 - [ ] `/sistema/whatsapp` sem o aviso âmbar e com "Conectar número" clicável

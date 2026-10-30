@@ -216,7 +216,7 @@ export const WhatsAppView: React.FC<Props> = ({
           <div className="text-sm">
             <p className="font-bold text-amber-900">Integração desligada no servidor</p>
             <p className="text-amber-800 mt-1">
-              Falta configurar <code className="font-mono text-xs">UAZAPI_ADMIN_TOKEN</code> no
+              Falta configurar <code className="font-mono text-xs">UAZAPI_URL</code> no
               ambiente da API. Enquanto isso, o botão de conectar não tem o que chamar.
             </p>
           </div>

@@ -28,7 +28,7 @@ export interface InstanciaWhatsApp {
 
 export interface EstadoWhatsApp {
   instancia: InstanciaWhatsApp;
-  /** Falso quando o servidor está sem UAZAPI_ADMIN_TOKEN. */
+  /** Falso quando o servidor está sem UAZAPI_URL. */
   ativo: boolean;
 }
 
