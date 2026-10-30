@@ -23,7 +23,7 @@ import { config } from '../config.js';
 import { consultar, consultarUm, emTransacao, type Cliente } from '../db.js';
 import { asyncHandler, AppError, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
-import { cifrar, decifrar } from '../services/segredos.js';
+import { decifrar } from '../services/segredos.js';
 import { obterOuCriarLink } from '../services/linksPublicos.js';
 import { gerarPdfDocumento } from '../services/pdfDocumento.js';
 import { telefoneInternacional } from '../utils/telefone.js';
@@ -81,7 +81,7 @@ async function salvarEstado(
     [
       id,
       i.id,
-      i.token ? cifrar(i.token) : null,
+      i.token || null,
       i.status,
       i.numero,
       i.profileName,

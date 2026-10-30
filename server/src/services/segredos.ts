@@ -87,6 +87,8 @@ export function cifrar(texto: string): string {
  * virar "erro interno" no console.
  */
 export function decifrar(valor: string): string {
+  // Novos tokens sao armazenados em texto puro. Mantem leitura dos antigos.
+  if (!valor.startsWith(`${PREFIXO_VERSAO}.`)) return valor;
   const partes = valor.split('.');
   if (partes.length !== 4 || partes[0] !== PREFIXO_VERSAO) {
     throw new AppError(

@@ -164,7 +164,6 @@ const schema = z.object({
 
     const faltando: Array<[keyof typeof v, string]> = [
       ['UAZAPI_URL', 'o endereço do seu container uazapi'],
-      ['WHATSAPP_CRIPTO_KEY', 'a chave que cifra o token da instância no banco'],
       ['APP_URL', 'a URL pública, para o webhook e para o link da proposta'],
     ];
 
@@ -227,7 +226,7 @@ export const config = {
   googleMapsBrowserAtivo: Boolean(parsed.data.GOOGLE_MAPS_BROWSER_KEY),
   /**
    * Falso quando a integração com a uazapi não foi configurada. O superRefine
-   * acima garante que, sendo verdadeiro, UAZAPI_URL, WHATSAPP_CRIPTO_KEY e
+   * acima garante que, sendo verdadeiro, UAZAPI_URL e
    * APP_URL também estão preenchidas — o resto do código conta com isso.
    */
   whatsappAtivo: Boolean(parsed.data.UAZAPI_ADMIN_TOKEN),
