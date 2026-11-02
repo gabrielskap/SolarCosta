@@ -1,0 +1,36 @@
+-- Execute após V029__aparelhos.sql. Reexecuções preservam cadastros existentes.
+BEGIN;
+INSERT INTO "SolarCosta_Aparelhos" (ambiente, nome, potencia_w) VALUES
+('Sala de estar', 'TV LED 55"', 120),
+('Sala de estar', 'Home Theater', 150),
+('Sala de estar', 'Video Game', 200),
+('Sala de estar', 'Caixa de Som Bluetooth', 60),
+('Sala de estar', 'Abajur LED', 10),
+('Sala de estar', 'Carregador Celular', 20),
+('Sala de estar', 'Ventilador Pedestal', 80),
+('Sala de estar', 'Frigobar', 100),
+('Cozinha', 'Geladeira Frost Free', 150),
+('Cozinha', 'Microondas', 1200),
+('Cozinha', 'Air Fryer', 1500),
+('Cozinha', 'Liquidificador', 500),
+('Cozinha', 'Cafeteira Elétrica', 800),
+('Cozinha', 'Batedeira', 400),
+('Cozinha', 'Sanduicheira', 700),
+('Cozinha', 'Purificador de Água Elétrico', 120),
+('Escritório', 'Notebook', 65),
+('Escritório', 'Desktop (CPU)', 300),
+('Escritório', 'Monitor 24"', 30),
+('Escritório', 'Impressora', 50),
+('Escritório', 'Roteador Wi-Fi', 15),
+('Escritório', 'Modem/ ONU Fibra', 15),
+('Escritório', 'Luminária', 10),
+('Escritório', 'Ring light', 25),
+('Quarto', 'Chapinha', 1200),
+('Quarto', 'Secador', 1800),
+('Quarto', 'Ar Condicionado 9000 BTU', 1000),
+('Quarto', 'Ar Condicionado 12000 BTU', 1200),
+('Quarto', 'Ar Condicionado 18000 BTU', 1600),
+('Quarto', 'Ar Condicionado 24000 BTU', 2000),
+('Quarto', 'Aquecedor', 1500)
+ON CONFLICT (ambiente, nome) DO NOTHING;
+COMMIT;

@@ -11,6 +11,7 @@ import {
 type TipoDocumentoPDF = 'proposta' | 'contrato' | 'procuracao' | 'boleto';
 import { Sidebar } from './components/Sidebar';
 import { PlacasView } from './components/PlacasView';
+import { AparelhosView } from './components/AparelhosView';
 import { TrocaSenhaObrigatoria } from './components/TrocaSenhaObrigatoria';
 import { LoginView } from './components/LoginView';
 import { NotificationCenter } from './components/NotificationCenter';
@@ -1077,6 +1078,7 @@ export default function App() {
 
                 <Route
                   path="parametros/placas" element={<PlacasView />} />
+                <Route path="parametros/aparelhos" element={<AparelhosView />} />
                 <Route
                   path="parametros/produtos"
                   element={

@@ -62,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { to: '/sistema/parametros/produtos', label: 'Produtos', icon: Package },
     { to: '/sistema/parametros/kits', label: 'Kits', icon: Boxes },
     { to: '/sistema/parametros/placas', label: 'Placas', icon: Sun },
+    { to: '/sistema/parametros/aparelhos', label: 'Aparelhos', icon: SlidersHorizontal },
   ];
 
   /** Item sem `permissao` vale para todo mundo. */

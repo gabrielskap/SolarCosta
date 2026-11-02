@@ -6,6 +6,15 @@ com outros sistemas no mesmo banco (ex.: `Recanto_*`).
 Como os identificadores têm maiúsculas, o PostgreSQL exige **aspas duplas**
 em toda referência: `SELECT * FROM "SolarCosta_Leads";`
 
+## Cadastro de aparelhos
+
+O menu **Parâmetros → Aparelhos** permite cadastrar, consultar, editar e excluir
+aparelhos com ambiente e potência em watts. A API exige sessão autenticada.
+Primeiro aplique `migrations/V029__aparelhos.sql` (também aplicada pelo deploy).
+Depois execute manualmente `seeds/S003__aparelhos.sql` para inserir em massa os
+31 aparelhos da referência. O seed usa `ON CONFLICT (ambiente, nome) DO NOTHING`:
+reexecutar não duplica os aparelhos nem sobrescreve valores já cadastrados.
+
 ## Ordem de execução no DBeaver
 
 Abra cada arquivo, confirme que está conectado ao banco certo e execute o script
