@@ -2,11 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listarAparelhos, type Aparelho } from '../services/aparelhos';
 import { abrirSimulacaoOffGrid, listarSimulacoesOffGrid, salvarSimulacaoOffGrid, type DadosOffGrid, type ResumoOffGrid } from '../services/offGrid';
-import { http, ErroApi } from '../services/http';
+import { ErroApi } from '../services/http';
+import { LeadAutocomplete } from './LeadAutocomplete';
 import { cargasOffGridPadrao, configOffGridPadrao, dimensionarSistema, type ConfigOffGrid } from '../utils/offGrid';
 
 const novo = (): DadosOffGrid => ({ titulo: '', leadId: null, cliente: {nome:'',empresa:'',cnpj:'',telefone:'',email:''}, equipamentos: cargasOffGridPadrao().map(c => ({...c,tensaoV:220})), config: {...configOffGridPadrao} });
-interface LeadOpcao { id: string; numero: string; nome: string; cpf_cnpj?: string; telefone?: string; email?: string }
 const erroTexto = (e: unknown) => e instanceof ErroApi ? e.mensagemCompleta : e instanceof Error ? e.message : 'Não foi possível concluir a operação.';
 const numero = (v: number, casas = 2) => v.toLocaleString('pt-BR', {maximumFractionDigits:casas});
 const campo = 'w-full border border-slate-300 rounded-lg px-3 py-2 bg-white';
@@ -25,28 +25,17 @@ export function OffGridView({podeSalvar=true}:{podeSalvar?:boolean}) {
   const [selecionado,setSelecionado] = useState('');
   const [buscaAparelho,setBuscaAparelho] = useState('');
   const [simulacoes,setSimulacoes] = useState<ResumoOffGrid[]>([]);
-  const [abrirId,setAbrirId] = useState('');
-  const [buscaLead,setBuscaLead] = useState('');
-  const [leads,setLeads] = useState<LeadOpcao[]>([]);
-  const [leadErro,setLeadErro] = useState('');
+  const [editando,setEditando] = useState(false);
+  const [carregandoLista,setCarregandoLista] = useState(true);
   const [ocupado,setOcupado] = useState(false);
   const [erro,setErro] = useState('');
   const [aviso,setAviso] = useState('');
   const [alterado,setAlterado] = useState(false);
-  const [restaurar,setRestaurar] = useState(false);
   const atualizar = (patch:Partial<DadosOffGrid>) => {setDados(d => ({...d,...patch}));setAlterado(true);setAviso('');};
   useEffect(() => {
     listarAparelhos().then(setCatalogo).catch(e => setCatalogoErro(erroTexto(e))).finally(() => setCarregandoCatalogo(false));
-    listarSimulacoesOffGrid().then(setSimulacoes).catch(e => setErro(erroTexto(e)));
+    listarSimulacoesOffGrid().then(setSimulacoes).catch(e => setErro(erroTexto(e))).finally(()=>setCarregandoLista(false));
   },[]);
-  useEffect(() => {
-    let ativo = true;
-    const timer = setTimeout(() => {
-      http.get<{leads:LeadOpcao[]}>(`/api/leads?tamanho=50${buscaLead.trim() ? `&busca=${encodeURIComponent(buscaLead.trim())}` : ''}`)
-        .then(r => {if(ativo){setLeads(r.leads);setLeadErro('');}}).catch(e => {if(ativo)setLeadErro(erroTexto(e));});
-    },300);
-    return () => {ativo=false;clearTimeout(timer);};
-  },[buscaLead]);
   let resultado:ReturnType<typeof dimensionarSistema>|undefined;
   let erroCalculo='';
   try {resultado=dimensionarSistema(dados.equipamentos,dados.config);}
@@ -64,31 +53,35 @@ export function OffGridView({podeSalvar=true}:{podeSalvar?:boolean}) {
     <div><h1 className="text-2xl font-bold text-slate-900">Dimensionamento OFF-Grid</h1><p className="text-slate-500">Levantamento de cargas, banco de baterias e módulos fotovoltaicos.</p></div>
     {erro && <p role="alert" className="bg-red-50 text-red-700 p-3 rounded-lg">{erro}</p>}
     {aviso && <p role="status" className="bg-green-50 text-green-800 p-3 rounded-lg">{aviso}</p>}
-    <div className="bg-white border rounded-xl p-5 space-y-3">
-      <div className="flex flex-wrap gap-3"><select aria-label="Simulação salva" className={campo+' flex-1 min-w-48'} value={abrirId} onChange={e=>setAbrirId(e.target.value)}><option value="">Selecione uma simulação salva</option>{simulacoes.map(s=><option key={s.id} value={s.id}>{s.titulo} · {new Date(s.atualizadoEm).toLocaleDateString('pt-BR')}</option>)}</select>
-        <button className={botao} disabled={!abrirId||ocupado} onClick={async()=>{
-          if(alterado&&!window.confirm('Abrir esta simulação e descartar as alterações não salvas?'))return;
-          setOcupado(true);setErro('');try {const s=await abrirSimulacaoOffGrid(abrirId);setDados(s.dados);setId(s.id);setAlterado(false);setAviso('Simulação carregada.');}catch(e){setErro(erroTexto(e));}finally{setOcupado(false);}
-        }}>Abrir simulação</button>
-        <button className="border rounded-lg px-4 py-2" disabled={ocupado} onClick={()=>{if(alterado&&!window.confirm('Descartar as alterações e iniciar outra simulação?'))return;setDados(novo());setId(undefined);setAbrirId('');setAlterado(false);setAviso('');setErro('');}}>Nova simulação</button>
-      </div>
-      <p className="text-xs text-slate-500">{id?'Editando simulação salva.':'Nova simulação.'} {alterado?'Há alterações não salvas.':''}</p>
-    </div>
+    {!editando ? <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold">Simulações cadastradas</h2><button className={botao} disabled={ocupado||!podeSalvar} onClick={()=>{setDados(novo());setId(undefined);setAlterado(false);setAviso('');setErro('');setEditando(true);}}>Criar novo</button></div>
+      <div className="bg-white border rounded-xl overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50"><tr><th className="p-4">Simulação</th><th className="p-4">Última atualização</th><th className="p-4">Ações</th></tr></thead><tbody>
+        {simulacoes.map(s=><tr key={s.id} className="border-t"><td className="p-4 font-medium">{s.titulo}</td><td className="p-4">{new Date(s.atualizadoEm).toLocaleString('pt-BR')}</td><td className="p-4"><button className="text-sky-800 underline" disabled={ocupado} onClick={async()=>{
+          setOcupado(true);setErro('');try{const simulacao=await abrirSimulacaoOffGrid(s.id);setDados(simulacao.dados);setId(simulacao.id);setAlterado(false);setAviso('');setEditando(true);}catch(e){setErro(erroTexto(e));}finally{setOcupado(false);}
+        }}>Abrir simulação</button></td></tr>)}
+        {!simulacoes.length&&<tr><td colSpan={3} className="p-6 text-slate-500">{carregandoLista?'Carregando simulações…':erro?'Não foi possível carregar as simulações.':'Nenhuma simulação cadastrada. Clique em Criar novo para começar.'}</td></tr>}
+      </tbody></table></div>
+    </section> : <>
+    <div className="flex flex-wrap justify-between gap-3"><button className="text-sky-800 underline" disabled={ocupado} onClick={()=>{if(alterado&&!window.confirm('Voltar à listagem e descartar as alterações não salvas?'))return;setEditando(false);setErro('');setAviso('');}}>Voltar para simulações</button><p className="text-sm text-slate-500">{id?'Editar simulação':'Nova simulação'}{alterado?' · Alterações não salvas':''}</p></div>
     <form className="space-y-6" onSubmit={async e=>{
       e.preventDefault();if(!resultado||ocupado)return;setOcupado(true);setErro('');setAviso('');
-      try{const s=await salvarSimulacaoOffGrid(dados,id);setId(s.id);setAlterado(false);setAviso('Simulação salva com sucesso.');setSimulacoes(await listarSimulacoesOffGrid());}
+      try{const s=await salvarSimulacaoOffGrid(dados,id);setId(s.id);setAlterado(false);setAviso('Simulação salva com sucesso.');setSimulacoes(lista=>[s,...lista.filter(item=>item.id!==s.id)]);setEditando(false);}
       catch(e){setErro(erroTexto(e));}finally{setOcupado(false);}
     }}>
       <fieldset disabled={ocupado} className="space-y-6">
+        <section className="bg-white border rounded-xl p-3 space-y-2">
+          <h2 className="font-bold text-sm text-slate-900">Resultados calculados</h2>
+          {erroCalculo&&<p role="alert" className="bg-amber-50 text-amber-900 rounded-lg p-2 text-sm">{erroCalculo}</p>}
+          <dl className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2" aria-live="polite">{metricas.map(([label,value])=><div key={label} className="bg-slate-50 rounded-lg px-3 py-2"><dt className="text-xs text-slate-500">{label}</dt><dd className="text-base font-bold text-[#004276]">{value}</dd></div>)}</dl>
+          {resultado?.consultarFabricante&&<p role="alert" className="bg-amber-100 text-amber-900 p-2 rounded-lg text-sm font-bold">Consultar Powersafe — quantidade calculada superior a 10 baterias.</p>}
+        </section>
         <section className="bg-white border rounded-xl p-5 space-y-4">
           <h2 className="font-bold text-lg">1. Dados do instalador/cliente</h2>
           <label className="block">Título da simulação<input required maxLength={200} className={campo} value={dados.titulo} onChange={e=>atualizar({titulo:e.target.value})}/></label>
           <div className="grid md:grid-cols-2 gap-4">
-            <label>Buscar lead<input type="search" className={campo} value={buscaLead} onChange={e=>setBuscaLead(e.target.value)} placeholder="Nome, CPF/CNPJ ou número"/></label>
-            <label>Lead vinculado<select className={campo} value={dados.leadId??''} onChange={e=>{
-              const lead=leads.find(l=>l.id===e.target.value);atualizar({leadId:lead?.id??null,...(lead?{cliente:{...dados.cliente,nome:lead.nome,cnpj:lead.cpf_cnpj??'',telefone:lead.telefone??'',email:lead.email??''}}:{})});
-            }}><option value="">Sem vínculo com lead</option>{dados.leadId&&!leads.some(l=>l.id===dados.leadId)&&<option value={dados.leadId}>{dados.cliente.nome} · Lead vinculado</option>}{leads.map(l=><option key={l.id} value={l.id}>{l.numero} · {l.nome}</option>)}</select></label>
-            {leadErro&&<p role="alert" className="text-red-700">{leadErro}</p>}
+            <LeadAutocomplete leadId={dados.leadId} nome={dados.cliente.nome} onChange={lead=>{
+              atualizar({leadId:lead?.id??null,...(lead?{cliente:{...dados.cliente,nome:lead.nome,cnpj:lead.cpf_cnpj??'',telefone:lead.telefone??'',email:lead.email??''}}:{})});
+            }}/>
             {([['nome','Nome e sobrenome',200],['empresa','Empresa',200],['cnpj','CPF/CNPJ',20],['telefone','Telefone',30],['email','E-mail',200]] as const).map(([key,label,max])=><label key={key}>{label}<input required={key==='nome'} type={key==='email'?'email':'text'} maxLength={max} className={campo} value={dados.cliente[key]} onChange={e=>atualizar({cliente:{...dados.cliente,[key]:e.target.value}})}/></label>)}
           </div>
           <p className="text-xs text-slate-500">Os dados de identificação são salvos na simulação. Alterações aqui não alteram o cadastro do lead.</p>
@@ -111,17 +104,12 @@ export function OffGridView({podeSalvar=true}:{podeSalvar?:boolean}) {
           {!dados.equipamentos.length&&<p>Adicione equipamentos para iniciar o levantamento.</p>}
         </section>
         <div className="grid xl:grid-cols-2 gap-6">{grupos.map(g=><section key={g.titulo} className="bg-white border rounded-xl p-5 space-y-4"><h2 className="font-bold text-lg">{g.titulo}</h2><div className="grid sm:grid-cols-2 gap-4">{g.campos.map(([key,label,min,max])=><label key={key}>{label}<input type="number" required min={min} max={max} step="any" className={campo} value={Number.isFinite(dados.config[key])?dados.config[key]:''} onChange={e=>atualizar({config:{...dados.config,[key]:e.target.valueAsNumber}})}/></label>)}</div></section>)}</div>
-        <section className="space-y-4"><h2 className="font-bold text-lg">Resultados calculados</h2>
-          {erroCalculo&&<p role="alert" className="bg-amber-50 text-amber-900 rounded-lg p-4">{erroCalculo}</p>}
-          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3" aria-live="polite">{metricas.map(([label,value])=><div key={label} className="bg-white border rounded-xl p-4"><p className="text-sm text-slate-500">{label}</p><p className="text-2xl font-bold text-[#004276]">{value}</p></div>)}</div>
-          {resultado?.consultarFabricante&&<p role="alert" className="bg-amber-100 text-amber-900 p-4 rounded-lg font-bold">Consultar Powersafe — quantidade calculada superior a 10 baterias.</p>}
           <p className="text-sm text-slate-500">Dimensionamento simplificado da planilha, com mínimo de uma bateria. A margem de 30% do inversor é uma recomendação; avalie também os picos de partida. As fórmulas não verificam autonomia adicional, temperatura, compatibilidade do inversor, limites do MPPT ou ligações série/paralelo. O fator dias multiplica a geração por módulo e não representa autonomia do banco.</p>
-        </section>
-        <div className="flex flex-wrap gap-3"><button disabled={!podeSalvar||!resultado||!dados.equipamentos.length} className={botao}>{id?'Salvar alterações':'Salvar simulação'}</button><button type="button" className="border rounded-lg px-4 py-2" onClick={()=>setRestaurar(true)}>Restaurar valores da planilha</button></div>
+        <div className="flex flex-wrap gap-3"><button disabled={!podeSalvar||!resultado||!dados.equipamentos.length} className={botao}>{id?'Salvar alterações':'Salvar simulação'}</button></div>
         {!podeSalvar&&<p className="text-sm text-slate-500">É necessária a permissão de emitir propostas para salvar simulações.</p>}
-        {restaurar&&<div className="bg-amber-50 border rounded-xl p-4 space-y-3"><p>Restaurar as cargas e os parâmetros originais da planilha? Os dados do cliente e o vínculo com o lead serão mantidos.</p><button type="button" className={botao} onClick={()=>{atualizar({equipamentos:novo().equipamentos,config:{...configOffGridPadrao}});setRestaurar(false);}}>Confirmar restauração</button><button type="button" className="ml-4" onClick={()=>setRestaurar(false)}>Cancelar</button></div>}
       </fieldset>
     </form>
+    </>}
     {ocupado&&<p role="status">Processando simulação…</p>}
   </div>;
 }
