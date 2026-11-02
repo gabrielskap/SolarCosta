@@ -1,3 +1,4 @@
+import { calcularParcela } from '../../server/src/domain/propostaSolar';
 // Dimensionamento fotovoltaico e projeção de economia.
 //
 // Estas contas nasceram inline no ProposalCalculatorView. Foram extraídas para
@@ -177,17 +178,7 @@ export function parcelaFinanciamento({
   jurosMesPct,
   parcelas,
 }: EntradaParcela): number {
-  // Sem prazo não há prestação. A versão inline que isto substituiu dividia
-  // por `parcelas` direto e devolvia Infinity quando o campo ficava em branco.
-  if (!(parcelas > 0) || !(valorFinanciado > 0)) return 0;
-
-  const i = jurosMesPct / 100;
-  // Juros zero não é caso degenerado: é o "financiamento" sem juros que
-  // algumas campanhas oferecem — e na fórmula de Price daria 0/0.
-  if (i <= 0) return Number((valorFinanciado / parcelas).toFixed(2));
-
-  const fator = Math.pow(1 + i, parcelas);
-  return Number(((valorFinanciado * (i * fator)) / (fator - 1)).toFixed(2));
+  return calcularParcela(valorFinanciado, jurosMesPct, parcelas);
 }
 
 /**

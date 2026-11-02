@@ -10,9 +10,11 @@ import {
   buildCidadeUf,
   type EnderecoViaCEP,
 } from '../services/cep';
-import { paramNum, type ConfigApp } from '../services/api';
+import { Api, paramNum, type ConfigApp } from '../services/api';
 import { slugDoTipoProduto } from '../services/mappers';
-import { dimensionar, projetarEconomia, parcelaFinanciamento } from '../utils/solar';
+import { parcelaFinanciamento } from '../utils/solar';
+import { calcularProposta, entradaSolarZerada, type EntradaSolar } from '../../server/src/domain/propostaSolar';
+import { PropostaPremissas } from './PropostaPremissas';
 import { LevantamentoManual } from './mapa/LevantamentoManual';
 import { PreviaLevantamento } from './mapa/PreviaLevantamento';
 import { areaSuperficie, type LevantamentoTelhado } from '../utils/levantamentoTelhado';
@@ -236,11 +238,25 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // Parâmetros de dimensionamento — vêm de SolarCosta_Parametros.
   // Os números abaixo do `??` são só rede de segurança para o caso de a
   // configuração ainda não ter chegado; a fonte da verdade é o banco.
-  const [consumoKwh, setConsumoKwh] = useState(propostaExistente?.consumoKwh ?? linkedLead?.consumoKwh ?? 0);
-  const [tarifaKwh, setTarifaKwh] = useState(() => propostaExistente?.tarifaKwh ?? paramNum(config, 'proposta.tarifa_kwh_padrao', 1.19));
-  const [hsp, setHsp] = useState(() => propostaExistente?.hsp ?? paramNum(config, 'proposta.hsp_padrao', 5.2));
-  const [perdasPct, setPerdasPct] = useState(() => propostaExistente?.perdasPct ?? paramNum(config, 'proposta.perdas_pct_padrao', 24.5));
-  const [moduloWp, setModuloWp] = useState(() => propostaExistente?.moduloWp ?? paramNum(config, 'proposta.modulo_wp_padrao', 710));
+  const [consumoKwh, setConsumoKwh] = useState(propostaExistente?.consumoKwh ?? 0);
+  const [tarifaKwh, setTarifaKwh] = useState(() => propostaExistente?.tarifaKwh ?? 0);
+  const [hsp, setHsp] = useState(() => propostaExistente?.hsp ?? 0);
+  const [perdasPct, setPerdasPct] = useState(() => propostaExistente?.perdasPct ?? 0);
+  const [moduloWp, setModuloWp] = useState(() => propostaExistente?.moduloWp ?? 0);
+
+  const legado = !!propostaExistente && !propostaExistente.calculoSolar;
+  const [revisaoConfirmada, setRevisaoConfirmada] = useState(false);
+  const [entradaSolar, setEntradaSolar] = useState<EntradaSolar>(() => propostaExistente?.calculoSolar?.entradas ?? {
+    ...entradaSolarZerada(),
+    ...(propostaExistente ? {ucs:[{nome:'UC 1',meses:Array(12).fill(propostaExistente.consumoKwh),adicionalKwh:0,disponibilidadeKwh:0}],hspMensal:Array(12).fill(propostaExistente.hsp)} : {}),
+  });
+  const atualizarEntradaSolar = (e: EntradaSolar) => {
+    setEntradaSolar(e);
+    setConsumoKwh(e.ucs.reduce((s,u)=>s+u.meses.reduce((a,b)=>a+b,0)/12,0));
+    setHsp(e.hspMensal.reduce((a,b)=>a+b,0)/12);
+    setModuloWp(e.moduloWp); setPerdasPct(e.perdasPct);
+    if(legado) setRevisaoConfirmada(false);
+  };
 
   // Despesas fixas da conta — o que o cliente continua pagando mesmo gerando a
   // própria energia, e que a folha de despesas mensais do PDF imprime.
@@ -262,80 +278,37 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
   // Payment Options
   const [formaPagamento, setFormaPagamento] = useState<'avista' | 'cartao' | 'financiamento'>(propostaExistente?.formaPagamento ?? 'avista');
-  const [descontoAvistaPct, setDescontoAvistaPct] = useState(() => propostaExistente?.descontoAvistaPct ?? paramNum(config, 'proposta.desconto_avista_pct', 7));
-  const [parcelasCartao, setParcelasCartao] = useState(() => propostaExistente?.parcelasCartao ?? paramNum(config, 'proposta.parcelas_cartao_padrao', 12));
-  const [taxaCartaoPct, setTaxaCartaoPct] = useState(() => propostaExistente?.taxaCartaoPct ?? paramNum(config, 'proposta.taxa_cartao_pct', 4.5));
+  const [descontoAvistaPct, setDescontoAvistaPct] = useState(() => propostaExistente?.descontoAvistaPct ?? 0);
+  const [parcelasCartao, setParcelasCartao] = useState(() => propostaExistente?.parcelasCartao ?? 0);
+  const [taxaCartaoPct, setTaxaCartaoPct] = useState(() => propostaExistente?.taxaCartaoPct ?? 0);
 
-  const [entradaFinanciamentoPct, setEntradaFinanciamentoPct] = useState(() => propostaExistente?.entradaFinanciamentoPct ?? paramNum(config, 'financiamento.entrada_pct_padrao', 10));
-  const [parcelasFinanciamento, setParcelasFinanciamento] = useState(() => propostaExistente?.parcelasFinanciamento ?? paramNum(config, 'financiamento.parcelas_padrao', 60));
-  const [jurosFinanciamentoMesPct, setJurosFinanciamentoMesPct] = useState(() => propostaExistente?.jurosFinanciamentoMesPct ?? paramNum(config, 'financiamento.juros_mes_pct', 1.45));
+  const [entradaFinanciamentoPct, setEntradaFinanciamentoPct] = useState(() => propostaExistente?.entradaFinanciamentoPct ?? 0);
+  const [parcelasFinanciamento, setParcelasFinanciamento] = useState(() => propostaExistente?.parcelasFinanciamento ?? 0);
+  const [jurosFinanciamentoMesPct, setJurosFinanciamentoMesPct] = useState(() => propostaExistente?.jurosFinanciamentoMesPct ?? 0);
   const [bancoFinanciamento, setBancoFinanciamento] = useState(propostaExistente?.bancoFinanciamento ?? '');
 
   // Observações da proposta: em branco. Os textos prontos ficam em
   // SolarCosta_ObservacaoPresets e são inseridos com um clique.
   const [observacoes, setObservacoes] = useState<string>(propostaExistente?.observacoes ?? '');
 
-  /*
-   * Responsável técnico impresso na folha de equipamentos (V017).
-   *
-   * Nasce vazio e é semeado pelo cadastro da empresa no efeito abaixo, junto
-   * dos outros padrões — `config` só chega depois da carga inicial. Retomando
-   * um rascunho vale o que foi GRAVADO, inclusive o vazio: proposta anterior à
-   * V017 não tem responsável próprio e tem que continuar imprimindo o da
-   * empresa, não o que o cadastro mostrar no dia em que for reaberta.
-   */
-  const [responsavelTecnico, setResponsavelTecnico] = useState(
-    propostaExistente?.responsavelTecnico ?? '',
-  );
+  const [usuariosTecnicos, setUsuariosTecnicos] = useState<User[]>([]);
+  const [erroUsuarios, setErroUsuarios] = useState(false);
+  const [responsavelTecnicoId, setResponsavelTecnicoId] = useState(propostaExistente?.responsavelTecnicoId ?? '');
+  const [responsavelTecnico, setResponsavelTecnico] = useState(propostaExistente?.responsavelTecnico ?? '');
   const [crea, setCrea] = useState(propostaExistente?.crea ?? '');
-
-  // A configuração chega uma vez, depois da carga inicial. Quando chega, os
-  // defaults numéricos se ajustam ao que está cadastrado no banco.
-  //
-  // Retomando um rascunho isto não roda: os valores da proposta já foram
-  // negociados com o cliente, e um parâmetro global alterado no meio do
-  // caminho não pode reescrever o desconto que ele viu.
+  const [conselhoProfissional, setConselhoProfissional] = useState<'CREA' | 'CRT'>(propostaExistente?.conselhoProfissional ?? 'CREA');
   useEffect(() => {
-    if (!config || editando) return;
-    setTarifaKwh(paramNum(config, 'proposta.tarifa_kwh_padrao', 1.19));
-    setHsp(paramNum(config, 'proposta.hsp_padrao', 5.2));
-    setPerdasPct(paramNum(config, 'proposta.perdas_pct_padrao', 24.5));
-    setModuloWp(paramNum(config, 'proposta.modulo_wp_padrao', 710));
-    setDescontoAvistaPct(paramNum(config, 'proposta.desconto_avista_pct', 7));
-    setParcelasCartao(paramNum(config, 'proposta.parcelas_cartao_padrao', 12));
-    setTaxaCartaoPct(paramNum(config, 'proposta.taxa_cartao_pct', 4.5));
-    setEntradaFinanciamentoPct(paramNum(config, 'financiamento.entrada_pct_padrao', 10));
-    setParcelasFinanciamento(paramNum(config, 'financiamento.parcelas_padrao', 60));
-    setJurosFinanciamentoMesPct(paramNum(config, 'financiamento.juros_mes_pct', 1.45));
-    if (config.bancos.length > 0) setBancoFinanciamento(config.bancos[0].nome);
-    // Responsável técnico padrão: o da empresa, como a ContractsView já faz.
-    // Fica editável logo abaixo — é proposta a proposta que o engenheiro muda.
-    setResponsavelTecnico(config.empresa?.responsavel_tecnico ?? '');
-    setCrea(config.empresa?.crea ?? '');
-  }, [config, editando]);
-
-  /*
-   * Despesas fixas, semeadas pela concessionária escolhida.
-   *
-   * Efeito SEPARADO do de cima, e não mais uma linha dentro dele, porque este
-   * precisa acompanhar `concessionaria`: trocar a distribuidora no formulário
-   * tem que repuxar o custo de disponibilidade. Junto com os outros, a mesma
-   * troca reverteria tarifa, HSP e desconto para o padrão global, apagando o
-   * que o consultor acabou de digitar.
-   *
-   * `custo_disponibilidade` da concessionária é UM número que mistura taxa
-   * mínima e iluminação pública (ver utils/solar.ts), então ele serve de ponto
-   * de partida para os três campos — não de valor final. O consultor abre a
-   * conta do cliente e separa; é por isso que os campos são editáveis.
-   */
-  useEffect(() => {
-    if (!config || editando) return;
-    const fixo = config.concessionarias.find((c) => c.nome === concessionaria)?.custo_disponibilidade;
-    if (fixo == null) return;
-    setIluminacaoPublicaSemSfcr(Number(fixo));
-    setCustoDisponibilidade(Number(fixo));
-    setIluminacaoPublicaComSfcr(Number(fixo));
-  }, [config, concessionaria, editando]);
+    let ativo = true;
+    Api.getUsuarios().then(usuarios => { if (ativo) setUsuariosTecnicos(usuarios); }).catch(() => { if (ativo) setErroUsuarios(true); });
+    return () => { ativo = false; };
+  }, []);
+  const selecionarResponsavel = (id: string) => {
+    const usuario = usuariosTecnicos.find(u => u.id === id);
+    setResponsavelTecnicoId(id);
+    setResponsavelTecnico(usuario?.nome ?? '');
+    setCrea((usuario?.tipoProfissional === 'tecnico' ? usuario.crt : usuario?.crea) ?? '');
+    setConselhoProfissional(usuario?.tipoProfissional === 'tecnico' ? 'CRT' : 'CREA');
+  };
 
   /**
    * Só reaplica quando o LEAD muda de fato.
@@ -365,7 +338,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setConcessionaria(lead.concessionaria || '');
     setTelhado(lead.telhado || '');
     setCep(lead.cep || '');
-    if (lead.consumoKwh) setConsumoKwh(lead.consumoKwh);
+
 
     // O endereço do lead veio pronto do banco: não há payload do ViaCEP para
     // remontar a linha, então a busca automática por endereço fica desligada
@@ -431,21 +404,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [abaCatalogo, setAbaCatalogo] = useState<'kit' | 'produto'>('kit');
   const [selectedCatalogKitId, setSelectedCatalogKitId] = useState('');
   const [selectedCatalogProdutoId, setSelectedCatalogProdutoId] = useState('');
-  const [qtdAvulso, setQtdAvulso] = useState(1);
+  const [qtdAvulso, setQtdAvulso] = useState(0);
   const [valorAvulso, setValorAvulso] = useState(0);
-
-  // Dimensionamento e economia moram em utils/solar.ts — o simulador público
-  // do site chama exatamente as mesmas funções, então os dois nunca divergem.
-  const {
-    potenciaKwp: potenciaKwpCalculada,  // ~ 8.52 kWp
-    modulosQtd: modulosQtdCalculada,    // ~ 12 un
-    geracaoMediaKwh,                    // ~ 1003 kWh
-    areaEstimadaM2,                     // ~ 69.96 m²
-    coberturaPct,                       // ~ 100.3%
-  } = dimensionar({ consumoKwh, hsp, perdasPct, moduloWp,
-    quantidadeInstalada: levantamentoTelhado?.placas.length || undefined,
-    dimensoesModulo: levantamentoTelhado?.modulo ?? dadosTelhado?.layoutModulo,
-  });
 
   // Soma dos itens. Só o topo da lista entra: componente de kit tem valor 0,
   // porque o preço do kit está na linha-pai.
@@ -455,15 +415,6 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // depois (payback, entrada, parcela, PDF) consome esta constante, então
   // manter o nome é o que faz o ajuste se propagar sem mais nenhuma mudança.
   const valorTotalInvestimento = valorNegociado ?? somaDosItens;
-
-  // Financial ROI calculations
-  const {
-    economiaMensal,                        // ~ R$ 1.194,15
-    economiaAnual,                         // ~ R$ 14.329,77
-    economiaAcumulada: economia25Anos,     // 25 anos, tarifa +6% a.a.
-  } = projetarEconomia({ geracaoMediaKwh, tarifaKwh });
-
-  const paybackAnos = Number((valorTotalInvestimento / economiaAnual).toFixed(1));
 
   // PMT Price Formula for Financiamento:
   // PV = Total - Entrada
@@ -479,6 +430,22 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     jurosMesPct: jurosFinanciamentoMesPct,
     parcelas: parcelasFinanciamento,
   });
+
+  const calculoSolar = calcularProposta({...entradaSolar, moduloWp, perdasPct, tarifa:tarifaKwh,
+    taxaSem:iluminacaoPublicaSemSfcr,disponibilidadeReais:custoDisponibilidade,taxaCom:iluminacaoPublicaComSfcr,
+    investimento:valorTotalInvestimento,parcela:formaPagamento==='financiamento'?pmtParcelaFinanciamento:0,
+    parcelas:formaPagamento==='financiamento'?parcelasFinanciamento:0,
+    quantidadeInstalada:levantamentoTelhado ? levantamentoTelhado.placas.length : null});
+  const preservarLegado = legado && !revisaoConfirmada;
+  const potenciaKwpCalculada = preservarLegado ? propostaExistente.potenciaKwp : calculoSolar.potenciaKwp;
+  const modulosQtdCalculada = preservarLegado ? propostaExistente.modulosQtd : calculoSolar.modulosQtd;
+  const geracaoMediaKwh = preservarLegado ? propostaExistente.geracaoMediaKwh : calculoSolar.geracaoMediaKwh;
+  const areaEstimadaM2 = preservarLegado ? propostaExistente.areaEstimadaM2 : calculoSolar.areaEstimadaM2;
+  const coberturaPct = preservarLegado ? propostaExistente.coberturaPct : calculoSolar.coberturaPct;
+  const economiaMensal = preservarLegado ? propostaExistente.economiaMensal : calculoSolar.economiaMensal;
+  const economiaAnual = preservarLegado ? propostaExistente.economiaAnual : calculoSolar.economiaAnual;
+  const economia25Anos = preservarLegado ? propostaExistente.economia25Anos : calculoSolar.economia25Anos;
+  const paybackAnos = preservarLegado ? propostaExistente.paybackAnos : calculoSolar.paybackAnos;
 
   /*
    * Acompanha o dimensionamento: mudou a quantidade de placas, muda a
@@ -599,7 +566,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     // Zera a seleção: sem isso o próximo item abriria com a quantidade e o
     // valor do anterior já preenchidos, e é fácil salvar sem reparar.
     setSelectedCatalogProdutoId('');
-    setQtdAvulso(1);
+    setQtdAvulso(0);
     setValorAvulso(0);
     showToast('Item adicionado', 'success', `${prod.nome} incluído na proposta.`);
   };
@@ -607,7 +574,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // Espelha os requisitos mínimos do backend (propostaSchema): sem isso, o
   // POST falha depois que o PDF já foi aberto/impresso com dados fictícios.
   const validarProposta = (rascunho = false, silencioso = false): boolean => {
-    if (silencioso && (!clienteNome.trim() || cpfInvalido || consumoKwh <= 0 || tarifaKwh <= 0 || hsp <= 0)) return false;
+    if (silencioso && (!clienteNome.trim() || cpfInvalido)) return false;
     if (!clienteNome.trim()) {
       showToast('Campos incompletos', 'error', 'Informe o nome do cliente.');
       return false;
@@ -615,6 +582,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     if (cpfInvalido) {
       showToast('Documento inválido', 'error', `Verifique o ${docLabel(cpfCnpj)} informado.`);
       return false;
+    }
+    if (rascunho) return true;
+    if (!preservarLegado && !calculoSolar.completo) {
+      showToast('Pendente de preenchimento', 'error', calculoSolar.erros.join(' ')); return false;
+    }
+    if ((formaPagamento === 'financiamento' && parcelasFinanciamento <= 0) || (formaPagamento === 'cartao' && parcelasCartao <= 0)) {
+      showToast('Prazo inválido', 'error', 'Informe o número de parcelas do financiamento.'); return false;
     }
     if (consumoKwh <= 0) {
       showToast('Campos incompletos', 'error', 'Informe um consumo médio (kWh/mês) maior que zero.');
@@ -703,6 +677,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     customLogoUrl,
     // Vazio vira undefined de propósito: é o que diz ao PDF para usar o
     // responsável técnico do cadastro da empresa em vez de imprimir em branco.
+    responsavelTecnicoId: responsavelTecnicoId || undefined,
+    conselhoProfissional,
     responsavelTecnico: responsavelTecnico.trim() || undefined,
     crea: crea.trim() || undefined,
     // Endereço em partes: é o CEP que dispara a busca por satélite e o número
@@ -714,9 +690,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     // gravar um punhado de nulos em proposta que não usou o recurso.
     ...(dadosTelhado ?? {}),
     levantamentoTelhado,
+    calculoSolar: preservarLegado ? undefined : calculoSolar,
   });
 
   const salvar = async (gerarPDF = false, automatico = false) => {
+    if (automatico && legado) return false;
     if (salvando.current || !validarProposta(!gerarPDF, automatico)) return;
     salvando.current = true;
     setSalvamentoEmCurso(true);
@@ -726,6 +704,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       ));
       if (!salva) return false;
       propostaSalva.current = salva;
+
       setUltimaVersaoSalva(new Date());
       if (gerarPDF) onOpenPDF('proposta', salva);
       return true;
@@ -1037,12 +1016,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  CONSUMO KWH/MÊS
+                  CONSUMO MÉDIO (EDITAR SUBSTITUI UCs)
                 </label>
                 <input
                   type="number"
                   value={consumoKwh}
-                  onChange={(e) => setConsumoKwh(Number(e.target.value))}
+                  onChange={(e) => {const v=Number(e.target.value);setConsumoKwh(v);setEntradaSolar(prev=>({...prev,ucs:[{nome:'UC 1',meses:Array(12).fill(v),adicionalKwh:0,disponibilidadeKwh:0}]}));}}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
                 />
               </div>
@@ -1062,13 +1041,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  HSP DA CIDADE
+                  HSP MÉDIA (EDITAR PREENCHE MESES)
                 </label>
                 <input
                   type="number"
                   step="0.1"
                   value={hsp}
-                  onChange={(e) => setHsp(Number(e.target.value))}
+                  onChange={(e) => {const v=Number(e.target.value);setHsp(v);setEntradaSolar(prev=>({...prev,hspMensal:Array(12).fill(v)}));}}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
                 />
               </div>
@@ -1100,6 +1079,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 />
               </div>
             </div>
+
+            <PropostaPremissas entrada={{...entradaSolar,moduloWp,perdasPct}} onChange={atualizarEntradaSolar} resultado={calculoSolar} legado={legado} confirmado={revisaoConfirmada} anterior={propostaExistente} onConfirmar={()=>setRevisaoConfirmada(true)} />
 
             {/*
               Despesas fixas da conta — o que a geração não compensa e que a
@@ -1501,6 +1482,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       onChange={(e) => setParcelasCartao(Number(e.target.value))}
                       className="w-full p-2 bg-white border border-slate-200 rounded-lg font-bold"
                     >
+                      <option value="0">Selecione o prazo</option>
                       <option value="6">6x</option>
                       <option value="10">10x</option>
                       <option value="12">12x</option>
@@ -1545,42 +1527,18 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 />
               </div>
 
-              {/*
-                Responsável técnico DESTA proposta (V017). Vem preenchido com o
-                do cadastro da empresa; trocar aqui vale só para a proposta em
-                edição — antes, mudar o engenheiro exigia editar o cadastro, o
-                que reescrevia a folha de toda proposta já emitida.
-              */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                    RESPONSÁVEL TÉCNICO
-                  </label>
-                  <input
-                    type="text"
-                    value={responsavelTecnico}
-                    onChange={(e) => setResponsavelTecnico(e.target.value)}
-                    placeholder="Nome do engenheiro"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-[#004276]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                    CREA
-                  </label>
-                  <input
-                    type="text"
-                    value={crea}
-                    onChange={(e) => setCrea(e.target.value)}
-                    placeholder="MG0000023481D"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-[#004276]"
-                  />
-                </div>
-                <p className="sm:col-span-2 text-[11px] text-slate-400 -mt-1">
-                  Sai impresso na folha de equipamentos como “CREA RESPONSÁVEL: {crea.trim() || '—'}
-                  {responsavelTecnico.trim() ? ` — ${responsavelTecnico.trim()}` : ''}”. Em branco, a
-                  proposta usa o responsável técnico do cadastro da empresa.
-                </p>
+                <label className="block text-[11px] font-bold uppercase text-slate-500">Responsável técnico
+                  <select aria-label="Responsável técnico" value={responsavelTecnicoId} onChange={e => selecionarResponsavel(e.target.value)} className="w-full mt-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900">
+                    <option value="">{responsavelTecnico && !responsavelTecnicoId ? responsavelTecnico + ' (salvo na proposta)' : 'Selecione um usuário'}</option>
+                    {responsavelTecnicoId && !usuariosTecnicos.some(u => u.id === responsavelTecnicoId) && <option value={responsavelTecnicoId}>{responsavelTecnico} (indisponível)</option>}
+                    {usuariosTecnicos.filter(u => u.status === 'ativo' || u.id === responsavelTecnicoId).map(u => <option key={u.id} value={u.id} disabled={u.status !== 'ativo' || !u.tipoProfissional || !(u.tipoProfissional === 'tecnico' ? u.crt : u.crea)?.trim()}>{u.nome}{u.tipoProfissional ? ' — ' + (u.tipoProfissional === 'tecnico' ? 'CRT ' + (u.crt || 'não informado') : 'CREA ' + (u.crea || 'não informado')) : ' — sem registro profissional'}</option>)}
+                  </select>
+                </label>
+                <label className="block text-[11px] font-bold uppercase text-slate-500">{conselhoProfissional}
+                  <input aria-label="Registro do responsável técnico" readOnly value={crea} placeholder="Preenchido pelo usuário selecionado" className="w-full mt-1 p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-medium text-slate-900" />
+                </label>
+                <p className="sm:col-span-2 text-[11px] text-slate-500">{erroUsuarios ? 'Não foi possível carregar os usuários. Recarregue a página para selecionar o responsável.' : 'O nome e o registro do usuário selecionado serão exibidos na proposta. Cadastre a formação e o CREA ou CRT em Usuários.'}</p>
               </div>
 
               <div>
@@ -1631,6 +1589,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               RESUMO DA PROPOSTA
             </span>
 
+            {!preservarLegado && !calculoSolar.completo && <p role="status">Pendente de preenchimento</p>}
             <div className="space-y-2 text-xs border-b border-blue-900/60 pb-4">
               <div className="flex justify-between">
                 <span className="text-blue-200">Potência instalada</span>
@@ -1678,7 +1637,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t">
-                <span className="text-slate-500 font-medium">Em 25 anos (reajuste 6% a.a.)</span>
+                <span className="text-slate-500 font-medium">Saldo em 25 anos</span>
                 <span className="font-bold text-slate-900">
                   R$ {economia25Anos.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
@@ -1687,7 +1646,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-center text-emerald-900 font-bold text-xs mt-2 flex justify-between items-center">
                 <span>Retorno do investimento</span>
                 <span className="bg-emerald-600 text-white px-2 py-0.5 rounded-full text-xs font-black">
-                  {paybackAnos} anos
+                  {paybackAnos == null ? 'Sem retorno no período' : `${paybackAnos.toFixed(1)} anos`}
                 </span>
               </div>
             </div>

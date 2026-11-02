@@ -1,3 +1,4 @@
+import type { CalculoSolar } from '../server/src/domain/propostaSolar';
 export type UserRole = 'Administrador' | 'Vendedor' | 'Financeiro' | 'Engenheiro' | 'Instalador';
 export type UserStatus = 'ativo' | 'inativo' | 'Ativo' | 'Inativo';
 
@@ -21,6 +22,9 @@ export interface User {
   email: string;
   senha?: string;
   trocarSenha?: boolean;
+  tipoProfissional?: 'engenheiro' | 'tecnico';
+  crea?: string;
+  crt?: string;
   telefone?: string;
   perfil?: UserRole;
   cargo: UserRole;
@@ -251,6 +255,7 @@ export interface SegmentoLayout {
 }
 
 export interface Proposta {
+  calculoSolar?: CalculoSolar;
   levantamentoTelhado?: import('./utils/levantamentoTelhado').LevantamentoTelhado;
   id: string;
   numero: string;
@@ -299,7 +304,7 @@ export interface Proposta {
   economiaMensal: number;
   economiaAnual: number;
   economia25Anos: number;
-  paybackAnos: number;
+  paybackAnos: number | null;
   formaPagamento: FormaPagamentoType;
   descontoAvistaPct?: number;
   parcelasCartao?: number;
@@ -324,6 +329,8 @@ export interface Proposta {
    * toda proposta anterior à V017 continua saindo.
    */
   responsavelTecnico?: string;
+  responsavelTecnicoId?: string;
+  conselhoProfissional?: 'CREA' | 'CRT';
   crea?: string;
 
   // Endereço de instalação em partes (V006). O CEP dispara a busca por

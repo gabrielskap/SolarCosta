@@ -360,7 +360,7 @@ publicoRouter.get(
                 p.iluminacao_publica_com_sfcr,
                 p.potencia_kwp, p.modulos_qtd, p.modulo_wp, p.area_estimada_m2,
                 p.geracao_media_kwh, p.cobertura_pct,
-                p.economia_mensal, p.economia_anual, p.economia_25_anos, p.payback_anos,
+                p.economia_mensal, p.economia_anual, p.economia_25_anos, p.payback_anos, p.calculo_solar,
                 p.valor_total, p.forma_pagamento::text AS forma_pagamento,
                 p.desconto_avista_pct, p.parcelas_cartao, p.taxa_cartao_pct,
                 p.entrada_financiamento_valor, p.entrada_financiamento_pct,
@@ -370,7 +370,7 @@ publicoRouter.get(
                 -- aqui, o link do cliente e o PDF do WhatsApp cairiam no
                 -- cadastro da empresa e imprimiriam outro engenheiro — o PDF
                 -- aberto pelo CRM é que estaria certo.
-                p.responsavel_tecnico, p.crea,
+                p.responsavel_tecnico, p.crea, p.responsavel_tecnico_id, p.conselho_profissional,
                 p.latitude, p.longitude, p.mapa_zoom, p.telhado_area_m2,
                 p.layout_modulos, p.layout_segmentos, p.layout_modulo, p.levantamento_telhado,
                 c.nome AS concessionaria, t.nome AS telhado,

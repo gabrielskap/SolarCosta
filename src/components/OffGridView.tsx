@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BatteryCharging,
@@ -24,9 +24,11 @@ import {
   Loader2,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import logoFull from '../assets/logo-full.png';
 import { listarAparelhos, type Aparelho } from '../services/aparelhos';
 import {
   abrirSimulacaoOffGrid,
+  excluirSimulacaoOffGrid,
   listarSimulacoesOffGrid,
   salvarSimulacaoOffGrid,
   type DadosOffGrid,
@@ -248,6 +250,7 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
   const [restaurar, setRestaurar] = useState(false);
   const [buscaLista, setBuscaLista] = useState('');
   const [abaConfig, setAbaConfig] = useState<'bateria' | 'solar'>('bateria');
+  const [simulacaoExcluindo, setSimulacaoExcluindo] = useState<{ id: string; titulo: string } | null>(null);
 
   const atualizar = (patch: Partial<DadosOffGrid>) => {
     setDados((d) => ({ ...d, ...patch }));
@@ -329,7 +332,34 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
   };
 
   const handlePrint = () => {
+    document.body.classList.add('print-report');
+    const cleanup = () => {
+      document.body.classList.remove('print-report');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     window.print();
+    setTimeout(cleanup, 1000);
+  };
+
+  const confirmarExclusao = async (simulacaoId: string) => {
+    setOcupado(true);
+    setErro('');
+    setAviso('');
+    try {
+      await excluirSimulacaoOffGrid(simulacaoId);
+      setSimulacoes((lista) => lista.filter((s) => s.id !== simulacaoId));
+      setAviso('Simulação excluída com sucesso.');
+      if (editando && id === simulacaoId) {
+        setEditando(false);
+        setId(undefined);
+      }
+      setSimulacaoExcluindo(null);
+    } catch (e) {
+      setErro(erroTexto(e));
+    } finally {
+      setOcupado(false);
+    }
   };
 
   const dadosGrafico = useMemo(() => {
@@ -396,6 +426,58 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
           </div>
         )}
 
+        {aviso && (
+          <div role="status" className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{aviso}</span>
+            </div>
+            <button type="button" onClick={() => setAviso('')} className="text-emerald-700 font-bold hover:underline text-xs">
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Modal de Confirmação de Exclusão */}
+        {simulacaoExcluindo && (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-4 space-y-3 border border-slate-200 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2.5 text-red-600 font-bold text-sm">
+                <AlertTriangle className="w-5 h-5 shrink-0" />
+                <span>Excluir Simulação OFF-Grid</span>
+              </div>
+              <p className="text-xs text-slate-600">
+                Tem certeza que deseja excluir permanentemente a simulação{' '}
+                <strong className="text-slate-900">"{simulacaoExcluindo.titulo}"</strong>?
+              </p>
+              <p className="text-[11px] text-slate-400">Esta ação não pode ser desfeita.</p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={ocupado}
+                  onClick={() => setSimulacaoExcluindo(null)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-medium transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={ocupado}
+                  onClick={() => confirmarExclusao(simulacaoExcluindo.id)}
+                  className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {ocupado ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>Excluir definitivamente</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Barra de busca e filtros compacta */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
           <div className="relative w-full sm:w-80">
@@ -421,7 +503,7 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
                 <th className="py-2.5 px-3">Título da simulação</th>
                 <th className="py-2.5 px-3">Vínculo</th>
                 <th className="py-2.5 px-3">Última atualização</th>
-                <th className="py-2.5 px-3 text-right">Ação</th>
+                <th className="py-2.5 px-3 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -450,30 +532,43 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
                     })}
                   </td>
                   <td className="py-2.5 px-3 text-right">
-                    <button
-                      className="inline-flex items-center gap-1 text-[#004276] hover:text-[#002e5c] font-semibold text-xs py-1 px-2.5 rounded-md hover:bg-sky-50 transition"
-                      disabled={ocupado}
-                      onClick={async () => {
-                        setOcupado(true);
-                        setErro('');
-                        try {
-                          const simulacao = await abrirSimulacaoOffGrid(s.id);
-                          setDados(simulacao.dados);
-                          setId(simulacao.id);
-                          setAlterado(false);
-                          setAviso('');
-                          setRestaurar(false);
-                          setEditando(true);
-                        } catch (e) {
-                          setErro(erroTexto(e));
-                        } finally {
-                          setOcupado(false);
-                        }
-                      }}
-                    >
-                      <span>Abrir</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        className="inline-flex items-center gap-1 text-[#004276] hover:text-[#002e5c] font-semibold text-xs py-1 px-2 rounded-md hover:bg-sky-50 transition"
+                        disabled={ocupado}
+                        onClick={async () => {
+                          setOcupado(true);
+                          setErro('');
+                          try {
+                            const simulacao = await abrirSimulacaoOffGrid(s.id);
+                            setDados(simulacao.dados);
+                            setId(simulacao.id);
+                            setAlterado(false);
+                            setAviso('');
+                            setRestaurar(false);
+                            setEditando(true);
+                          } catch (e) {
+                            setErro(erroTexto(e));
+                          } finally {
+                            setOcupado(false);
+                          }
+                        }}
+                      >
+                        <span>Abrir</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                      {podeSalvar && (
+                        <button
+                          type="button"
+                          title="Excluir simulação"
+                          disabled={ocupado}
+                          onClick={() => setSimulacaoExcluindo({ id: s.id, titulo: s.titulo })}
+                          className="text-slate-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -544,14 +639,32 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Botão de Excluir Simulação (quando já salva) */}
+          {id && podeSalvar && (
+            <button
+              type="button"
+              title="Excluir simulação atual"
+              disabled={ocupado}
+              onClick={() => {
+                if (window.confirm(`Deseja realmente excluir a simulação "${dados.titulo || 'atual'}"? Esta ação é definitiva.`)) {
+                  confirmarExclusao(id);
+                }
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-medium transition"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Excluir</span>
+            </button>
+          )}
+
           <button
             type="button"
-            title="Imprimir relatório"
+            title="Imprimir relatório executivo em PDF"
             onClick={handlePrint}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition"
           >
             <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden sm:inline">Imprimir</span>
+            <span className="hidden sm:inline">Imprimir PDF</span>
           </button>
 
           <button
@@ -1351,108 +1464,246 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
         </div>
       </div>
 
-      {/* ================= RELATÓRIO EXECUTIVO EXCLUSIVO PARA IMPRESSÃO (PDF) ================= */}
-      <div id="report-root" className="hidden print:block text-black p-4 space-y-4">
-        <div className="flex items-center justify-between border-b pb-3">
-          <div>
-            <h1 className="text-xl font-bold text-[#004276]">SolarCosta · Relatório de Dimensionamento OFF-Grid</h1>
-            <p className="text-xs text-slate-500">Sistema Fotovoltaico Isolado com Armazenamento em Baterias de Lítio</p>
+      {/* ================= RELATÓRIO EXECUTIVO EXCLUSIVO PARA IMPRESSÃO / PDF ================= */}
+      <div id="report-root" className="hidden print:block text-slate-900 bg-white font-sans p-6 space-y-5">
+        {/* Cabeçalho da Proposta Técnica */}
+        <div className="report-block flex items-start justify-between border-b-2 border-[#004276] pb-4">
+          <div className="flex items-center gap-4">
+            <img src={logoFull} alt="SolarCosta" className="h-12 w-auto object-contain" />
+            <div>
+              <h1 className="text-lg font-black text-[#004276] tracking-tight">DIMENSIONAMENTO DE SISTEMA OFF-GRID</h1>
+              <p className="text-xs text-slate-600 font-medium">
+                Solução Isolada com Armazenamento em Baterias de Lítio (LiFePO4) & Geração Fotovoltaica
+              </p>
+            </div>
           </div>
-          <div className="text-right text-xs">
-            <p className="font-semibold">{dados.titulo || 'Simulação Sem Título'}</p>
-            <p className="text-slate-500">Data: {new Date().toLocaleDateString('pt-BR')}</p>
+          <div className="text-right space-y-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-100 text-[#004276] px-2.5 py-0.5 rounded">
+              Relatório Executivo
+            </span>
+            <p className="text-xs font-semibold text-slate-800 pt-1">
+              Data: {new Date().toLocaleDateString('pt-BR')}
+            </p>
+            <p className="text-[10px] text-slate-500 font-mono">
+              Hora: {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </p>
           </div>
         </div>
 
-        {/* Identificação do Cliente */}
-        <div className="border rounded-lg p-3 text-xs grid grid-cols-2 gap-2 bg-slate-50">
-          <div>
-            <p><strong>Cliente:</strong> {dados.cliente.nome || '—'}</p>
-            <p><strong>Empresa:</strong> {dados.cliente.empresa || '—'}</p>
-            <p><strong>CPF/CNPJ:</strong> {dados.cliente.cnpj || '—'}</p>
+        {/* Identificação do Projeto e Cliente */}
+        <div className="report-block bg-slate-50 border border-slate-200 rounded-xl p-3.5 grid grid-cols-2 gap-4 text-xs">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Identificação do Projeto</p>
+            <p className="font-bold text-slate-900 text-sm">{dados.titulo || 'Simulação Sem Título'}</p>
+            {dados.cliente.empresa && (
+              <p className="text-slate-600"><strong>Empresa:</strong> {dados.cliente.empresa}</p>
+            )}
+            {dados.cliente.cnpj && (
+              <p className="text-slate-600"><strong>CPF / CNPJ:</strong> {dados.cliente.cnpj}</p>
+            )}
           </div>
-          <div>
-            <p><strong>Telefone:</strong> {dados.cliente.telefone || '—'}</p>
-            <p><strong>E-mail:</strong> {dados.cliente.email || '—'}</p>
+          <div className="space-y-1 text-right sm:text-left">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Dados do Cliente</p>
+            <p className="font-bold text-slate-900 text-sm">{dados.cliente.nome || 'Cliente não informado'}</p>
+            {dados.cliente.telefone && (
+              <p className="text-slate-600"><strong>Telefone:</strong> {dados.cliente.telefone}</p>
+            )}
+            {dados.cliente.email && (
+              <p className="text-slate-600"><strong>E-mail:</strong> {dados.cliente.email}</p>
+            )}
           </div>
         </div>
 
-        {/* Resumo dos Equipamentos Recomendados */}
+        {/* Resumo Executivo dos Equipamentos Calculados (3 Cards Principais) */}
         {resultado && (
-          <div className="grid grid-cols-3 gap-3 border rounded-lg p-3 text-xs bg-slate-50 text-center">
-            <div>
-              <p className="text-slate-500 font-semibold uppercase">Banco de Baterias LiFePO4</p>
-              <p className="text-lg font-bold text-[#004276]">
-                {resultado.quantidadeBaterias} un. ({dados.config.tensaoBateria}V {dados.config.capacidadeBateriaAh}Ah)
+          <div className="report-block grid grid-cols-3 gap-3">
+            {/* Card Baterias */}
+            <div className="border-2 border-sky-600/30 bg-sky-50/40 rounded-xl p-3 space-y-1">
+              <div className="flex items-center justify-between text-sky-900">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Banco de Baterias (LiFePO4)</span>
+                <BatteryCharging className="w-4 h-4 text-sky-700" />
+              </div>
+              <div className="text-2xl font-black text-[#004276]">
+                {resultado.quantidadeBaterias}{' '}
+                <span className="text-xs font-semibold text-slate-600">unidades</span>
+              </div>
+              <p className="text-[10px] font-medium text-slate-600">
+                Configuração: {dados.config.tensaoBateria}V · {dados.config.capacidadeBateriaAh} Ah unitário
               </p>
-              <p className="text-[10px] text-slate-600">{numero(resultado.energiaMinimaBancoKWh, 2)} kWh nominal</p>
+              <div className="text-[9px] text-slate-500 pt-1 border-t border-sky-100 flex justify-between">
+                <span>Energia Nominal: {numero(resultado.energiaMinimaBancoKWh, 2)} kWh</span>
+                <span>Capacidade: {numero(resultado.capacidadeMinimaAh, 1)} Ah</span>
+              </div>
             </div>
-            <div>
-              <p className="text-slate-500 font-semibold uppercase">Arranjo Fotovoltaico</p>
-              <p className="text-lg font-bold text-amber-700">
-                {resultado.quantidadeModulos} placas ({dados.config.potenciaModuloWp}Wp)
+
+            {/* Card Módulos Solares */}
+            <div className="border-2 border-amber-500/30 bg-amber-50/40 rounded-xl p-3 space-y-1">
+              <div className="flex items-center justify-between text-amber-900">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Módulos Fotovoltaicos</span>
+                <Sun className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="text-2xl font-black text-amber-700">
+                {resultado.quantidadeModulos}{' '}
+                <span className="text-xs font-semibold text-slate-600">módulos</span>
+              </div>
+              <p className="text-[10px] font-medium text-slate-600">
+                Potência Instalada: {numero(resultado.potenciaSistemaKWp, 2)} kWp ({dados.config.potenciaModuloWp}Wp cada)
               </p>
-              <p className="text-[10px] text-slate-600">{numero(resultado.potenciaSistemaKWp, 2)} kWp instalados</p>
+              <div className="text-[9px] text-slate-500 pt-1 border-t border-amber-100 flex justify-between">
+                <span>Geração / placa: {numero(resultado.geracaoModuloKWh, 2)} kWh/dia</span>
+                <span>HSP: {dados.config.irradiacaoSolar} h/dia</span>
+              </div>
             </div>
-            <div>
-              <p className="text-slate-500 font-semibold uppercase">Inversor Recomendado (+30%)</p>
-              <p className="text-lg font-bold text-slate-800">
-                {numero(resultado.potenciaInversorRecomendadaW, 0)} W
+
+            {/* Card Inversor */}
+            <div className="border-2 border-slate-300 bg-slate-50 rounded-xl p-3 space-y-1">
+              <div className="flex items-center justify-between text-slate-800">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Inversor / Carregador</span>
+                <Zap className="w-4 h-4 text-slate-600" />
+              </div>
+              <div className="text-2xl font-black text-slate-900 font-mono">
+                {numero(resultado.potenciaInversorRecomendadaW, 0)}{' '}
+                <span className="text-xs font-semibold text-slate-600">W</span>
+              </div>
+              <p className="text-[10px] font-medium text-slate-600">
+                Potência recomendada (+30% margem de surto)
               </p>
-              <p className="text-[10px] text-slate-600">Demanda: {numero(resultado.potenciaTotalW, 0)} W</p>
+              <div className="text-[9px] text-slate-500 pt-1 border-t border-slate-200 flex justify-between">
+                <span>Demanda Simultânea: {numero(resultado.potenciaTotalW, 0)} W</span>
+                <span>Consumo Corrigido: {numero(resultado.consumoCorrigidoKWh, 2)} kWh/dia</span>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Tabela de Cargas Levantadas */}
-        <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider mb-1">Levantamento de Cargas Críticas</h3>
-          <table className="w-full text-[10px] text-left border divide-y">
-            <thead className="bg-slate-100 font-semibold">
-              <tr>
-                <th className="p-1.5">Equipamento</th>
-                <th className="p-1.5 text-center">Tensão</th>
-                <th className="p-1.5 text-center">Potência</th>
-                <th className="p-1.5 text-center">Qtd</th>
-                <th className="p-1.5 text-center">Horas/dia</th>
-                <th className="p-1.5 text-right">Demanda (W)</th>
-                <th className="p-1.5 text-right">Consumo (Wh/dia)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {dados.equipamentos.map((c, i) => {
-                const item = resultado?.cargas[i];
-                return (
-                  <tr key={c.id}>
-                    <td className="p-1.5 font-medium">{c.nome}</td>
-                    <td className="p-1.5 text-center">{c.tensaoV}V</td>
-                    <td className="p-1.5 text-center">{c.potenciaW}W</td>
-                    <td className="p-1.5 text-center">{c.quantidade}</td>
-                    <td className="p-1.5 text-center">{c.horasDia}h</td>
-                    <td className="p-1.5 text-right">{item ? numero(item.potenciaDemandadaW, 0) : '—'} W</td>
-                    <td className="p-1.5 text-right">{item ? numero(item.consumoDiarioWh, 0) : '—'} Wh</td>
-                  </tr>
-                );
-              })}
-            </tbody>
+        {/* Tabela de Levantamento de Cargas Críticas */}
+        <div className="report-block space-y-1.5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              Levantamento Detalhado de Cargas Críticas (Backup)
+            </h2>
             {resultado && (
-              <tfoot className="bg-slate-100 font-bold border-t">
-                <tr>
-                  <td colSpan={5} className="p-1.5 text-right uppercase">Totais:</td>
-                  <td className="p-1.5 text-right">{numero(resultado.potenciaTotalW, 0)} W</td>
-                  <td className="p-1.5 text-right">{numero(resultado.consumoDiarioKWh * 1000, 0)} Wh/dia</td>
-                </tr>
-              </tfoot>
+              <span className="text-[10px] text-slate-500 font-medium">
+                Total de Cargas: {dados.equipamentos.length} aparelhos
+              </span>
             )}
-          </table>
+          </div>
+
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <table className="w-full text-[10px] text-left divide-y divide-slate-200">
+              <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="py-2 px-2.5">Item / Aparelho</th>
+                  <th className="py-2 px-2 text-center">Tensão (V)</th>
+                  <th className="py-2 px-2 text-center">Potência Unitária</th>
+                  <th className="py-2 px-2 text-center">Quantidade</th>
+                  <th className="py-2 px-2 text-center">Uso Diário</th>
+                  <th className="py-2 px-2 text-right">Demanda Total</th>
+                  <th className="py-2 px-2 text-right">Consumo Diário</th>
+                  <th className="py-2 px-2 text-right">% Consumo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {dados.equipamentos.map((c, i) => {
+                  const item = resultado?.cargas[i];
+                  const totalKwh = resultado ? resultado.consumoDiarioKWh * 1000 : 0;
+                  const pct = totalKwh > 0 && item ? (item.consumoDiarioWh / totalKwh) * 100 : 0;
+                  return (
+                    <tr key={c.id} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                      <td className="py-1.5 px-2.5 font-medium text-slate-800">{c.nome}</td>
+                      <td className="py-1.5 px-2 text-center text-slate-600 font-mono">{c.tensaoV} V</td>
+                      <td className="py-1.5 px-2 text-center text-slate-600 font-mono">{c.potenciaW} W</td>
+                      <td className="py-1.5 px-2 text-center text-slate-800 font-semibold">{c.quantidade}</td>
+                      <td className="py-1.5 px-2 text-center text-slate-600 font-mono">{c.horasDia} h/dia</td>
+                      <td className="py-1.5 px-2 text-right font-mono font-medium text-slate-800">
+                        {item ? `${numero(item.potenciaDemandadaW, 0)} W` : '—'}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono font-semibold text-[#004276]">
+                        {item ? `${numero(item.consumoDiarioWh, 0)} Wh/dia` : '—'}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono text-slate-500">
+                        {pct.toFixed(1)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {resultado && (
+                <tfoot className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+                  <tr>
+                    <td colSpan={5} className="py-2 px-2.5 text-right uppercase tracking-wider text-slate-600">
+                      Totais Calculados:
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-slate-900">
+                      {numero(resultado.potenciaTotalW, 0)} W
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-[#004276]">
+                      {numero(resultado.consumoDiarioKWh * 1000, 0)} Wh/dia
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-slate-900">
+                      100.0%
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </div>
 
-        {/* Rodapé técnico */}
-        <div className="text-[9px] text-slate-500 pt-3 border-t">
-          <p>
-            * Dimensionamento baseado nas premissas técnicas fornecidas: Eficiência do Inversor: {dados.config.eficienciaInversor}%, DoD: {dados.config.profundidadeDescarga}%, HSP: {dados.config.irradiacaoSolar} h/dia, Perdas: {dados.config.perdasSistema}%.
+        {/* Premissas Técnicas e Condições de Engenharia */}
+        <div className="report-block bg-slate-50 border border-slate-200 rounded-xl p-3 text-[10px] space-y-2">
+          <p className="font-bold text-slate-800 uppercase tracking-wider">
+            Premissas Técnicas Adotadas no Dimensionamento:
           </p>
-          <p className="mt-1">SolarCosta Energia Solar · Engenharia e Sistemas Fotovoltaicos</p>
+          <div className="grid grid-cols-4 gap-2 text-slate-600">
+            <div>
+              <span className="block text-slate-400">Eficiência do Inversor:</span>
+              <strong className="text-slate-800">{dados.config.eficienciaInversor}%</strong>
+            </div>
+            <div>
+              <span className="block text-slate-400">Prof. Descarga DoD:</span>
+              <strong className="text-slate-800">{dados.config.profundidadeDescarga}%</strong>
+            </div>
+            <div>
+              <span className="block text-slate-400">Eficiência de Carga:</span>
+              <strong className="text-slate-800">{dados.config.eficienciaCarga}%</strong>
+            </div>
+            <div>
+              <span className="block text-slate-400">Tensão Banco Baterias:</span>
+              <strong className="text-slate-800">{dados.config.tensaoBateria} V</strong>
+            </div>
+            <div>
+              <span className="block text-slate-400">Capacidade Unitária:</span>
+              <strong className="text-slate-800">{dados.config.capacidadeBateriaAh} Ah</strong>
+            </div>
+            <div>
+              <span className="block text-slate-400">Irradiação Solar (HSP):</span>
+              <strong className="text-slate-800">{dados.config.irradiacaoSolar} h/dia</strong>
+            </div>
+            <div>
+              <span className="block text-slate-400">Potência por Módulo:</span>
+              <strong className="text-slate-800">{dados.config.potenciaModuloWp} Wp</strong>
+            </div>
+            <div>
+              <span className="block text-slate-400">Perdas do Sistema:</span>
+              <strong className="text-slate-800">{dados.config.perdasSistema}%</strong>
+            </div>
+          </div>
+          <p className="text-slate-500 text-[9px] pt-1 border-t border-slate-200">
+            * Dimensionamento executivo preliminar. A margem de +30% no inversor cobre transientes usuais de operação. Recomenda-se aferição técnica detalhada in loco para motores com alto fator de partida ou cargas indutivas pesadas.
+          </p>
+        </div>
+
+        {/* Bloco de Assinaturas */}
+        <div className="report-block pt-8 grid grid-cols-2 gap-12 text-center text-xs">
+          <div className="border-t border-slate-400 pt-2 space-y-0.5">
+            <p className="font-bold text-slate-800">SolarCosta Energia Solar</p>
+            <p className="text-[10px] text-slate-500">Responsável Técnico / Engenharia</p>
+          </div>
+          <div className="border-t border-slate-400 pt-2 space-y-0.5">
+            <p className="font-bold text-slate-800">{dados.cliente.nome || 'Cliente'}</p>
+            <p className="text-[10px] text-slate-500">Aceite da Simulação e Levantamento</p>
+          </div>
         </div>
       </div>
     </div>

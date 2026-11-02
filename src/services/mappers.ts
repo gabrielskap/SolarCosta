@@ -86,6 +86,9 @@ export function paraUser(linha: any): User {
     telefone: linha.telefone ?? undefined,
     perfil: linha.cargo,
     trocarSenha: !!linha.trocar_senha,
+    tipoProfissional: linha.tipo_profissional ?? undefined,
+    crea: linha.crea ?? undefined,
+    crt: linha.crt ?? undefined,
     cargo: linha.cargo,
     status: linha.status,
     situacao: linha.status === 'ativo' ? 'Ativo' : 'Inativo',
@@ -118,6 +121,9 @@ export function deUser(u: Partial<User> & { senha?: string }): Record<string, un
     email: u.email,
     telefone: u.telefone ?? null,
     cargo: u.cargo ?? u.perfil,
+    tipo_profissional: u.tipoProfissional ?? null,
+    crea: u.crea ?? null,
+    crt: u.crt ?? null,
     status: u.status ?? (u.situacao === 'Ativo' ? 'ativo' : 'inativo'),
   };
   if (u.senha) corpo.senha = u.senha;
@@ -450,7 +456,7 @@ export function paraProposta(linha: any): Proposta {
     economiaMensal: num(linha.economia_mensal),
     economiaAnual: num(linha.economia_anual),
     economia25Anos: num(linha.economia_25_anos),
-    paybackAnos: num(linha.payback_anos),
+    paybackAnos: linha.payback_anos == null ? null : num(linha.payback_anos),
     formaPagamento: linha.forma_pagamento,
     descontoAvistaPct: linha.desconto_avista_pct ?? undefined,
     parcelasCartao: linha.parcelas_cartao ?? undefined,
@@ -467,6 +473,8 @@ export function paraProposta(linha: any): Proposta {
     // Responsável técnico da proposta (V017). Ausente continua ausente — é
     // esse undefined que faz o PDF cair no cadastro da empresa.
     responsavelTecnico: linha.responsavel_tecnico ?? undefined,
+    responsavelTecnicoId: linha.responsavel_tecnico_id ?? undefined,
+    conselhoProfissional: linha.conselho_profissional ?? undefined,
     crea: linha.crea ?? undefined,
     // Endereço em partes (V006). numero_endereco, não numero: este último é o
     // número da proposta e já foi mapeado lá em cima.
@@ -504,6 +512,7 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     cidade: p.cidade || null,
     concessionaria: p.concessionaria || null,
     telhado: p.telhado || null,
+    calculo_solar: p.calculoSolar ? { entradas: p.calculoSolar.entradas } : undefined,
     consumo_kwh: p.consumoKwh,
     tarifa_kwh: p.tarifaKwh,
     iluminacao_publica_sem_sfcr: p.iluminacaoPublicaSemSfcr ?? 0,
@@ -532,6 +541,8 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     observacoes: p.observacoes ?? null,
     logo_customizada_url: p.customLogoUrl ?? null,
     responsavel_tecnico: p.responsavelTecnico ?? null,
+    responsavel_tecnico_id: p.responsavelTecnicoId ?? null,
+    conselho_profissional: p.conselhoProfissional ?? null,
     crea: p.crea ?? null,
     cep: p.cep ?? null,
     numero_endereco: p.numeroEndereco ?? null,

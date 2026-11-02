@@ -53,3 +53,11 @@ for (const metodo of ['post', 'put'] as const) {
     res.status(metodo === 'post' ? 201 : 200).json({ simulacao });
   }));
 }
+offGridRouter.delete('/:id', exigirPermissao('emitir_propostas'), asyncHandler(async (req, res) => {
+  const id = z.string().uuid().parse(req.params.id);
+  await emTransacao(async cliente => {
+    const resultado = await cliente.query('DELETE FROM "SolarCosta_SimulacoesOffGrid" WHERE id=$1 RETURNING id', [id]);
+    if (!resultado.rowCount) throw naoEncontrado('Simulação');
+  }, ator(req));
+  res.status(204).end();
+}));

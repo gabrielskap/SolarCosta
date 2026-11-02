@@ -120,6 +120,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
 
   // Form states
   const [nome, setNome] = useState('');
+  const [tipoProfissional, setTipoProfissional] = useState<User['tipoProfissional']>();
+  const [registro, setRegistro] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [cargo, setCargo] = useState<'Administrador' | 'Vendedor' | 'Financeiro' | 'Engenheiro' | 'Instalador'>('Vendedor');
@@ -135,6 +137,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
   const handleOpenNew = () => {
     setEditingUser(null);
     setNome('');
+    setTipoProfissional(undefined);
+    setRegistro('');
     setEmail('');
     setSenha('');
     setCargo('Vendedor');
@@ -146,6 +150,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
   const handleOpenEdit = (u: User) => {
     setEditingUser(u);
     setNome(u.nome);
+    setTipoProfissional(u.tipoProfissional);
+    setRegistro((u.tipoProfissional === 'tecnico' ? u.crt : u.crea) ?? '');
     setEmail(u.email);
     setSenha('');
     setCargo(u.cargo);
@@ -167,6 +173,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
       nome,
       email,
       senha: editingUser ? undefined : senha,
+      tipoProfissional,
+      crea: tipoProfissional === 'engenheiro' ? registro.trim() : '',
+      crt: tipoProfissional === 'tecnico' ? registro.trim() : '',
       cargo,
       dataCriacao: editingUser ? editingUser.dataCriacao : new Date().toLocaleDateString('pt-BR'),
       ultimoAcesso: editingUser ? editingUser.ultimoAcesso : 'Agora mesmo',
@@ -348,6 +357,16 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block font-bold text-slate-500">Formação profissional
+                  <select aria-label="Formação profissional" value={tipoProfissional ?? ''} onChange={e => { setTipoProfissional((e.target.value || undefined) as User['tipoProfissional']); setRegistro(''); }} className="w-full p-2.5 bg-slate-50 border rounded-xl mt-1.5">
+                    <option value="">Não se aplica</option><option value="engenheiro">Engenheiro</option><option value="tecnico">Técnico</option>
+                  </select>
+                </label>
+                {tipoProfissional && <label className="block font-bold text-slate-500">{tipoProfissional === 'tecnico' ? 'CRT' : 'CREA'}
+                  <input aria-label="Registro profissional" required maxLength={40} value={registro} onChange={e => setRegistro(e.target.value)} className="w-full p-2.5 bg-slate-50 border rounded-xl mt-1.5" />
+                </label>}
+              </div>
               {!editingUser && <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Senha de acesso</label>
                 <input

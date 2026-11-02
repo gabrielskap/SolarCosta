@@ -12,3 +12,4 @@ export const abrirSimulacaoOffGrid = async (id: string) => (await http.get<{ sim
 export const salvarSimulacaoOffGrid = async (dados: DadosOffGrid, id?: string) => (await (id
   ? http.put<{ simulacao: SimulacaoOffGrid }>(`/api/off-grid/${id}`, dados)
   : http.post<{ simulacao: SimulacaoOffGrid }>('/api/off-grid', dados))).simulacao;
+export const excluirSimulacaoOffGrid = async (id: string) => http.delete(`/api/off-grid/${id}`);

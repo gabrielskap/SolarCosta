@@ -1,3 +1,4 @@
+import { PropostaProjecao } from './PropostaProjecao';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { 
@@ -77,7 +78,7 @@ interface PDFModalProps {
  * depois quanto o cliente paga hoje contra quanto vai pagar. Ele cai no índice
  * 3 e imprime "PÁGINA 4 DE 7". O JSX tem que seguir a mesma ordem daqui.
  */
-const PAGINAS_PROPOSTA = [1, 2, 3, 6, 4, 5, 8] as const;
+const PAGINAS_PROPOSTA = [1, 2, 3, 6, 7, 4, 5, 8] as const;
 const TOTAL_PAGINAS = PAGINAS_PROPOSTA.length;
 const ordinalPagina = (pageNum: number): number =>
   PAGINAS_PROPOSTA.indexOf(pageNum as (typeof PAGINAS_PROPOSTA)[number]) + 1;
@@ -302,6 +303,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
   if (!data) return null;
 
   const handlePrint = () => {
+    if(prop?.calculoSolar && !prop.calculoSolar.completo) return;
     window.print();
   };
 
@@ -508,14 +510,16 @@ export const PDFModal: React.FC<PDFModalProps> = ({
             
             {/* PROPOSTA DE ORÇAMENTO COMPLETA (8 PÁGINAS) */}
             {type === 'proposta' && (() => {
-              const consumo = prop?.consumoKwh || 1000;
-              const tarifa = prop?.tarifaKwh || 1.19;
-              const potencia = prop?.potenciaKwp || 8.52;
+              const snapshot = prop?.calculoSolar;
+              if(snapshot && !snapshot.completo) return <p className="p-6" role="alert">Pendente de preenchimento. Revise os dados na edição da proposta antes de emitir.</p>;
+              const consumo = prop?.consumoKwh ?? 0;
+              const tarifa = prop?.tarifaKwh ?? 0;
+              const potencia = prop?.potenciaKwp ?? 0;
               // `??` e não `||`: desde a V018 o total pode ser um valor
               // negociado, e zero é negociação legítima (bonificação, brinde).
               // Com `||`, um total de R$ 0 caía no 22.490 de demonstração e o
               // cliente recebia um PDF com um preço que ninguém combinou.
-              const valorInvestimento = prop?.valorTotal ?? 22490;
+              const valorInvestimento = prop?.valorTotal ?? 0;
 
               // 3 Modalidades de Pagamento:
               const formaPagamentoSelecionada = prop?.formaPagamento || 'avista';
@@ -529,7 +533,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               const parcelasCartaoQtd = prop?.parcelasCartao ?? 12;
               const taxaCartaoPct = prop?.taxaCartaoPct ?? 4.5;
               const valorTotalCartao = Number((valorInvestimento * (1 + taxaCartaoPct / 100)).toFixed(2));
-              const parcelaCartaoValor = Number((valorTotalCartao / parcelasCartaoQtd).toFixed(2));
+              const parcelaCartaoValor = parcelasCartaoQtd>0 ? Number((valorTotalCartao / parcelasCartaoQtd).toFixed(2)) : 0;
 
               // 3. Financiamento Bancário
               const entradaFinancValor = prop?.entradaFinanciamentoValor ?? 0;
@@ -562,7 +566,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               const cipCom = prop?.iluminacaoPublicaComSfcr ?? 0;
 
               const despesaEnergia = consumo * tarifa;
-              const totalSemSfcr = despesaEnergia + cipSem;
+              const totalSemSfcr = snapshot?.contaSemSolar ?? (despesaEnergia + cipSem);
 
               /*
                * A prestação é RECONSTRUÍDA, não lida: a parcela nunca foi
@@ -582,7 +586,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                       parcelas: prop.parcelasFinanciamento ?? 0,
                     })
                   : 0;
-              const totalComSfcr = custoDisp + cipCom + prestacao;
+              const totalComSfcr = snapshot ? snapshot.contaComSolar + (snapshot.entradas.parcelas>0?snapshot.entradas.parcela:0) : custoDisp + cipCom + prestacao;
 
               // Perfil mensal de geração.
               //
@@ -599,52 +603,13 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                 ['OUTUBRO', 1.01793], ['NOVEMBRO', 0.99872],  ['DEZEMBRO', 0.99872],
               ];
 
-              const geracaoMediaMensal = prop?.geracaoMediaKwh || consumo;
+              const geracaoMediaMensal = snapshot?.geracaoMediaKwh ?? prop?.geracaoMediaKwh ?? 0;
 
-              const monthlyData = FATOR_SAZONAL.map(([mes, fator]) => ({
+              const monthlyData = FATOR_SAZONAL.map(([mes, fator], indice) => ({
                 mes,
-                geracao: Number((geracaoMediaMensal * fator).toFixed(2)),
-                consumo: consumo,
+                geracao: Number((snapshot?.geracaoMensal[indice] ?? geracaoMediaMensal * fator).toFixed(2)),
+                consumo: snapshot ? snapshot.entradas.ucs.reduce((s,u)=>s+(u.meses[indice]??0),0) : consumo,
               }));
-
-              // 25 Years Expenses without solar
-              const projection25Years = [];
-              let currentTariff = tarifa;
-              // Mesma conta "sem SFCR" da folha de despesas, projetada no
-              // tempo — por isso o fixo é `cipSem` da proposta, e não o 33,73
-              // que estava cravado aqui (o custo_disponibilidade genérico de
-              // todas as concessionárias, que não era o deste cliente).
-              let currentMonthlyCost = (consumo * currentTariff) + cipSem;
-              let accumulatedNoSolar = 0;
-
-              for (let yr = 2026; yr <= 2050; yr++) {
-                const annualNoSolar = currentMonthlyCost * 12;
-                accumulatedNoSolar += annualNoSolar;
-
-                const yearDegradation = Math.pow(0.993, yr - 2026);
-                const geracaoAnoKwh = Math.round(geracaoMediaMensal * 12 * yearDegradation);
-                const geracaoValorRs = Math.round(geracaoAnoKwh * currentTariff);
-                const custoManutencaoAno = (yr === 2040) ? 3000 : Math.round(200 * Math.pow(1.05, yr - 2026));
-                
-                const economiaAno = geracaoValorRs - custoManutencaoAno;
-                const acumuladoSemPoup = Math.round((yr === 2026 ? -valorInvestimento : 0) + (economiaAno * (yr - 2025)));
-                const acumuladoComPoup = Math.round(acumuladoSemPoup * 1.003);
-
-                projection25Years.push({
-                  ano: yr,
-                  txKwh: Number(currentTariff.toFixed(2)),
-                  valorMensal: Number(currentMonthlyCost.toFixed(2)),
-                  valorAnual: Number(annualNoSolar.toFixed(2)),
-                  geracaoKwh: geracaoAnoKwh,
-                  geracaoValorRs,
-                  custos: custoManutencaoAno,
-                  acumuladoSemPoup,
-                  acumuladoComPoup
-                });
-
-                currentTariff *= 1.06;
-                currentMonthlyCost = (consumo * currentTariff) + cipSem;
-              }
 
               // Reusable Page Shell Component
               const PageWrapper = ({ pageNum, title, children }: { pageNum: number; title?: string; children: React.ReactNode }) => {
@@ -926,7 +891,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                           </div>
                           <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">RETORNO DO INVESTIMENTO</h3>
                           <p className="text-2xl font-black text-white">
-                            EM ATÉ {prop?.paybackAnos ? `${prop.paybackAnos.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ANOS` : `${Number((valorInvestimento / ((prop?.economiaAnual || (geracaoMediaMensal * tarifa * 12)) || 1)).toFixed(1)).toLocaleString('pt-BR')} ANOS`}
+                            EM ATÉ {prop?.paybackAnos == null ? 'SEM RETORNO NO PERÍODO' : `${prop.paybackAnos.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ANOS`}
                           </p>
                         </div>
                       </div>
@@ -1099,6 +1064,8 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                     </div>
                   </PageWrapper>
 
+                  <PageWrapper pageNum={7} title="Projeção financeira em 25 anos"><PropostaProjecao calculo={snapshot}/></PageWrapper>
+
                   {/* PÁGINA 4: EQUIPAMENTOS E CONDIÇÕES */}
                   <PageWrapper pageNum={4} title="Lista de Equipamentos e Serviços">
                     <div className="space-y-6">
@@ -1173,7 +1140,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                       {creaResponsavel && (
                         <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-rose-700 flex items-center gap-2">
                           <ShieldCheck className="w-4 h-4 shrink-0" />
-                          <span>CREA RESPONSÁVEL: {creaResponsavel}</span>
+                          <span>{prop?.conselhoProfissional ?? 'CREA'} RESPONSÁVEL: {creaResponsavel}</span>
                         </div>
                       )}
                     </div>

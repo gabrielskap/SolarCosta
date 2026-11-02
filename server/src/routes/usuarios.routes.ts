@@ -35,13 +35,15 @@ const usuarioSchema = z.object({
   telefone: z.string().max(30).nullish(),
   cargo: z.enum(CARGOS),
   status: z.enum(['ativo', 'inativo']).default('ativo'),
-  crea: z.string().max(40).nullish(),
+  crea: z.string().trim().max(40).nullish(),
+  crt: z.string().trim().max(40).nullish(),
+  tipo_profissional: z.enum(['engenheiro', 'tecnico']).nullish(),
   permissoes: permissoesSchema.optional(),
 });
 
 const SELECT_USUARIO = `
   SELECT u.id, u.nome, u.email::text AS email, u.telefone, u.cargo::text AS cargo,
-         u.status::text AS status, u.crea, u.avatar_url, u.ultimo_acesso, u.criado_em,
+         u.status::text AS status, u.crea, u.crt, u.tipo_profissional, u.avatar_url, u.ultimo_acesso, u.criado_em,
          COALESCE(p.criar_editar_leads, false)         AS criar_editar_leads,
          COALESCE(p.emitir_propostas, false)           AS emitir_propostas,
          COALESCE(p.anexar_documentos, false)          AS anexar_documentos,
@@ -89,9 +91,9 @@ usuariosRouter.post(
 
     const id = await emTransacao(async (cliente) => {
       const { rows } = await cliente.query(
-        `INSERT INTO "SolarCosta_Usuarios" (nome, email, senha_hash, telefone, cargo, status, crea)
-         VALUES ($1,$2::citext,$3,$4,$5,$6,$7) RETURNING id`,
-        [d.nome, d.email, hash, d.telefone ?? null, d.cargo, d.status, d.crea ?? null],
+        `INSERT INTO "SolarCosta_Usuarios" (nome, email, senha_hash, telefone, cargo, status, crea, crt, tipo_profissional)
+         VALUES ($1,$2::citext,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [d.nome, d.email, hash, d.telefone ?? null, d.cargo, d.status, d.crea ?? null, d.crt ?? null, d.tipo_profissional ?? null],
       );
       const novoId = rows[0]!.id as string;
 
@@ -129,11 +131,14 @@ usuariosRouter.patch(
             telefone = COALESCE($4, telefone),
             cargo    = COALESCE($5::"SolarCosta_PerfilUsuario", cargo),
             status   = COALESCE($6::"SolarCosta_StatusUsuario", status),
-            crea     = COALESCE($7, crea)
+            crea = CASE WHEN $10 THEN $7 ELSE crea END,
+            crt = CASE WHEN $11 THEN $8 ELSE crt END,
+            tipo_profissional = CASE WHEN $12 THEN $9 ELSE tipo_profissional END
           WHERE id = $1 AND excluido_em IS NULL
           RETURNING nome, cargo::text AS cargo`,
         [id, d.nome ?? null, d.email ?? null, d.telefone ?? null,
-         d.cargo ?? null, d.status ?? null, d.crea ?? null],
+         d.cargo ?? null, d.status ?? null, d.crea ?? null, d.crt ?? null, d.tipo_profissional ?? null,
+         d.crea !== undefined, d.crt !== undefined, d.tipo_profissional !== undefined],
       );
       if (rows.length === 0) throw naoEncontrado('Usuário');
 
