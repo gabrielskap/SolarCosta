@@ -116,7 +116,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   const [nomeProd, setNomeProd] = useState('');
   const [tipoProd, setTipoProd] = useState<TipoProdutoSlug>('modulo');
   const [fornecedorIdProd, setFornecedorIdProd] = useState(fornecedores[0]?.id || '');
-  const [potenciaProd, setPotenciaProd] = useState('710 Wp');
+  const [potenciaProd, setPotenciaProd] = useState('710');
   const [estoqueProd, setEstoqueProd] = useState(10);
 
   // Form kit state
@@ -226,7 +226,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     // trabalha com slug — sem converter, o campo abria em branco ao editar.
     setTipoProd(slugDoTipoProduto(p.tipo));
     setFornecedorIdProd(p.fornecedorId);
-    setPotenciaProd(p.potencia || '');
+    setPotenciaProd(p.potenciaWp != null ? String(p.potenciaWp) : (p.potencia || '').replace(/\D/g, ''));
     setEstoqueProd(p.estoque);
     setIsNewProductOpen(true);
   };
@@ -235,10 +235,10 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     e.preventDefault();
     if (!nomeProd) return;
 
-    const textoPotencia = potenciaProd.trim().replace(/\s*wp$/i, '').trim().replace(',', '.');
+    const textoPotencia = potenciaProd.trim();
     const potenciaWp = textoPotencia ? Number(textoPotencia) : undefined;
     if (potenciaWp !== undefined && (!Number.isInteger(potenciaWp) || potenciaWp <= 0)) {
-      showToast('Potência inválida', 'error', 'Informe um número inteiro positivo em Wp, como 710 Wp.');
+      showToast('Potência inválida', 'error', 'Informe um número inteiro positivo em Wp, como 710.');
       return;
     }
     const fornObj = fornecedores.find(f => f.id === fornecedorIdProd);
@@ -250,7 +250,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       tipo: tipoProd,
       fornecedorId: fornecedorIdProd,
       fornecedorNome: fornObj ? fornObj.nome : 'Aldo Solar',
-      potencia: potenciaProd,
+      potencia: potenciaWp ? `${potenciaWp} Wp` : undefined,
       potenciaWp,
       estoque: Number(estoqueProd),
       // Preço continua existindo na API (custo interno), mas o cadastro não o
@@ -840,12 +840,14 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className={rotulo}>Potência</label>
+                    <label className={rotulo}>Potência (Wp)</label>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={potenciaProd}
-                      onChange={(e) => setPotenciaProd(e.target.value)}
-                      placeholder="710 Wp"
+                      onChange={(e) => setPotenciaProd(e.target.value.replace(/\D/g, ''))}
+                      placeholder="710"
                       className={campo}
                     />
                   </div>
