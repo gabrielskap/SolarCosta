@@ -765,7 +765,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             </button>
           )}
           <h1 className="text-2xl font-extrabold text-[#004276]">
-            {editando ? 'Continuar proposta' : 'Proposta de orçamento'}
+            {editando ? 'Editar proposta' : 'Proposta de orçamento'}
           </h1>
           <p className="text-xs text-slate-500 font-semibold mt-0.5">
             {/* O número é gerado pelo banco ao salvar; a validade vem dos parâmetros. */}

@@ -152,17 +152,16 @@ export const ProposalsListView: React.FC<ProposalsListViewProps> = ({
       alinhamento: 'direita',
       celula: (p) => (
         <div className="inline-flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-          {/* Rascunho é proposta inacabada: a ação principal dele é voltar ao
-              formulário, não imprimir. Por isso vem primeiro — e só nele, que
-              proposta enviada ou aceita se altera por outro caminho. */}
-          {p.status === 'rascunho' && (
+          {/* Gerar o PDF já marca como enviada; a edição segue disponível até
+              o aceite, conforme a regra aplicada pela rota e pelo servidor. */}
+          {p.status !== 'aceita' && podeExcluir && (
             <button
               type="button"
               onClick={() => onContinuarProposta(p.id)}
               className="text-[#004276] hover:underline inline-flex items-center gap-1 font-bold"
             >
               <PencilLine className="w-3.5 h-3.5" />
-              Continuar preenchendo
+              Editar
             </button>
           )}
           <button

@@ -1,115 +1,1333 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  BatteryCharging,
+  Sun,
+  Zap,
+  Cpu,
+  Plus,
+  Trash2,
+  Save,
+  RotateCcw,
+  Printer,
+  Search,
+  ArrowLeft,
+  CheckCircle2,
+  AlertTriangle,
+  FileSpreadsheet,
+  Building,
+  User,
+  Phone,
+  Mail,
+  PieChart as PieChartIcon,
+  ExternalLink,
+  Sliders,
+  ShieldCheck,
+  Info,
+} from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { listarAparelhos, type Aparelho } from '../services/aparelhos';
-import { abrirSimulacaoOffGrid, listarSimulacoesOffGrid, salvarSimulacaoOffGrid, type DadosOffGrid, type ResumoOffGrid } from '../services/offGrid';
+import {
+  abrirSimulacaoOffGrid,
+  listarSimulacoesOffGrid,
+  salvarSimulacaoOffGrid,
+  type DadosOffGrid,
+  type ResumoOffGrid,
+} from '../services/offGrid';
 import { ErroApi } from '../services/http';
 import { LeadAutocomplete } from './LeadAutocomplete';
-import { cargasOffGridPadrao, configOffGridPadrao, dimensionarSistema, type ConfigOffGrid } from '../utils/offGrid';
+import {
+  cargasOffGridPadrao,
+  configOffGridPadrao,
+  dimensionarSistema,
+  type CargaOffGrid,
+  type ConfigOffGrid,
+} from '../utils/offGrid';
 
-const novo = (): DadosOffGrid => ({ titulo: '', leadId: null, cliente: {nome:'',empresa:'',cnpj:'',telefone:'',email:''}, equipamentos: cargasOffGridPadrao().map(c => ({...c,tensaoV:220})), config: {...configOffGridPadrao} });
-const erroTexto = (e: unknown) => e instanceof ErroApi ? e.mensagemCompleta : e instanceof Error ? e.message : 'Não foi possível concluir a operação.';
-const numero = (v: number, casas = 2) => v.toLocaleString('pt-BR', {maximumFractionDigits:casas});
-const campo = 'w-full border border-slate-300 rounded-lg px-3 py-2 bg-white';
-const botao = 'rounded-lg bg-[#004276] text-white px-4 py-2 disabled:opacity-50';
-const grupos: {titulo:string;campos:[keyof ConfigOffGrid,string,number,number?][]}[] = [
-  {titulo:'3. Banco de baterias · Lítio (LiFePO4)',campos:[['eficienciaInversor','Eficiência do inversor (%)',0.01,100],['profundidadeDescarga','Profundidade de descarga · DoD (%)',0.01,100],['eficienciaCarga','Eficiência de carga (%)',0.01,100],['tensaoBateria','Tensão nominal da bateria (V)',0.01],['capacidadeBateriaAh','Capacidade unitária (Ah)',0.01]]},
-  {titulo:'4. Sistema fotovoltaico',campos:[['irradiacaoSolar','Irradiação solar · HSP (h/dia)',0.01],['potenciaModuloWp','Potência do módulo (Wp)',0.01],['perdasSistema','Perdas do sistema (%)',0,99.99],['fatorDias','Fator dias (D)',0.01]]},
+const novo = (): DadosOffGrid => ({
+  titulo: '',
+  leadId: null,
+  cliente: { nome: '', empresa: '', cnpj: '', telefone: '', email: '' },
+  equipamentos: cargasOffGridPadrao().map((c) => ({ ...c, tensaoV: 220 })),
+  config: { ...configOffGridPadrao },
+});
+
+const erroTexto = (e: unknown) =>
+  e instanceof ErroApi ? e.mensagemCompleta : e instanceof Error ? e.message : 'Não foi possível concluir a operação.';
+
+const numero = (v: number, casas = 2) => v.toLocaleString('pt-BR', { maximumFractionDigits: casas });
+
+const CARGAS_RAPIDAS = [
+  { nome: 'Lâmpadas LED', potenciaW: 9, tensaoV: 220, quantidade: 8, horasDia: 5 },
+  { nome: 'Geladeira Frost Free', potenciaW: 150, tensaoV: 220, quantidade: 1, horasDia: 12 },
+  { nome: 'Smart TV 50"', potenciaW: 100, tensaoV: 220, quantidade: 1, horasDia: 5 },
+  { nome: 'Roteador Wi-Fi', potenciaW: 15, tensaoV: 220, quantidade: 1, horasDia: 24 },
+  { nome: 'Ar-Cond. 9.000 BTU Inverter', potenciaW: 800, tensaoV: 220, quantidade: 1, horasDia: 4 },
+  { nome: 'Bomba d’água 1/2 CV', potenciaW: 370, tensaoV: 220, quantidade: 1, horasDia: 2 },
+  { nome: 'Notebook / Computador', potenciaW: 65, tensaoV: 220, quantidade: 1, horasDia: 8 },
 ];
 
-export function OffGridView({podeSalvar=true}:{podeSalvar?:boolean}) {
-  const [dados,setDados] = useState<DadosOffGrid>(novo);
-  const [id,setId] = useState<string>();
-  const [catalogo,setCatalogo] = useState<Aparelho[]>([]);
-  const [catalogoErro,setCatalogoErro] = useState('');
-  const [carregandoCatalogo,setCarregandoCatalogo] = useState(true);
-  const [selecionado,setSelecionado] = useState('');
-  const [buscaAparelho,setBuscaAparelho] = useState('');
-  const [simulacoes,setSimulacoes] = useState<ResumoOffGrid[]>([]);
-  const [editando,setEditando] = useState(false);
-  const [carregandoLista,setCarregandoLista] = useState(true);
-  const [ocupado,setOcupado] = useState(false);
-  const [erro,setErro] = useState('');
-  const [aviso,setAviso] = useState('');
-  const [alterado,setAlterado] = useState(false);
-  const atualizar = (patch:Partial<DadosOffGrid>) => {setDados(d => ({...d,...patch}));setAlterado(true);setAviso('');};
+const CORES_GRAFICO = ['#004276', '#0284c7', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#64748b'];
+
+export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
+  const [dados, setDados] = useState<DadosOffGrid>(novo);
+  const [id, setId] = useState<string>();
+  const [catalogo, setCatalogo] = useState<Aparelho[]>([]);
+  const [catalogoErro, setCatalogoErro] = useState('');
+  const [carregandoCatalogo, setCarregandoCatalogo] = useState(true);
+  const [selecionado, setSelecionado] = useState('');
+  const [buscaAparelho, setBuscaAparelho] = useState('');
+  const [simulacoes, setSimulacoes] = useState<ResumoOffGrid[]>([]);
+  const [editando, setEditando] = useState(false);
+  const [carregandoLista, setCarregandoLista] = useState(true);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+  const [aviso, setAviso] = useState('');
+  const [alterado, setAlterado] = useState(false);
+  const [restaurar, setRestaurar] = useState(false);
+  const [buscaLista, setBuscaLista] = useState('');
+  const [abaConfig, setAbaConfig] = useState<'bateria' | 'solar'>('bateria');
+
+  const atualizar = (patch: Partial<DadosOffGrid>) => {
+    setDados((d) => ({ ...d, ...patch }));
+    setAlterado(true);
+    setAviso('');
+  };
+
   useEffect(() => {
-    listarAparelhos().then(setCatalogo).catch(e => setCatalogoErro(erroTexto(e))).finally(() => setCarregandoCatalogo(false));
-    listarSimulacoesOffGrid().then(setSimulacoes).catch(e => setErro(erroTexto(e))).finally(()=>setCarregandoLista(false));
-  },[]);
-  let resultado:ReturnType<typeof dimensionarSistema>|undefined;
-  let erroCalculo='';
-  try {resultado=dimensionarSistema(dados.equipamentos,dados.config);}
-  catch(e){erroCalculo=erroTexto(e);}
-  const editarCarga = (indice:number,key:string,value:string|number) => atualizar({equipamentos:dados.equipamentos.map((c,i) => i===indice ? {...c,[key]:value} : c)});
-  const metricas = resultado ? [
-    ['Potência total demandada',numero(resultado.potenciaTotalW)+' W'],['Consumo diário',numero(resultado.consumoDiarioKWh)+' kWh/dia'],
-    ['Consumo corrigido',numero(resultado.consumoCorrigidoKWh)+' kWh/dia'],['Inversor recomendado (+30%)',numero(resultado.potenciaInversorRecomendadaW)+' W'],
-    ['Capacidade mínima do banco',numero(resultado.capacidadeMinimaAh)+' Ah'],['Energia mínima nominal do banco',numero(resultado.energiaMinimaBancoKWh)+' kWh'],
-    ['Baterias necessárias',numero(resultado.quantidadeBaterias,0)+' unidades'],['Quantidade antes de arredondar',numero(resultado.quantidadeBateriasCalculada,4)],
-    ['Geração por módulo',numero(resultado.geracaoModuloKWh,4)+' kWh/dia'],['Módulos necessários',numero(resultado.quantidadeModulos,0)+' unidades'],
-    ['Potência fotovoltaica instalada',numero(resultado.potenciaSistemaKWp)+' kWp'],
-  ] : [];
-  return <div className="space-y-6">
-    <div><h1 className="text-2xl font-bold text-slate-900">Dimensionamento OFF-Grid</h1><p className="text-slate-500">Levantamento de cargas, banco de baterias e módulos fotovoltaicos.</p></div>
-    {erro && <p role="alert" className="bg-red-50 text-red-700 p-3 rounded-lg">{erro}</p>}
-    {aviso && <p role="status" className="bg-green-50 text-green-800 p-3 rounded-lg">{aviso}</p>}
-    {!editando ? <section className="space-y-4">
-      <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold">Simulações cadastradas</h2><button className={botao} disabled={ocupado||!podeSalvar} onClick={()=>{setDados(novo());setId(undefined);setAlterado(false);setAviso('');setErro('');setEditando(true);}}>Criar novo</button></div>
-      <div className="bg-white border rounded-xl overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50"><tr><th className="p-4">Simulação</th><th className="p-4">Última atualização</th><th className="p-4">Ações</th></tr></thead><tbody>
-        {simulacoes.map(s=><tr key={s.id} className="border-t"><td className="p-4 font-medium">{s.titulo}</td><td className="p-4">{new Date(s.atualizadoEm).toLocaleString('pt-BR')}</td><td className="p-4"><button className="text-sky-800 underline" disabled={ocupado} onClick={async()=>{
-          setOcupado(true);setErro('');try{const simulacao=await abrirSimulacaoOffGrid(s.id);setDados(simulacao.dados);setId(simulacao.id);setAlterado(false);setAviso('');setEditando(true);}catch(e){setErro(erroTexto(e));}finally{setOcupado(false);}
-        }}>Abrir simulação</button></td></tr>)}
-        {!simulacoes.length&&<tr><td colSpan={3} className="p-6 text-slate-500">{carregandoLista?'Carregando simulações…':erro?'Não foi possível carregar as simulações.':'Nenhuma simulação cadastrada. Clique em Criar novo para começar.'}</td></tr>}
-      </tbody></table></div>
-    </section> : <>
-    <div className="flex flex-wrap justify-between gap-3"><button className="text-sky-800 underline" disabled={ocupado} onClick={()=>{if(alterado&&!window.confirm('Voltar à listagem e descartar as alterações não salvas?'))return;setEditando(false);setErro('');setAviso('');}}>Voltar para simulações</button><p className="text-sm text-slate-500">{id?'Editar simulação':'Nova simulação'}{alterado?' · Alterações não salvas':''}</p></div>
-    <form className="space-y-6" onSubmit={async e=>{
-      e.preventDefault();if(!resultado||ocupado)return;setOcupado(true);setErro('');setAviso('');
-      try{const s=await salvarSimulacaoOffGrid(dados,id);setId(s.id);setAlterado(false);setAviso('Simulação salva com sucesso.');setSimulacoes(lista=>[s,...lista.filter(item=>item.id!==s.id)]);setEditando(false);}
-      catch(e){setErro(erroTexto(e));}finally{setOcupado(false);}
-    }}>
-      <fieldset disabled={ocupado} className="space-y-6">
-        <section className="bg-white border rounded-xl p-3 space-y-2">
-          <h2 className="font-bold text-sm text-slate-900">Resultados calculados</h2>
-          {erroCalculo&&<p role="alert" className="bg-amber-50 text-amber-900 rounded-lg p-2 text-sm">{erroCalculo}</p>}
-          <dl className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2" aria-live="polite">{metricas.map(([label,value])=><div key={label} className="bg-slate-50 rounded-lg px-3 py-2"><dt className="text-xs text-slate-500">{label}</dt><dd className="text-base font-bold text-[#004276]">{value}</dd></div>)}</dl>
-          {resultado?.consultarFabricante&&<p role="alert" className="bg-amber-100 text-amber-900 p-2 rounded-lg text-sm font-bold">Consultar Powersafe — quantidade calculada superior a 10 baterias.</p>}
-        </section>
-        <section className="bg-white border rounded-xl p-5 space-y-4">
-          <h2 className="font-bold text-lg">1. Dados do instalador/cliente</h2>
-          <label className="block">Título da simulação<input required maxLength={200} className={campo} value={dados.titulo} onChange={e=>atualizar({titulo:e.target.value})}/></label>
-          <div className="grid md:grid-cols-2 gap-4">
-            <LeadAutocomplete leadId={dados.leadId} nome={dados.cliente.nome} onChange={lead=>{
-              atualizar({leadId:lead?.id??null,...(lead?{cliente:{...dados.cliente,nome:lead.nome,cnpj:lead.cpf_cnpj??'',telefone:lead.telefone??'',email:lead.email??''}}:{})});
-            }}/>
-            {([['nome','Nome e sobrenome',200],['empresa','Empresa',200],['cnpj','CPF/CNPJ',20],['telefone','Telefone',30],['email','E-mail',200]] as const).map(([key,label,max])=><label key={key}>{label}<input required={key==='nome'} type={key==='email'?'email':'text'} maxLength={max} className={campo} value={dados.cliente[key]} onChange={e=>atualizar({cliente:{...dados.cliente,[key]:e.target.value}})}/></label>)}
+    listarAparelhos()
+      .then(setCatalogo)
+      .catch((e) => setCatalogoErro(erroTexto(e)))
+      .finally(() => setCarregandoCatalogo(false));
+    listarSimulacoesOffGrid()
+      .then(setSimulacoes)
+      .catch((e) => setErro(erroTexto(e)))
+      .finally(() => setCarregandoLista(false));
+  }, []);
+
+  let resultado: ReturnType<typeof dimensionarSistema> | undefined;
+  let erroCalculo = '';
+  try {
+    resultado = dimensionarSistema(dados.equipamentos, dados.config);
+  } catch (e) {
+    erroCalculo = erroTexto(e);
+  }
+
+  const editarCarga = (indice: number, key: string, value: string | number) => {
+    atualizar({
+      equipamentos: dados.equipamentos.map((c, i) => (i === indice ? { ...c, [key]: value } : c)),
+    });
+  };
+
+  const adicionarCargaRapida = (carga: (typeof CARGAS_RAPIDAS)[0]) => {
+    atualizar({
+      equipamentos: [
+        ...dados.equipamentos,
+        {
+          id: crypto.randomUUID(),
+          nome: carga.nome,
+          potenciaW: carga.potenciaW,
+          tensaoV: carga.tensaoV,
+          quantidade: carga.quantidade,
+          horasDia: carga.horasDia,
+        },
+      ],
+    });
+  };
+
+  const adicionarCargaEmBranco = () => {
+    atualizar({
+      equipamentos: [
+        ...dados.equipamentos,
+        {
+          id: crypto.randomUUID(),
+          nome: 'Novo Equipamento',
+          potenciaW: 100,
+          tensaoV: 220,
+          quantidade: 1,
+          horasDia: 4,
+        },
+      ],
+    });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const dadosGrafico = useMemo(() => {
+    if (!resultado || !resultado.cargas.length) return [];
+    return resultado.cargas
+      .filter((c) => c.consumoDiarioWh > 0)
+      .map((c) => ({
+        name: c.nome,
+        value: Math.round(c.consumoDiarioWh),
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [resultado]);
+
+  const simulacoesFiltradas = useMemo(() => {
+    if (!buscaLista.trim()) return simulacoes;
+    const termo = buscaLista.toLowerCase();
+    return simulacoes.filter((s) => s.titulo.toLowerCase().includes(termo));
+  }, [simulacoes, buscaLista]);
+
+  // ========================== VISTA 1: LISTAGEM DE SIMULAÇÕES ==========================
+  if (!editando) {
+    return (
+      <div className="space-y-4">
+        {/* Top Header compacto */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-sky-50 text-[#004276] flex items-center justify-center shrink-0 border border-sky-100">
+              <BatteryCharging className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold text-slate-900 tracking-tight">Dimensionamento OFF-Grid</h1>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  LiFePO4 & Solar
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Levantamento de cargas críticas, banco de baterias de lítio e arranjo fotovoltaico isolado.
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500">Os dados de identificação são salvos na simulação. Alterações aqui não alteram o cadastro do lead.</p>
-        </section>
-        <section className="bg-white border rounded-xl p-5 space-y-4">
-          <h2 className="font-bold text-lg">2. Levantamento de cargas críticas para backup</h2>
-          {catalogoErro&&<p role="alert" className="text-red-700">{catalogoErro}</p>}
-          <div className="grid md:grid-cols-[1fr_2fr_auto] gap-3">
-            <input aria-label="Buscar equipamento cadastrado" type="search" className={campo} placeholder="Buscar aparelho ou ambiente" value={buscaAparelho} onChange={e=>{setBuscaAparelho(e.target.value);setSelecionado('');}}/>
-            <select aria-label="Equipamento cadastrado" className={campo} value={selecionado} onChange={e=>setSelecionado(e.target.value)}><option value="">{carregandoCatalogo?'Carregando equipamentos…':'Selecione um equipamento cadastrado'}</option>{catalogo.filter(a=>`${a.ambiente} ${a.nome}`.toLocaleLowerCase('pt-BR').includes(buscaAparelho.toLocaleLowerCase('pt-BR'))).map(a=><option key={a.id} value={a.id}>{a.ambiente} · {a.nome} · {a.potenciaW} W</option>)}</select>
-            <button type="button" className={botao} disabled={!selecionado||dados.equipamentos.length>=500} onClick={()=>{const a=catalogo.find(a=>a.id===selecionado);if(a)atualizar({equipamentos:[...dados.equipamentos,{id:crypto.randomUUID(),nome:a.nome,potenciaW:a.potenciaW,quantidade:1,horasDia:1,tensaoV:220}]});}}>Adicionar</button>
+          <button
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#004276] hover:bg-[#003159] text-white text-xs font-semibold shadow-xs transition disabled:opacity-50"
+            disabled={ocupado || !podeSalvar}
+            onClick={() => {
+              setDados(novo());
+              setId(undefined);
+              setAlterado(false);
+              setAviso('');
+              setErro('');
+              setRestaurar(false);
+              setEditando(true);
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            Novo dimensionamento
+          </button>
+        </div>
+
+        {erro && (
+          <div role="alert" className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            <span>{erro}</span>
           </div>
-          {!carregandoCatalogo&&!catalogo.length&&!catalogoErro&&<p className="text-sm text-slate-500">Nenhum aparelho cadastrado. Cadastre em <Link className="underline text-sky-800" to="/sistema/parametros/aparelhos">Parâmetros → Aparelhos</Link>.</p>}
-          <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50"><tr>{['Equipamento','Tensão (V)','Potência (W)','Horas/dia','Quantidade','Demanda (W)','Consumo (Wh/dia)','Ações'].map(t=><th className="p-2" key={t}>{t}</th>)}</tr></thead><tbody>
-            {dados.equipamentos.map((c,i)=><tr key={c.id} className="border-t"><td className="p-2 min-w-48">{c.nome}</td>
-              {([['tensaoV',0.01,undefined,0.01],['potenciaW',0,undefined,0.01],['horasDia',0,24,0.01],['quantidade',0,undefined,1]] as const).map(([key,min,max,step])=><td key={key} className="p-2 min-w-28"><input aria-label={`${c.nome} · ${key}`} required type="number" min={min} max={max} step={step} className={campo} value={Number.isFinite(c[key])?c[key]:''} onChange={e=>editarCarga(i,key,e.target.valueAsNumber)}/></td>)}
-              <td className="p-2 whitespace-nowrap">{resultado?numero(resultado.cargas[i].potenciaDemandadaW):'—'}</td><td className="p-2 whitespace-nowrap">{resultado?numero(resultado.cargas[i].consumoDiarioWh):'—'}</td>
-              <td className="p-2"><button type="button" className="text-red-700 underline" onClick={()=>atualizar({equipamentos:dados.equipamentos.filter((_,n)=>n!==i)})}>Remover</button></td></tr>)}
-          </tbody></table></div>
-          {!dados.equipamentos.length&&<p>Adicione equipamentos para iniciar o levantamento.</p>}
-        </section>
-        <div className="grid xl:grid-cols-2 gap-6">{grupos.map(g=><section key={g.titulo} className="bg-white border rounded-xl p-5 space-y-4"><h2 className="font-bold text-lg">{g.titulo}</h2><div className="grid sm:grid-cols-2 gap-4">{g.campos.map(([key,label,min,max])=><label key={key}>{label}<input type="number" required min={min} max={max} step="any" className={campo} value={Number.isFinite(dados.config[key])?dados.config[key]:''} onChange={e=>atualizar({config:{...dados.config,[key]:e.target.valueAsNumber}})}/></label>)}</div></section>)}</div>
-          <p className="text-sm text-slate-500">Dimensionamento simplificado da planilha, com mínimo de uma bateria. A margem de 30% do inversor é uma recomendação; avalie também os picos de partida. As fórmulas não verificam autonomia adicional, temperatura, compatibilidade do inversor, limites do MPPT ou ligações série/paralelo. O fator dias multiplica a geração por módulo e não representa autonomia do banco.</p>
-        <div className="flex flex-wrap gap-3"><button disabled={!podeSalvar||!resultado||!dados.equipamentos.length} className={botao}>{id?'Salvar alterações':'Salvar simulação'}</button></div>
-        {!podeSalvar&&<p className="text-sm text-slate-500">É necessária a permissão de emitir propostas para salvar simulações.</p>}
-      </fieldset>
-    </form>
-    </>}
-    {ocupado&&<p role="status">Processando simulação…</p>}
-  </div>;
+        )}
+
+        {/* Barra de busca e filtros compacta */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              placeholder="Filtrar por título..."
+              className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#004276] focus:border-[#004276]"
+              value={buscaLista}
+              onChange={(e) => setBuscaLista(e.target.value)}
+            />
+          </div>
+          <div className="text-xs text-slate-500 self-end sm:self-center font-medium">
+            {simulacoesFiltradas.length} {simulacoesFiltradas.length === 1 ? 'simulação cadastrada' : 'simulações cadastradas'}
+          </div>
+        </div>
+
+        {/* Tabela de Simulações compacta e moderna */}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <table className="w-full text-xs text-left divide-y divide-slate-200">
+            <thead className="bg-slate-50/80 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
+              <tr>
+                <th className="py-2.5 px-3">Título da simulação</th>
+                <th className="py-2.5 px-3">Vínculo</th>
+                <th className="py-2.5 px-3">Última atualização</th>
+                <th className="py-2.5 px-3 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {simulacoesFiltradas.map((s) => (
+                <tr key={s.id} className="hover:bg-slate-50/70 transition">
+                  <td className="py-2.5 px-3 font-medium text-slate-900 flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4 text-sky-600 shrink-0" />
+                    <span>{s.titulo}</span>
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-500">
+                    {s.leadId ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 text-[10px] font-medium border border-sky-100">
+                        Lead vinculado
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 text-[11px]">—</span>
+                    )}
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                    {new Date(s.atualizadoEm).toLocaleString('pt-BR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </td>
+                  <td className="py-2.5 px-3 text-right">
+                    <button
+                      className="inline-flex items-center gap-1 text-[#004276] hover:text-[#002e5c] font-semibold text-xs py-1 px-2.5 rounded-md hover:bg-sky-50 transition"
+                      disabled={ocupado}
+                      onClick={async () => {
+                        setOcupado(true);
+                        setErro('');
+                        try {
+                          const simulacao = await abrirSimulacaoOffGrid(s.id);
+                          setDados(simulacao.dados);
+                          setId(simulacao.id);
+                          setAlterado(false);
+                          setAviso('');
+                          setRestaurar(false);
+                          setEditando(true);
+                        } catch (e) {
+                          setErro(erroTexto(e));
+                        } finally {
+                          setOcupado(false);
+                        }
+                      }}
+                    >
+                      <span>Abrir</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!simulacoesFiltradas.length && (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-slate-500 text-xs">
+                    {carregandoLista ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-[#004276] border-t-transparent rounded-full animate-spin" />
+                        <span>Carregando simulações...</span>
+                      </div>
+                    ) : erro ? (
+                      'Não foi possível carregar as simulações.'
+                    ) : buscaLista ? (
+                      'Nenhuma simulação corresponde ao filtro de busca.'
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-slate-600 font-medium">Nenhuma simulação cadastrada.</p>
+                        <p className="text-[11px] text-slate-400">Clique em "Novo dimensionamento" acima para iniciar.</p>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // ========================== VISTA 2: EDITOR COMPACTO DO DIMENSIONAMENTO ==========================
+  return (
+    <div className="space-y-3.5">
+      {/* Barra Superior Compacta */}
+      <div className="no-print bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-slate-600 hover:text-slate-900 text-xs font-medium px-2 py-1 rounded-lg hover:bg-slate-100 transition"
+            onClick={() => {
+              if (alterado && !window.confirm('Existem alterações não salvas. Deseja realmente voltar e descartar?')) return;
+              setEditando(false);
+              setErro('');
+              setAviso('');
+            }}
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Voltar</span>
+          </button>
+          <div className="h-4 w-px bg-slate-200" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-900 truncate">
+                {id ? 'Editar Simulação' : 'Nova Simulação OFF-Grid'}
+              </span>
+              {alterado ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium">
+                  Não salvo
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                  Sincronizado
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            title="Imprimir relatório"
+            onClick={handlePrint}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition"
+          >
+            <Printer className="w-3.5 h-3.5 text-slate-500" />
+            <span className="hidden sm:inline">Imprimir</span>
+          </button>
+
+          <button
+            type="button"
+            title="Restaurar valores padrão"
+            onClick={() => setRestaurar(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+            <span className="hidden sm:inline">Restaurar</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={!podeSalvar || !resultado || !dados.equipamentos.length || ocupado}
+            onClick={async (e) => {
+              e.preventDefault();
+              if (!resultado || ocupado) return;
+              if (!dados.titulo.trim()) {
+                setErro('Informe o título da simulação antes de salvar.');
+                return;
+              }
+              setOcupado(true);
+              setErro('');
+              setAviso('');
+              try {
+                const s = await salvarSimulacaoOffGrid(dados, id);
+                setId(s.id);
+                setAlterado(false);
+                setAviso('Simulação salva com sucesso!');
+                setSimulacoes((lista) => [s, ...lista.filter((item) => item.id !== s.id)]);
+              } catch (err) {
+                setErro(erroTexto(err));
+              } finally {
+                setOcupado(false);
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#004276] hover:bg-[#003159] text-white text-xs font-semibold shadow-xs transition disabled:opacity-50"
+          >
+            {ocupado ? (
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Save className="w-3.5 h-3.5" />
+            )}
+            <span>{id ? 'Salvar alterações' : 'Salvar simulação'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Alertas Compactos */}
+      {erro && (
+        <div role="alert" className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            <span>{erro}</span>
+          </div>
+          <button type="button" onClick={() => setErro('')} className="text-red-700 font-bold hover:underline text-xs">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {aviso && (
+        <div role="status" className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>{aviso}</span>
+          </div>
+          <button type="button" onClick={() => setAviso('')} className="text-emerald-700 font-bold hover:underline text-xs">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {restaurar && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-2 text-amber-900">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="w-4 h-4 text-amber-600" />
+            <span>Restaurar padrões da planilha?</span>
+          </div>
+          <p className="text-[11px] text-amber-800">
+            As cargas e configurações técnicas serão redefinidas para os valores recomendados de fábrica. Os dados do cliente serão mantidos.
+          </p>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-md font-semibold text-[11px]"
+              onClick={() => {
+                atualizar({ equipamentos: novo().equipamentos, config: { ...configOffGridPadrao } });
+                setRestaurar(false);
+              }}
+            >
+              Confirmar
+            </button>
+            <button
+              type="button"
+              className="px-2.5 py-1 border border-amber-300 hover:bg-amber-100 rounded-md text-[11px]"
+              onClick={() => setRestaurar(false)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Grid Principal: 7 colunas formulário / 5 colunas resultados em tempo real */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-3.5">
+        {/* ================= COLUNA DA ESQUERDA: ENTRADA DE DADOS ================= */}
+        <div className="xl:col-span-7 space-y-3.5">
+          {/* Card 1: Título e Cliente */}
+          <section className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#004276] text-white text-[10px] font-bold">
+                  1
+                </span>
+                <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Identificação & Cliente</h2>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Título da simulação <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  maxLength={200}
+                  placeholder="Ex: Sítio São José - Sistema Isolado 48V"
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-1 focus:ring-[#004276] focus:border-[#004276] focus:outline-none"
+                  value={dados.titulo}
+                  onChange={(e) => atualizar({ titulo: e.target.value })}
+                />
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vincular a um Lead (Opcional)</label>
+                  <LeadAutocomplete
+                    leadId={dados.leadId}
+                    nome={dados.cliente.nome}
+                    onChange={(lead) => {
+                      atualizar({
+                        leadId: lead?.id ?? null,
+                        ...(lead
+                          ? {
+                              cliente: {
+                                ...dados.cliente,
+                                nome: lead.nome,
+                                cnpj: lead.cpf_cnpj ?? '',
+                                telefone: lead.telefone ?? '',
+                                email: lead.email ?? '',
+                              },
+                            }
+                          : {}),
+                      });
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Nome do Cliente <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    maxLength={200}
+                    placeholder="Nome completo"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-1 focus:ring-[#004276] focus:border-[#004276] focus:outline-none"
+                    value={dados.cliente.nome}
+                    onChange={(e) => atualizar({ cliente: { ...dados.cliente, nome: e.target.value } })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                <div>
+                  <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Empresa</label>
+                  <input
+                    maxLength={200}
+                    placeholder="Empresa"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white focus:ring-1 focus:ring-[#004276] focus:outline-none"
+                    value={dados.cliente.empresa}
+                    onChange={(e) => atualizar({ cliente: { ...dados.cliente, empresa: e.target.value } })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-slate-500 mb-0.5">CPF / CNPJ</label>
+                  <input
+                    maxLength={20}
+                    placeholder="000.000.000-00"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white focus:ring-1 focus:ring-[#004276] focus:outline-none"
+                    value={dados.cliente.cnpj}
+                    onChange={(e) => atualizar({ cliente: { ...dados.cliente, cnpj: e.target.value } })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Telefone</label>
+                  <input
+                    maxLength={30}
+                    placeholder="(00) 00000-0000"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white focus:ring-1 focus:ring-[#004276] focus:outline-none"
+                    value={dados.cliente.telefone}
+                    onChange={(e) => atualizar({ cliente: { ...dados.cliente, telefone: e.target.value } })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-slate-500 mb-0.5">E-mail</label>
+                  <input
+                    type="email"
+                    maxLength={200}
+                    placeholder="cliente@email.com"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white focus:ring-1 focus:ring-[#004276] focus:outline-none"
+                    value={dados.cliente.email}
+                    onChange={(e) => atualizar({ cliente: { ...dados.cliente, email: e.target.value } })}
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Card 2: Levantamento de Cargas Críticas */}
+          <section className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#004276] text-white text-[10px] font-bold">
+                  2
+                </span>
+                <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Cargas Críticas (Backup)</h2>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={adicionarCargaEmBranco}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#004276] hover:bg-sky-50 px-2 py-1 rounded-md transition border border-sky-200"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Adicionar carga manual</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Chips rápidos de aparelhos comuns */}
+            <div>
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                Adicionar rápido com 1 clique:
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {CARGAS_RAPIDAS.map((item) => (
+                  <button
+                    key={item.nome}
+                    type="button"
+                    onClick={() => adicionarCargaRapida(item)}
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-slate-50 hover:bg-sky-50 text-slate-700 hover:text-sky-800 border border-slate-200 hover:border-sky-300 transition flex items-center gap-1"
+                  >
+                    <Plus className="w-2.5 h-2.5 text-sky-600" />
+                    <span>{item.nome}</span>
+                    <span className="text-[9px] text-slate-400">({item.potenciaW}W)</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Inclusão a partir do catálogo cadastrado */}
+            <div className="bg-slate-50/70 p-2.5 rounded-lg border border-slate-100 space-y-1.5">
+              <div className="grid sm:grid-cols-[1fr_1.5fr_auto] gap-2 items-center">
+                <input
+                  type="search"
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#004276]"
+                  placeholder="Buscar no catálogo..."
+                  value={buscaAparelho}
+                  onChange={(e) => {
+                    setBuscaAparelho(e.target.value);
+                    setSelecionado('');
+                  }}
+                />
+                <select
+                  aria-label="Equipamento cadastrado"
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#004276]"
+                  value={selecionado}
+                  onChange={(e) => setSelecionado(e.target.value)}
+                >
+                  <option value="">{carregandoCatalogo ? 'Carregando aparelhos...' : 'Selecione do catálogo'}</option>
+                  {catalogo
+                    .filter((a) => `${a.ambiente} ${a.nome}`.toLowerCase().includes(buscaAparelho.toLowerCase()))
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.ambiente} · {a.nome} ({a.potenciaW} W)
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!selecionado || dados.equipamentos.length >= 500}
+                  onClick={() => {
+                    const a = catalogo.find((item) => item.id === selecionado);
+                    if (a) {
+                      atualizar({
+                        equipamentos: [
+                          ...dados.equipamentos,
+                          {
+                            id: crypto.randomUUID(),
+                            nome: a.nome,
+                            potenciaW: a.potenciaW,
+                            quantidade: 1,
+                            horasDia: 2,
+                            tensaoV: 220,
+                          },
+                        ],
+                      });
+                      setSelecionado('');
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-[#004276] hover:bg-[#003159] text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition"
+                >
+                  Incluir
+                </button>
+              </div>
+              {!carregandoCatalogo && !catalogo.length && !catalogoErro && (
+                <p className="text-[10px] text-slate-500">
+                  Cadastre aparelhos em{' '}
+                  <Link className="underline text-sky-700" to="/sistema/parametros/aparelhos">
+                    Parâmetros → Aparelhos
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+
+            {/* Tabela Compacta de Cargas */}
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="w-full text-xs text-left divide-y divide-slate-200">
+                <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
+                  <tr>
+                    <th className="py-2 px-2.5">Equipamento</th>
+                    <th className="py-2 px-2 w-20">Tensão (V)</th>
+                    <th className="py-2 px-2 w-20">Potência (W)</th>
+                    <th className="py-2 px-2 w-16">Qtd</th>
+                    <th className="py-2 px-2 w-20">Horas/dia</th>
+                    <th className="py-2 px-2 text-right">Demanda</th>
+                    <th className="py-2 px-2 text-right">Consumo/dia</th>
+                    <th className="py-2 px-2 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {dados.equipamentos.map((c, i) => {
+                    const cargaRes = resultado?.cargas[i];
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50/50">
+                        <td className="py-1.5 px-2.5">
+                          <input
+                            type="text"
+                            required
+                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 bg-white focus:ring-1 focus:ring-sky-500 font-medium"
+                            value={c.nome}
+                            onChange={(e) => editarCarga(i, 'nome', e.target.value)}
+                          />
+                        </td>
+                        <td className="py-1.5 px-1.5">
+                          <input
+                            type="number"
+                            min="1"
+                            step="any"
+                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 text-center bg-white"
+                            value={Number.isFinite(c.tensaoV) ? c.tensaoV : ''}
+                            onChange={(e) => editarCarga(i, 'tensaoV', e.target.valueAsNumber)}
+                          />
+                        </td>
+                        <td className="py-1.5 px-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 text-center bg-white"
+                            value={Number.isFinite(c.potenciaW) ? c.potenciaW : ''}
+                            onChange={(e) => editarCarga(i, 'potenciaW', e.target.valueAsNumber)}
+                          />
+                        </td>
+                        <td className="py-1.5 px-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 text-center bg-white"
+                            value={Number.isFinite(c.quantidade) ? c.quantidade : ''}
+                            onChange={(e) => editarCarga(i, 'quantidade', e.target.valueAsNumber)}
+                          />
+                        </td>
+                        <td className="py-1.5 px-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            max="24"
+                            step="0.1"
+                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 text-center bg-white"
+                            value={Number.isFinite(c.horasDia) ? c.horasDia : ''}
+                            onChange={(e) => editarCarga(i, 'horasDia', e.target.valueAsNumber)}
+                          />
+                        </td>
+                        <td className="py-1.5 px-2 text-right font-mono font-medium text-slate-700 whitespace-nowrap">
+                          {cargaRes ? `${numero(cargaRes.potenciaDemandadaW, 0)} W` : '—'}
+                        </td>
+                        <td className="py-1.5 px-2 text-right font-mono font-semibold text-[#004276] whitespace-nowrap">
+                          {cargaRes ? `${numero(cargaRes.consumoDiarioWh, 0)} Wh` : '—'}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          <button
+                            type="button"
+                            title="Remover carga"
+                            className="text-slate-400 hover:text-red-600 transition p-1"
+                            onClick={() => atualizar({ equipamentos: dados.equipamentos.filter((_, n) => n !== i) })}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!dados.equipamentos.length && (
+                    <tr>
+                      <td colSpan={8} className="py-6 text-center text-slate-400 text-xs">
+                        Nenhuma carga adicionada. Utilize os atalhos rápidos acima ou inclua manualmente.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                {!!dados.equipamentos.length && resultado && (
+                  <tfoot className="bg-slate-50 font-semibold text-slate-800 text-[11px] border-t border-slate-200">
+                    <tr>
+                      <td colSpan={5} className="py-2 px-2.5 text-right uppercase tracking-wider text-slate-500">
+                        Totais Acumulados:
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-900">
+                        {numero(resultado.potenciaTotalW, 0)} W
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-[#004276]">
+                        {numero(resultado.consumoDiarioKWh * 1000, 0)} Wh/dia
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </section>
+
+          {/* Card 3: Parâmetros Técnicos (Baterias & Módulos) em Abas/Segmentos compactos */}
+          <section className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#004276] text-white text-[10px] font-bold">
+                  3
+                </span>
+                <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Parâmetros Técnicos</h2>
+              </div>
+
+              {/* Botões alternadores Bateria / Solar */}
+              <div className="flex p-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setAbaConfig('bateria')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-medium text-[11px] transition ${
+                    abaConfig === 'bateria' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <BatteryCharging className="w-3 h-3" />
+                  <span>Banco de Baterias</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAbaConfig('solar')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-medium text-[11px] transition ${
+                    abaConfig === 'solar' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Sun className="w-3 h-3" />
+                  <span>Arranjo Solar</span>
+                </button>
+              </div>
+            </div>
+
+            {abaConfig === 'bateria' ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-sky-50/60 p-2.5 rounded-lg border border-sky-100 text-xs">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-sky-700" />
+                    <span className="font-semibold text-sky-950">Baterias Lítio LiFePO4</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                    <span>Tensão nominal:</span>
+                    {[12, 24, 48].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => atualizar({ config: { ...dados.config, tensaoBateria: v } })}
+                        className={`px-2 py-0.5 rounded font-semibold transition ${
+                          dados.config.tensaoBateria === v
+                            ? 'bg-[#004276] text-white'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {v}V
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Tensão do Banco (V)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0.01"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.tensaoBateria}
+                      onChange={(e) => atualizar({ config: { ...dados.config, tensaoBateria: e.target.valueAsNumber } })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Capacidade Unitária (Ah)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0.01"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.capacidadeBateriaAh}
+                      onChange={(e) => atualizar({ config: { ...dados.config, capacidadeBateriaAh: e.target.valueAsNumber } })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Prof. Descarga DoD (%)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="100"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.profundidadeDescarga}
+                      onChange={(e) => atualizar({ config: { ...dados.config, profundidadeDescarga: e.target.valueAsNumber } })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Eficiência Inversor (%)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="100"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.eficienciaInversor}
+                      onChange={(e) => atualizar({ config: { ...dados.config, eficienciaInversor: e.target.valueAsNumber } })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Eficiência Carga (%)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="100"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.eficienciaCarga}
+                      onChange={(e) => atualizar({ config: { ...dados.config, eficienciaCarga: e.target.valueAsNumber } })}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-50/60 p-2.5 rounded-lg border border-amber-100 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Sun className="w-4 h-4 text-amber-600" />
+                    <span className="font-semibold text-amber-950">Módulos & Radiação Solar</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                    <span>Módulo Wp:</span>
+                    {[550, 610, 650].map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => atualizar({ config: { ...dados.config, potenciaModuloWp: w } })}
+                        className={`px-2 py-0.5 rounded font-semibold transition ${
+                          dados.config.potenciaModuloWp === w
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {w}Wp
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Potência Módulo (Wp)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.potenciaModuloWp}
+                      onChange={(e) => atualizar({ config: { ...dados.config, potenciaModuloWp: e.target.valueAsNumber } })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Irradiação HSP (h/dia)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0.01"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.irradiacaoSolar}
+                      onChange={(e) => atualizar({ config: { ...dados.config, irradiacaoSolar: e.target.valueAsNumber } })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Perdas Sistema (%)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      max="99.99"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.perdasSistema}
+                      onChange={(e) => atualizar({ config: { ...dados.config, perdasSistema: e.target.valueAsNumber } })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                      Fator Dias (D)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0.01"
+                      step="any"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-medium"
+                      value={dados.config.fatorDias}
+                      onChange={(e) => atualizar({ config: { ...dados.config, fatorDias: e.target.valueAsNumber } })}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* ================= COLUNA DA DIREITA: RESULTADOS EM TEMPO REAL ================= */}
+        <div className="xl:col-span-5 space-y-3.5">
+          {/* Card de Métricas Principais (Hero KPIs Compactos) */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-500" />
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Dimensionamento Calculado</h3>
+              </div>
+              <span className="text-[10px] font-semibold text-slate-400">Tempo Real</span>
+            </div>
+
+            {erroCalculo ? (
+              <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-xs">
+                {erroCalculo}
+              </div>
+            ) : resultado ? (
+              <div className="space-y-3">
+                {/* 2 Big Cards em Destaque: Baterias e Módulos */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="bg-gradient-to-br from-sky-50 to-blue-50/50 border border-sky-100 rounded-xl p-3 space-y-1">
+                    <div className="flex items-center justify-between text-sky-800">
+                      <span className="text-[11px] font-bold uppercase tracking-wider">Banco Baterias</span>
+                      <BatteryCharging className="w-4 h-4" />
+                    </div>
+                    <div className="text-2xl font-black text-[#004276]">
+                      {resultado.quantidadeBaterias}{' '}
+                      <span className="text-xs font-semibold text-sky-700">unid.</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      {dados.config.tensaoBateria}V · {dados.config.capacidadeBateriaAh}Ah cada
+                    </p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-amber-50 to-orange-50/40 border border-amber-100 rounded-xl p-3 space-y-1">
+                    <div className="flex items-center justify-between text-amber-800">
+                      <span className="text-[11px] font-bold uppercase tracking-wider">Módulos Solares</span>
+                      <Sun className="w-4 h-4" />
+                    </div>
+                    <div className="text-2xl font-black text-amber-700">
+                      {resultado.quantidadeModulos}{' '}
+                      <span className="text-xs font-semibold text-amber-600">placas</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      {numero(resultado.potenciaSistemaKWp, 2)} kWp ({dados.config.potenciaModuloWp}Wp)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Grid de 4 Cards Técnicos Secundários Compactos */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] text-slate-500 block">Inversor Recomendado (+30%)</span>
+                    <span className="text-sm font-bold text-slate-800 font-mono">
+                      {numero(resultado.potenciaInversorRecomendadaW, 0)} W
+                    </span>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] text-slate-500 block">Consumo Corrigido</span>
+                    <span className="text-sm font-bold text-slate-800 font-mono">
+                      {numero(resultado.consumoCorrigidoKWh, 2)} kWh/dia
+                    </span>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] text-slate-500 block">Capacidade Mínima Banco</span>
+                    <span className="text-sm font-bold text-slate-800 font-mono">
+                      {numero(resultado.capacidadeMinimaAh, 1)} Ah
+                    </span>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] text-slate-500 block">Energia Nominal Banco</span>
+                    <span className="text-sm font-bold text-slate-800 font-mono">
+                      {numero(resultado.energiaMinimaBancoKWh, 2)} kWh
+                    </span>
+                  </div>
+                </div>
+
+                {/* Alerta Powersafe quando mais de 10 baterias */}
+                {resultado.consultarFabricante && (
+                  <div role="alert" className="p-2.5 rounded-lg bg-amber-100 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-700" />
+                    <span className="font-semibold">
+                      Consultar Powersafe: Quantidade calculada ({numero(resultado.quantidadeBateriasCalculada, 2)}) é superior a 10 unidades.
+                    </span>
+                  </div>
+                )}
+
+                {/* Gráfico Compacto de Distribuição de Consumo */}
+                {dadosGrafico.length > 0 && (
+                  <div className="pt-1 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700">
+                      <div className="flex items-center gap-1">
+                        <PieChartIcon className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Distribuição de Consumo (Wh/dia)</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        Total: {numero(resultado.consumoDiarioKWh * 1000, 0)} Wh/dia
+                      </span>
+                    </div>
+
+                    <div className="h-36 w-full flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={dadosGrafico}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={30}
+                            outerRadius={55}
+                            paddingAngle={2}
+                          >
+                            {dadosGrafico.map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={CORES_GRAFICO[index % CORES_GRAFICO.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(value: any) => [`${numero(Number(value), 0)} Wh/dia`, 'Consumo']}
+                            contentStyle={{ fontSize: '11px', borderRadius: '8px', padding: '4px 8px' }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Top 3 cargas mais pesadas */}
+                    <div className="space-y-1">
+                      {dadosGrafico.slice(0, 3).map((item, idx) => {
+                        const pct = resultado.consumoDiarioKWh > 0 ? (item.value / (resultado.consumoDiarioKWh * 1000)) * 100 : 0;
+                        return (
+                          <div key={item.name} className="flex items-center justify-between text-[11px]">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: CORES_GRAFICO[idx % CORES_GRAFICO.length] }}
+                              />
+                              <span className="text-slate-700 truncate">{item.name}</span>
+                            </div>
+                            <span className="text-slate-500 font-mono text-[10px] shrink-0 font-medium">
+                              {pct.toFixed(0)}% ({numero(item.value, 0)} Wh)
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Dica Técnica de Engenharia Compacta */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-500 space-y-1.5">
+            <div className="flex items-center gap-1.5 font-semibold text-slate-700">
+              <Info className="w-3.5 h-3.5 text-sky-600" />
+              <span>Critérios de Dimensionamento</span>
+            </div>
+            <p className="leading-relaxed">
+              • Inversor sugerido com margem de +30%. Avalie correntes de pico de partida em motores e compressores.
+              <br />
+              • Banco de baterias dimensionado com base no consumo diário corrigido pela eficiência do inversor e profundidade de descarga DoD ({dados.config.profundidadeDescarga}%).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ================= RELATÓRIO EXECUTIVO EXCLUSIVO PARA IMPRESSÃO (PDF) ================= */}
+      <div id="report-root" className="hidden print:block text-black p-4 space-y-4">
+        <div className="flex items-center justify-between border-b pb-3">
+          <div>
+            <h1 className="text-xl font-bold text-[#004276]">SolarCosta · Relatório de Dimensionamento OFF-Grid</h1>
+            <p className="text-xs text-slate-500">Sistema Fotovoltaico Isolado com Armazenamento em Baterias de Lítio</p>
+          </div>
+          <div className="text-right text-xs">
+            <p className="font-semibold">{dados.titulo || 'Simulação Sem Título'}</p>
+            <p className="text-slate-500">Data: {new Date().toLocaleDateString('pt-BR')}</p>
+          </div>
+        </div>
+
+        {/* Identificação do Cliente */}
+        <div className="border rounded-lg p-3 text-xs grid grid-cols-2 gap-2 bg-slate-50">
+          <div>
+            <p><strong>Cliente:</strong> {dados.cliente.nome || '—'}</p>
+            <p><strong>Empresa:</strong> {dados.cliente.empresa || '—'}</p>
+            <p><strong>CPF/CNPJ:</strong> {dados.cliente.cnpj || '—'}</p>
+          </div>
+          <div>
+            <p><strong>Telefone:</strong> {dados.cliente.telefone || '—'}</p>
+            <p><strong>E-mail:</strong> {dados.cliente.email || '—'}</p>
+          </div>
+        </div>
+
+        {/* Resumo dos Equipamentos Recomendados */}
+        {resultado && (
+          <div className="grid grid-cols-3 gap-3 border rounded-lg p-3 text-xs bg-slate-50 text-center">
+            <div>
+              <p className="text-slate-500 font-semibold uppercase">Banco de Baterias LiFePO4</p>
+              <p className="text-lg font-bold text-[#004276]">
+                {resultado.quantidadeBaterias} un. ({dados.config.tensaoBateria}V {dados.config.capacidadeBateriaAh}Ah)
+              </p>
+              <p className="text-[10px] text-slate-600">{numero(resultado.energiaMinimaBancoKWh, 2)} kWh nominal</p>
+            </div>
+            <div>
+              <p className="text-slate-500 font-semibold uppercase">Arranjo Fotovoltaico</p>
+              <p className="text-lg font-bold text-amber-700">
+                {resultado.quantidadeModulos} placas ({dados.config.potenciaModuloWp}Wp)
+              </p>
+              <p className="text-[10px] text-slate-600">{numero(resultado.potenciaSistemaKWp, 2)} kWp instalados</p>
+            </div>
+            <div>
+              <p className="text-slate-500 font-semibold uppercase">Inversor Recomendado (+30%)</p>
+              <p className="text-lg font-bold text-slate-800">
+                {numero(resultado.potenciaInversorRecomendadaW, 0)} W
+              </p>
+              <p className="text-[10px] text-slate-600">Demanda: {numero(resultado.potenciaTotalW, 0)} W</p>
+            </div>
+          </div>
+        )}
+
+        {/* Tabela de Cargas Levantadas */}
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider mb-1">Levantamento de Cargas Críticas</h3>
+          <table className="w-full text-[10px] text-left border divide-y">
+            <thead className="bg-slate-100 font-semibold">
+              <tr>
+                <th className="p-1.5">Equipamento</th>
+                <th className="p-1.5 text-center">Tensão</th>
+                <th className="p-1.5 text-center">Potência</th>
+                <th className="p-1.5 text-center">Qtd</th>
+                <th className="p-1.5 text-center">Horas/dia</th>
+                <th className="p-1.5 text-right">Demanda (W)</th>
+                <th className="p-1.5 text-right">Consumo (Wh/dia)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {dados.equipamentos.map((c, i) => {
+                const item = resultado?.cargas[i];
+                return (
+                  <tr key={c.id}>
+                    <td className="p-1.5 font-medium">{c.nome}</td>
+                    <td className="p-1.5 text-center">{c.tensaoV}V</td>
+                    <td className="p-1.5 text-center">{c.potenciaW}W</td>
+                    <td className="p-1.5 text-center">{c.quantidade}</td>
+                    <td className="p-1.5 text-center">{c.horasDia}h</td>
+                    <td className="p-1.5 text-right">{item ? numero(item.potenciaDemandadaW, 0) : '—'} W</td>
+                    <td className="p-1.5 text-right">{item ? numero(item.consumoDiarioWh, 0) : '—'} Wh</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {resultado && (
+              <tfoot className="bg-slate-100 font-bold border-t">
+                <tr>
+                  <td colSpan={5} className="p-1.5 text-right uppercase">Totais:</td>
+                  <td className="p-1.5 text-right">{numero(resultado.potenciaTotalW, 0)} W</td>
+                  <td className="p-1.5 text-right">{numero(resultado.consumoDiarioKWh * 1000, 0)} Wh/dia</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        {/* Rodapé técnico */}
+        <div className="text-[9px] text-slate-500 pt-3 border-t">
+          <p>
+            * Dimensionamento baseado nas premissas técnicas fornecidas: Eficiência do Inversor: {dados.config.eficienciaInversor}%, DoD: {dados.config.profundidadeDescarga}%, HSP: {dados.config.irradiacaoSolar} h/dia, Perdas: {dados.config.perdasSistema}%.
+          </p>
+          <p className="mt-1">SolarCosta Energia Solar · Engenharia e Sistemas Fotovoltaicos</p>
+        </div>
+      </div>
+    </div>
+  );
 }
