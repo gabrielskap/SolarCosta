@@ -1,3 +1,4 @@
+import { AbasAtividade } from './comuns/AbasAtividade';
 import React, { useState } from 'react';
 import { Users, UserPlus, Shield, CheckCircle2, XCircle, Edit2, Trash2, UserCog, KeyRound } from 'lucide-react';
 import { CampoSenha } from './comuns/CampoSenha';
@@ -79,6 +80,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
   currentUser,
   showToast
 }) => {
+ const [inativos, setInativos] = useState(false);
+ const visiveis = usuarios.filter(u => u.status === (inativos ? "inativo" : "ativo"));
   const [resetUser, setResetUser] = useState<User | null>(null);
   const [novaSenha, setNovaSenha] = useState('');
   const [redefinindo, setRedefinindo] = useState(false);
@@ -216,6 +219,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
         </button>
       </div>
 
+<AbasAtividade inativos={inativos} onChange={setInativos} />
       {/* Users Table */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -231,8 +235,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 <th className="p-3 text-right">AÇÕES</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {usuarios.map((u) => (
+            <tbody className="divide-y divide-slate-100">{!visiveis.length && <tr><td colSpan={7} className="p-6 text-slate-500">Nenhum usuário nesta aba.</td></tr>}
+              {visiveis.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50">
                   <td data-label="USUÁRIO" className="p-3 font-bold text-slate-900 flex items-center gap-2">
                     <div className="w-7 h-7 rounded-full bg-blue-100 text-[#004276] font-bold flex items-center justify-center text-[11px]">

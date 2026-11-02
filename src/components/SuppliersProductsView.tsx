@@ -1,3 +1,4 @@
+import { AbasAtividade } from './comuns/AbasAtividade';
 import { Api } from '../services/api';
 import { useCnpjLookup } from '../services/useCnpjLookup';
 import React, { useEffect, useState } from 'react';
@@ -43,6 +44,19 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   mode
 }) => {
   const [activeTab, setActiveTab] = useState<'produtos' | 'fornecedores' | 'kits'>(mode || 'produtos');
+  const [verKitsInativos, setVerKitsInativos] = useState(false);
+  const [kitsInativos, setKitsInativos] = useState<Kit[]>([]);
+  const [carregandoKits, setCarregandoKits] = useState(false);
+  const [erroKits, setErroKits] = useState('');
+  useEffect(() => {
+    if (activeTab !== 'kits') return;
+    let atual = true;
+    setCarregandoKits(true); setErroKits('');
+    Api.getKits('inativos').then(d => { if (atual) setKitsInativos(d); })
+      .catch(() => { if (atual) setErroKits('Não foi possível carregar os kits inativos.'); })
+      .finally(() => { if (atual) setCarregandoKits(false); });
+    return () => { atual = false; };
+  }, [activeTab, kits, verKitsInativos]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusProduto, setStatusProduto] = useState<'ativos' | 'inativos'>('ativos');
   const [produtosInativos, setProdutosInativos] = useState<Produto[]>([]);
@@ -185,7 +199,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     f.cnpj.includes(searchQuery)
   );
 
-  const filteredKits = kits.filter(k =>
+  const filteredKits = (verKitsInativos ? kitsInativos : kits).filter(k =>
     k.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
     k.codigo.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -221,6 +235,12 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     e.preventDefault();
     if (!nomeProd) return;
 
+    const textoPotencia = potenciaProd.trim().replace(/\s*wp$/i, '').trim().replace(',', '.');
+    const potenciaWp = textoPotencia ? Number(textoPotencia) : undefined;
+    if (potenciaWp !== undefined && (!Number.isInteger(potenciaWp) || potenciaWp <= 0)) {
+      showToast('Potência inválida', 'error', 'Informe um número inteiro positivo em Wp, como 710 Wp.');
+      return;
+    }
     const fornObj = fornecedores.find(f => f.id === fornecedorIdProd);
 
     const prodObj: Produto = {
@@ -231,6 +251,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       fornecedorId: fornecedorIdProd,
       fornecedorNome: fornObj ? fornObj.nome : 'Aldo Solar',
       potencia: potenciaProd,
+      potenciaWp,
       estoque: Number(estoqueProd),
       // Preço continua existindo na API (custo interno), mas o cadastro não o
       // pede mais: produto novo entra zerado e produto editado preserva o que
@@ -611,10 +632,13 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       {/* KITS TAB */}
       {activeTab === 'kits' && (
         <div className="space-y-4">
-          {kits.length === 0 ? (
+          <AbasAtividade inativos={verKitsInativos} onChange={setVerKitsInativos} />
+          {verKitsInativos && carregandoKits && <p role="status">Carregando kits inativos…</p>}
+          {verKitsInativos && erroKits && <p role="alert" className="text-rose-600">{erroKits}</p>}
+          {filteredKits.length === 0 && !(verKitsInativos && (carregandoKits || erroKits)) ? (
             <div className="bg-white p-10 rounded-2xl border border-slate-200 shadow-sm text-center">
               <Boxes className="w-10 h-10 text-slate-300 mx-auto" />
-              <p className="font-bold text-slate-700 text-sm mt-3">Nenhum kit cadastrado</p>
+              <p className="font-bold text-slate-700 text-sm mt-3">Nenhum kit encontrado nesta aba</p>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
                 O kit é o que tem preço de venda: um nome, um valor fechado e os produtos que o compõem.
               </p>
@@ -667,15 +691,15 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                     <button onClick={() => handleOpenEditKit(k)} className="text-blue-600 hover:underline flex items-center gap-1">
                       <Edit2 className="w-3.5 h-3.5" /> Editar
                     </button>
-                    <button
+                    {!verKitsInativos && <button
                       onClick={() => {
                         onDeleteKit(k.id);
                         showToast('Kit excluído', 'info', `${k.nome} removido do catálogo.`);
                       }}
                       className="text-rose-600 hover:underline flex items-center gap-1"
                     >
-                      <Trash2 className="w-3.5 h-3.5" /> Excluir
-                    </button>
+                      <Trash2 className="w-3.5 h-3.5" /> Inativar
+                    </button>}
                   </div>
                 </div>
               ))}

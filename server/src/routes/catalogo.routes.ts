@@ -225,14 +225,14 @@ catalogoRouter.patch(
             preco          = COALESCE($6, preco),
             estoque_minimo = COALESCE($7, estoque_minimo),
             unidade        = COALESCE($8, unidade),
-            potencia_wp    = COALESCE($9::int, potencia_wp),
+            potencia_wp    = CASE WHEN $12::boolean THEN $9::int ELSE potencia_wp END,
             ncm            = COALESCE($10, ncm),
             ativo          = COALESCE($11, ativo)
           WHERE id = $1
           RETURNING nome`,
         [id, d.codigo ?? null, d.nome ?? null, d.tipo_codigo ?? null, d.fornecedor_id ?? null,
          d.preco ?? null, d.estoque_minimo ?? null, d.unidade ?? null, d.potencia_wp ?? null,
-         d.ncm ?? null, d.ativo ?? null],
+         d.ncm ?? null, d.ativo ?? null, Object.prototype.hasOwnProperty.call(d, 'potencia_wp')],
       );
       if (rows.length === 0) throw naoEncontrado('Produto');
       await cliente.query(`SELECT "SolarCosta_fn_auditar"('editar','Produto',$1,$2,NULL)`, [rows[0]!.nome, id]);
@@ -372,9 +372,9 @@ async function gravarItensKit(
 catalogoRouter.get(
   '/kits',
   asyncHandler(async (req, res) => {
-    const f = z.object({ busca: z.string().trim().min(1).optional() }).parse(req.query);
+    const f = z.object({ busca: z.string().trim().min(1).optional(), status: z.enum(['ativos', 'inativos']).default('ativos') }).parse(req.query);
 
-    const cond: string[] = ['ativo'];
+    const cond: string[] = [f.status === 'inativos' ? 'NOT ativo' : 'ativo'];
     const params: unknown[] = [];
 
     if (f.busca) {

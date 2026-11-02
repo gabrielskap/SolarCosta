@@ -233,8 +233,8 @@ export const Api = {
 
   /* ------------------------------------------------------------ kits -- */
 
-  getKits: async (): Promise<Kit[]> => {
-    const r = await http.get<any>('/api/catalogo/kits');
+  getKits: async (status: 'ativos' | 'inativos' = 'ativos'): Promise<Kit[]> => {
+    const r = await http.get<any>(`/api/catalogo/kits?status=${status}`);
     return (r.kits ?? []).map(paraKit);
   },
 
