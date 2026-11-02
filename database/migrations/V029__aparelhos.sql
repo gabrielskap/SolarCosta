@@ -1,5 +1,8 @@
 BEGIN;
-CREATE TABLE "SolarCosta_Aparelhos" (
+-- A tabela pode já existir em instalações atualizadas manualmente ou quando
+-- a criação foi concluída antes do registro em SolarCosta_SchemaMigrations.
+-- Preserva os aparelhos cadastrados e permite concluir o registro da V029.
+CREATE TABLE IF NOT EXISTS "SolarCosta_Aparelhos" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   ambiente varchar(80) NOT NULL CHECK (length(trim(ambiente)) > 0),
   nome varchar(160) NOT NULL CHECK (length(trim(nome)) > 0),
