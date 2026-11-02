@@ -44,6 +44,31 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'produtos' | 'fornecedores' | 'kits'>(mode || 'produtos');
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusProduto, setStatusProduto] = useState<'ativos' | 'inativos'>('ativos');
+  const [produtosInativos, setProdutosInativos] = useState<Produto[]>([]);
+  const [carregandoProdutosInativos, setCarregandoProdutosInativos] = useState(false);
+  const [erroProdutosInativos, setErroProdutosInativos] = useState('');
+  const [reativandoProduto, setReativandoProduto] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'produtos') return;
+    let atual = true;
+    setCarregandoProdutosInativos(true);
+    setErroProdutosInativos('');
+    Api.getProdutos('inativos').then(dados => { if (atual) setProdutosInativos(dados); })
+      .catch(() => { if (atual) setErroProdutosInativos('Não foi possível carregar os produtos inativos.'); })
+      .finally(() => { if (atual) setCarregandoProdutosInativos(false); });
+    return () => { atual = false; };
+  }, [activeTab, produtos, statusProduto]);
+
+  const reativarProduto = async (produto: Produto) => {
+    setReativandoProduto(produto.id);
+    try {
+      if (await onSaveProduto({ ...produto, ativo: true })) {
+        setProdutosInativos(anteriores => anteriores.filter(p => p.id !== produto.id));
+      }
+    } finally { setReativandoProduto(null); }
+  };
+
   const [statusFornecedor, setStatusFornecedor] = useState<'ativos' | 'inativos'>('ativos');
   const [inativos, setInativos] = useState<Fornecedor[]>([]);
   const [carregandoInativos, setCarregandoInativos] = useState(false);
@@ -149,7 +174,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     'focus:outline-none focus:bg-white focus:border-[#004276] focus:ring-4 focus:ring-[#004276]/10';
   const campoSelect = `${campo} appearance-none pr-10 cursor-pointer`;
 
-  const filteredProducts = produtos.filter(p =>
+  const filteredProducts = (statusProduto === 'ativos' ? produtos : produtosInativos).filter(p =>
     p.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.fornecedorNome.toLowerCase().includes(searchQuery.toLowerCase())
@@ -490,6 +515,16 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
             </div>
           </div>
 
+          <div role="tablist" aria-label="Status dos produtos" className="flex gap-2">
+            {(['ativos', 'inativos'] as const).map(status => (
+              <button key={status} role="tab" aria-selected={statusProduto === status} onClick={() => setStatusProduto(status)} className={statusProduto === status ? 'px-4 py-2 rounded-xl bg-[#004276] text-white text-sm font-bold' : 'px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-bold'}>
+                {status === 'ativos' ? 'Ativos' : 'Inativos'} ({status === 'ativos' ? produtos.length : produtosInativos.length})
+              </button>
+            ))}
+          </div>
+          {statusProduto === 'inativos' && carregandoProdutosInativos && <p role="status">Carregando produtos inativos…</p>}
+          {statusProduto === 'inativos' && erroProdutosInativos && <p role="alert" className="text-rose-600">{erroProdutosInativos}</p>}
+
           {/* Banner de reposição */}
           {alertas.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
@@ -521,6 +556,9 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
+                {filteredProducts.length === 0 && !(statusProduto === 'inativos' && (carregandoProdutosInativos || erroProdutosInativos)) && (
+                  <tr><td colSpan={7} className="p-6 text-center text-slate-500">Nenhum produto encontrado nesta aba.</td></tr>
+                )}
                 {filteredProducts.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td data-label="CÓDIGO" className="p-3 font-mono font-bold text-slate-600">{p.codigo}</td>
@@ -552,12 +590,13 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                       </button>
                       <button
                         onClick={() => {
-                          onDeleteProduto(p.id);
-                          showToast('Produto excluído', 'info', `${p.nome} removido.`);
+                          if (statusProduto === 'inativos') void reativarProduto(p);
+                          else onDeleteProduto(p.id);
                         }}
-                        className="text-rose-600 hover:underline"
+                        disabled={reativandoProduto !== null}
+                        className="text-rose-600 hover:underline disabled:opacity-50"
                       >
-                        Excluir
+                        {statusProduto === 'inativos' ? (reativandoProduto === p.id ? 'Reativando…' : 'Reativar') : 'Excluir'}
                       </button>
                     </td>
                   </tr>

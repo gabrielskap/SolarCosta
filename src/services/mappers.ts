@@ -273,6 +273,7 @@ export function deFornecedor(f: Partial<Fornecedor>): Record<string, unknown> {
 
 export function paraProduto(linha: any): Produto {
   return {
+    ativo: linha.ativo !== false,
     id: linha.id,
     codigo: linha.codigo,
     nome: linha.nome,
@@ -325,6 +326,7 @@ export function deProduto(p: Partial<Produto> & { estoque?: number }): Record<st
     codigo: p.codigo,
     nome: p.nome,
     tipo_codigo: SLUG_POR_ROTULO[tipo] ?? tipo,
+    ativo: p.ativo,
     fornecedor_id: p.fornecedorId || null,
     preco: p.preco ?? 0,
     unidade: p.unidade ?? 'un',

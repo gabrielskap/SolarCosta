@@ -541,6 +541,7 @@ export default function App() {
   const handleDeleteProduto = async (id: string) => {
     try {
       setProdutos(await Api.deleteProduto(id));
+      showToast('Produto excluído', 'success');
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível excluir o produto');

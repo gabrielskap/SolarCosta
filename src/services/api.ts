@@ -193,8 +193,8 @@ export const Api = {
 
   /* -------------------------------------------------------- produtos -- */
 
-  getProdutos: async (): Promise<Produto[]> => {
-    const r = await http.get<any>('/api/catalogo/produtos');
+  getProdutos: async (status: 'ativos' | 'inativos' = 'ativos'): Promise<Produto[]> => {
+    const r = await http.get<any>(`/api/catalogo/produtos?status=${status}`);
     return (r.produtos ?? []).map(paraProduto);
   },
 

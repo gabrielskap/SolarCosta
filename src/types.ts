@@ -144,6 +144,7 @@ export type TipoProduto =
   | 'Outro';
 
 export interface Produto {
+  ativo?: boolean;
   id: string;
   codigo: string;
   nome: string;

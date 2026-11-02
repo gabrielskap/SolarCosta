@@ -142,6 +142,7 @@ catalogoRouter.get(
   asyncHandler(async (req, res) => {
     const f = z
       .object({
+        status: z.enum(['ativos', 'inativos']).default('ativos'),
         tipo: z.string().optional(),
         fornecedor_id: z.string().uuid().optional(),
         busca: z.string().trim().min(1).optional(),
@@ -149,7 +150,7 @@ catalogoRouter.get(
       })
       .parse(req.query);
 
-    const cond: string[] = ['ativo'];
+    const cond: string[] = [f.status === 'inativos' ? 'NOT ativo' : 'ativo'];
     const params: unknown[] = [];
 
     if (f.tipo) { params.push(f.tipo); cond.push(`tipo_codigo = $${params.length}`); }
