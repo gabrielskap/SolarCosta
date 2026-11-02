@@ -66,6 +66,7 @@ BEGIN
            AND c.column_name  = 'atualizado_em'
            AND c.table_name LIKE 'SolarCosta%'
     LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', 'SolarCosta_tg_touch_' || t, t);
         EXECUTE format(
             'CREATE TRIGGER %I BEFORE UPDATE ON %I '
             'FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_touch"()',
@@ -120,18 +121,22 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_numero_Leads" ON "SolarCosta_Leads";
 CREATE TRIGGER "SolarCosta_tg_numero_Leads"
     BEFORE INSERT ON "SolarCosta_Leads"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_numero_automatico"('lead');
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_numero_Propostas" ON "SolarCosta_Propostas";
 CREATE TRIGGER "SolarCosta_tg_numero_Propostas"
     BEFORE INSERT ON "SolarCosta_Propostas"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_numero_automatico"('proposta');
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_numero_Contratos" ON "SolarCosta_Contratos";
 CREATE TRIGGER "SolarCosta_tg_numero_Contratos"
     BEFORE INSERT ON "SolarCosta_Contratos"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_numero_automatico"('contrato');
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_numero_Obras" ON "SolarCosta_Obras";
 CREATE TRIGGER "SolarCosta_tg_numero_Obras"
     BEFORE INSERT ON "SolarCosta_Obras"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_numero_automatico"('obra');
@@ -168,6 +173,7 @@ BEGIN
     RAISE EXCEPTION 'SolarCosta_Auditoria e append-only: % nao e permitido', TG_OP;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_auditoria_imutavel" ON "SolarCosta_Auditoria";
 CREATE TRIGGER "SolarCosta_tg_auditoria_imutavel"
     BEFORE UPDATE OR DELETE ON "SolarCosta_Auditoria"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_auditoria_imutavel"();
@@ -218,6 +224,7 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_movimentacao_estoque" ON "SolarCosta_MovimentacoesEstoque";
 CREATE TRIGGER "SolarCosta_tg_movimentacao_estoque"
     BEFORE INSERT ON "SolarCosta_MovimentacoesEstoque"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_aplicar_movimentacao_estoque"();
@@ -295,6 +302,7 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_lead_mudanca_etapa" ON "SolarCosta_Leads";
 CREATE TRIGGER "SolarCosta_tg_lead_mudanca_etapa"
     AFTER UPDATE OF etapa ON "SolarCosta_Leads"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_lead_mudanca_etapa"();
@@ -309,6 +317,7 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_lead_historico_inicial" ON "SolarCosta_Leads";
 CREATE TRIGGER "SolarCosta_tg_lead_historico_inicial"
     AFTER INSERT ON "SolarCosta_Leads"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_lead_historico_inicial"();
@@ -330,6 +339,7 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_proposta_vincula_lead" ON "SolarCosta_Propostas";
 CREATE TRIGGER "SolarCosta_tg_proposta_vincula_lead"
     AFTER INSERT ON "SolarCosta_Propostas"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_proposta_vincula_lead"();
@@ -350,6 +360,7 @@ BEGIN
     RETURN NULL;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_total_proposta" ON "SolarCosta_PropostaItens";
 CREATE TRIGGER "SolarCosta_tg_total_proposta"
     AFTER INSERT OR UPDATE OR DELETE ON "SolarCosta_PropostaItens"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_recalcular_total_proposta"();
@@ -372,6 +383,7 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_obra_cria_homologacao" ON "SolarCosta_Obras";
 CREATE TRIGGER "SolarCosta_tg_obra_cria_homologacao"
     AFTER INSERT ON "SolarCosta_Obras"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_obra_cria_homologacao"();
@@ -392,6 +404,7 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_obra_mudanca_etapa" ON "SolarCosta_Obras";
 CREATE TRIGGER "SolarCosta_tg_obra_mudanca_etapa"
     AFTER UPDATE OF etapa ON "SolarCosta_Obras"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_obra_mudanca_etapa"();
@@ -407,6 +420,7 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_obra_conclusao" ON "SolarCosta_Obras";
 CREATE TRIGGER "SolarCosta_tg_obra_conclusao"
     BEFORE UPDATE ON "SolarCosta_Obras"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_obra_conclusao"();
@@ -444,6 +458,7 @@ BEGIN
     RETURN NEW;
 END $fn$;
 
+DROP TRIGGER IF EXISTS "SolarCosta_tg_boleto_gera_lancamento" ON "SolarCosta_Boletos";
 CREATE TRIGGER "SolarCosta_tg_boleto_gera_lancamento"
     AFTER UPDATE OF situacao ON "SolarCosta_Boletos"
     FOR EACH ROW EXECUTE FUNCTION "SolarCosta_fn_boleto_gera_lancamento"();

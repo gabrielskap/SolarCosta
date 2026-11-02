@@ -25,10 +25,10 @@ BEGIN;
 -- =============================================================================
 
 ALTER TABLE "SolarCosta_Boletos"
-    ADD COLUMN IF NOT EXISTS IF NOT EXISTS bb_numero_convenio integer,
-    ADD COLUMN IF NOT EXISTS IF NOT EXISTS pix_txid           text,
-    ADD COLUMN IF NOT EXISTS IF NOT EXISTS pix_qrcode         text,
-    ADD COLUMN IF NOT EXISTS IF NOT EXISTS bb_situacao_codigo smallint;
+    ADD COLUMN IF NOT EXISTS bb_numero_convenio integer,
+    ADD COLUMN IF NOT EXISTS pix_txid           text,
+    ADD COLUMN IF NOT EXISTS pix_qrcode         text,
+    ADD COLUMN IF NOT EXISTS bb_situacao_codigo smallint;
 
 COMMENT ON COLUMN "SolarCosta_Boletos".bb_numero_convenio IS
     'Convênio de cobrança usado no registro (BB_CONVENIO_COBRANCA no momento '
