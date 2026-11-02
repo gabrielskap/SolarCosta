@@ -11,7 +11,7 @@ interface SuppliersProductsViewProps {
   produtos: Produto[];
   fornecedores: Fornecedor[];
   kits: Kit[];
-  onSaveProduto: (produto: Produto) => void;
+  onSaveProduto: (produto: Produto) => Promise<boolean>;
   onDeleteProduto: (id: string) => void;
   onSaveFornecedor: (fornecedor: Fornecedor) => void;
   onDeleteFornecedor: (id: string) => void;
@@ -76,7 +76,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   // tem o valor digitado na própria proposta.
   const [nomeProd, setNomeProd] = useState('');
   const [tipoProd, setTipoProd] = useState<TipoProdutoSlug>('modulo');
-  const [fornecedorIdProd, setFornecedorIdProd] = useState(fornecedores[0]?.id || 'f1');
+  const [fornecedorIdProd, setFornecedorIdProd] = useState(fornecedores[0]?.id || '');
   const [potenciaProd, setPotenciaProd] = useState('710 Wp');
   const [estoqueProd, setEstoqueProd] = useState(10);
 
@@ -192,7 +192,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     setIsNewProductOpen(true);
   };
 
-  const handleProductSubmit = (e: React.FormEvent) => {
+  const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeProd) return;
 
@@ -213,7 +213,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       preco: editingProduct?.preco ?? 0
     };
 
-    onSaveProduto(prodObj);
+    if (!await onSaveProduto(prodObj)) return;
     setIsNewProductOpen(false);
     setEditingProduct(null);
   };
@@ -765,6 +765,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                         onChange={(e) => setFornecedorIdProd(e.target.value)}
                         className={campoSelect}
                       >
+                        <option value="">Sem fornecedor</option>
                         {fornecedores.map(f => (
                           <option key={f.id} value={f.id}>{f.nome}</option>
                         ))}

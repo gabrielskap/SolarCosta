@@ -43,6 +43,15 @@ function traduzirPostgres(e: ErroPostgres): AppError | null {
       return new AppError(409, mensagemUnica(e), 'duplicado');
 
     case '23503': // foreign_key_violation
+      if (e.constraint?.includes('Produtos_tipo_codigo')) {
+        return new AppError(409, 'O tipo de produto não está cadastrado no sistema. Aplique as migrações do banco para carregar os tipos básicos.', 'tipo_produto_ausente');
+      }
+      if (e.constraint?.includes('Produtos_fornecedor_id')) {
+        return new AppError(409, 'O fornecedor selecionado não existe mais. Atualize a lista e selecione um fornecedor válido.', 'fornecedor_invalido');
+      }
+      if (e.constraint?.includes('MovimentacoesEstoque_usuario_id')) {
+        return new AppError(409, 'O usuário da sessão não existe mais. Entre novamente para cadastrar o produto.', 'usuario_invalido');
+      }
       return new AppError(
         409,
         'Registro vinculado a outro cadastro. Remova ou troque o vínculo antes de continuar.',

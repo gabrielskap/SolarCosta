@@ -531,8 +531,10 @@ export default function App() {
       setProdutos(await Api.saveProduto(produto));
       showToast(novo ? 'Produto cadastrado' : 'Produto atualizado', 'success', `${produto.nome} gravado no catálogo.`);
       void atualizarAuditoria();
+      return true;
     } catch (erro) {
       tratarErro(erro, 'Não foi possível salvar o produto');
+      return false;
     }
   };
 
