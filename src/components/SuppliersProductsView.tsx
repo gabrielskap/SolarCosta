@@ -116,7 +116,8 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   const [nomeProd, setNomeProd] = useState('');
   const [tipoProd, setTipoProd] = useState<TipoProdutoSlug>('modulo');
   const [fornecedorIdProd, setFornecedorIdProd] = useState(fornecedores[0]?.id || '');
-  const [potenciaProd, setPotenciaProd] = useState('710');
+  const [potenciaProd, setPotenciaProd] = useState('');
+  const exigePotencia = tipoProd === 'modulo' || tipoProd === 'inversor';
   const [estoqueProd, setEstoqueProd] = useState(10);
 
   // Form kit state
@@ -237,6 +238,10 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
     const textoPotencia = potenciaProd.trim();
     const potenciaWp = textoPotencia ? Number(textoPotencia) : undefined;
+    if (exigePotencia && potenciaWp === undefined) {
+      showToast('Informe a potência', 'error', 'A potência é obrigatória para módulos e inversores.');
+      return;
+    }
     if (potenciaWp !== undefined && (!Number.isInteger(potenciaWp) || potenciaWp <= 0)) {
       showToast('Potência inválida', 'error', 'Informe um número inteiro positivo em Wp, como 710.');
       return;
@@ -840,11 +845,12 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className={rotulo}>Potência (Wp)</label>
+                    <label className={rotulo}>Potência (Wp) {exigePotencia ? '*' : '(opcional)'}</label>
                     <input
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
+                      required={exigePotencia}
                       value={potenciaProd}
                       onChange={(e) => setPotenciaProd(e.target.value.replace(/\D/g, ''))}
                       placeholder="710"
