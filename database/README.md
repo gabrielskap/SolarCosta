@@ -34,6 +34,14 @@ inteiro (`Alt+X`). Todos abrem com `BEGIN` e fecham com `COMMIT`.
 > aqui serve para quem precisa aplicar pelo cliente SQL. **Os seeds nunca são
 > rodados pelo deploy** — S001 continua sendo passo manual, uma vez só.
 
+> **Numeração não depende mais do S001.** As linhas de
+> `SolarCosta_Sequencias` (`lead`, `proposta`, `contrato`, `obra`, `kit`) vêm
+> pela [V026](migrations/V026__sequencias_numeracao_base.sql), porque sem elas
+> `SolarCosta_fn_proximo_numero` aborta o INSERT e *nenhum* lead, proposta,
+> contrato ou obra pode ser cadastrado — foi o que aconteceu em produção, onde
+> o S001 não tinha rodado por inteiro. A V026 parte do maior número já gravado
+> em cada tabela, então rodar antes ou depois do S001 dá no mesmo.
+
 > **V008 e V009 têm `ALTER TYPE … ADD VALUE` FORA da transação**, nas primeiras
 > linhas. O Postgres não deixa usar um valor de ENUM na mesma transação em que
 > ele é adicionado, e por isso esses dois arquivos não podem ser envelopados num
