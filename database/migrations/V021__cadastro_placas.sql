@@ -1,5 +1,5 @@
 BEGIN;
-CREATE TABLE "SolarCosta_Placas" (
+CREATE TABLE IF NOT EXISTS "SolarCosta_Placas" (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  fabricante varchar(120) NOT NULL,
  modelo varchar(160) NOT NULL,

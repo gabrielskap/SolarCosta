@@ -40,7 +40,8 @@ BEGIN
     SELECT count(*) INTO n_tab
       FROM information_schema.tables
      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-       AND table_name LIKE 'SolarCosta%';
+       AND table_name LIKE 'SolarCosta%'
+       AND table_name <> 'SolarCosta_SchemaMigrations';
 
     SELECT count(*) INTO n_tip
       FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
