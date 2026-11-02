@@ -1,6 +1,7 @@
 export interface CargaOffGrid {
   id: string;
   nome: string;
+  tensaoV?: number;
   potenciaW: number;
   quantidade: number;
   horasDia: number;
@@ -42,6 +43,9 @@ export function dimensionarSistema(equipamentos: CargaOffGrid[], config: ConfigO
     if (![item.potenciaW, item.quantidade, item.horasDia].every(Number.isFinite)
       || item.potenciaW < 0 || !Number.isInteger(item.quantidade) || item.quantidade < 0 || item.horasDia < 0 || item.horasDia > 24) {
       throw new Error(`Carga ${item.nome || 'sem nome'}: informe potência não negativa, quantidade inteira não negativa e horas entre 0 e 24.`);
+    }
+    if (item.tensaoV !== undefined && (!Number.isFinite(item.tensaoV) || item.tensaoV <= 0)) {
+      throw new Error(`Carga ${item.nome || 'sem nome'}: informe uma tensão de alimentação positiva.`);
     }
     const potenciaDemandadaW = item.potenciaW * item.quantidade;
     return { ...item, potenciaDemandadaW, consumoDiarioWh: potenciaDemandadaW * item.horasDia };

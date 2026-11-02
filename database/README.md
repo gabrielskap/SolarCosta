@@ -6,7 +6,20 @@ com outros sistemas no mesmo banco (ex.: `Recanto_*`).
 Como os identificadores têm maiúsculas, o PostgreSQL exige **aspas duplas**
 em toda referência: `SELECT * FROM "SolarCosta_Leads";`
 
-## Cadastro de aparelhos
+## Dimensionamento OFF-Grid
+
+O menu **Dimensionamento OFF-Grid** permite selecionar aparelhos cadastrados,
+simular as cargas e vincular um lead. Aplique `migrations/V030__simulacoes_off_grid.sql`
+para habilitar o salvamento no PostgreSQL (o deploy também aplica a migration).
+São persistidos identificação, lead, equipamentos, tensão de alimentação,
+parâmetros e resultados calculados pela API. Simulações salvas podem ser abertas
+e atualizadas na própria calculadora; salvar exige a permissão de emitir propostas.
+Os cálculos são compartilhados pelo frontend e pela API e podem ser verificados
+com `npx tsx scripts/test-off-grid.ts`. O fator dias altera a geração fotovoltaica,
+sem adicionar autonomia ao banco. A tensão dos equipamentos é informativa e não
+altera as fórmulas de consumo.
+
+## Cadastro de aparelhos (CRUD)
 
 O menu **Parâmetros → Aparelhos** permite cadastrar, consultar, editar e excluir
 aparelhos com ambiente e potência em watts. A API exige sessão autenticada.

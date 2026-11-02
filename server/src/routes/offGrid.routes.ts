@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { consultar, emTransacao } from '../db.js';
 import { AppError, asyncHandler, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao } from '../auth/middleware.js';
-import { dimensionarSistema } from '../domain/offGrid.js';
+import { dimensionarSistema, type CargaOffGrid, type ConfigOffGrid } from '../domain/offGrid.js';
 
 export const offGridRouter = Router();
 offGridRouter.use(exigirLogin);
@@ -15,7 +15,7 @@ const schema = z.object({
   cliente: z.object({ nome: z.string().trim().min(1).max(200), empresa: z.string().max(200),
     cnpj: z.string().max(20), telefone: z.string().max(30), email: z.string().email().or(z.literal('')) }),
   equipamentos: z.array(z.object({ id: z.string().min(1).max(100), nome: z.string().trim().min(1).max(160),
-    potenciaW: z.number().finite().nonnegative(), quantidade: z.number().int().nonnegative(), horasDia: z.number().finite().min(0).max(24) })).min(1).max(500),
+    tensaoV: positivo.optional(), potenciaW: z.number().finite().nonnegative(), quantidade: z.number().int().nonnegative(), horasDia: z.number().finite().min(0).max(24) })).min(1).max(500),
   config: z.object({ eficienciaInversor: percentual, profundidadeDescarga: percentual, eficienciaCarga: percentual,
     tensaoBateria: positivo, capacidadeBateriaAh: positivo, irradiacaoSolar: positivo, potenciaModuloWp: positivo,
     perdasSistema: z.number().finite().min(0).lt(100), fatorDias: positivo }),
@@ -35,7 +35,7 @@ for (const metodo of ['post', 'put'] as const) {
     const dados = schema.parse(req.body);
     const id = metodo === 'put' ? z.string().uuid().parse(req.params.id) : undefined;
     let resultados;
-    try { resultados = dimensionarSistema(dados.equipamentos, dados.config); }
+    try { resultados = dimensionarSistema(dados.equipamentos as CargaOffGrid[], dados.config as ConfigOffGrid); }
     catch (e) { throw new AppError(422, e instanceof Error ? e.message : 'Cálculo inválido.'); }
     const simulacao = await emTransacao(async cliente => {
       if (dados.leadId) {

@@ -35,6 +35,7 @@ const InteractiveCalendar = lazy(() => import('./components/InteractiveCalendar'
 const LeadsView = lazy(() => import('./components/leads/LeadsView').then((m) => ({ default: m.LeadsView })));
 const LeadDetailView = lazy(() => import('./components/LeadDetailView').then((m) => ({ default: m.LeadDetailView })));
 const ProposalCalculatorView = lazy(() => import('./components/ProposalCalculatorView').then((m) => ({ default: m.ProposalCalculatorView })));
+const OffGridView = lazy(() => import('./components/OffGridView').then(m => ({default:m.OffGridView})));
 const ProposalsListView = lazy(() => import('./components/ProposalsListView').then((m) => ({ default: m.ProposalsListView })));
 const ContractsView = lazy(() => import('./components/ContractsView').then((m) => ({ default: m.ContractsView })));
 const FinancialView = lazy(() => import('./components/FinancialView').then((m) => ({ default: m.FinancialView })));
@@ -1079,6 +1080,7 @@ export default function App() {
                 <Route
                   path="parametros/placas" element={<PlacasView />} />
                 <Route path="parametros/aparelhos" element={<AparelhosView />} />
+                <Route path="dimensionamento-off-grid" element={<OffGridView podeSalvar={currentUser.cargo==='Administrador'||!!currentUser.permissoes?.emitirPropostas} />} />
                 <Route
                   path="parametros/produtos"
                   element={
