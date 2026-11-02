@@ -3,7 +3,7 @@
 // Substitui ProposalCalculatorView + StorageService.saveProposta.
 // Os valores calculados (potência, geração, economia, payback) são PERSISTIDOS:
 // a proposta impressa não pode mudar porque alguém alterou um parâmetro global
-// depois. Quem calcula continua sendo o front — o banco guarda o resultado.
+// depois. O motor compartilhado calcula a prévia e a API recalcula o snapshot.
 
 import { entradaSolarSchema, resultadosProposta } from '../schemas/propostaSolar.js';
 import { calcularParcela, type CalculoSolar, type EntradaSolar } from '../domain/propostaSolar.js';
@@ -168,6 +168,8 @@ function recalcular(d:DadosProposta): CalculoSolar | undefined {
   d.entrada_financiamento_valor=entrada;
   const parcelas=d.forma_pagamento==='financiamento'?(d.parcelas_financiamento??0):0;
   const e={...(d.calculo_solar.entradas as EntradaSolar),moduloWp:d.modulo_wp,perdasPct:d.perdas_pct,tarifa:d.tarifa_kwh,
+    larguraM:d.levantamento_telhado?.modulo.larguraM ?? d.calculo_solar.entradas.larguraM,
+    alturaM:d.levantamento_telhado?.modulo.alturaM ?? d.calculo_solar.entradas.alturaM,
     taxaSem:d.iluminacao_publica_sem_sfcr??0,disponibilidadeReais:d.custo_disponibilidade??0,taxaCom:d.iluminacao_publica_com_sfcr??0,
     investimento,parcelas,parcela:calcularParcela(investimento-entrada,d.juros_financiamento_mes_pct??0,parcelas),
     quantidadeInstalada:d.levantamento_telhado?d.levantamento_telhado.placas.length:null};
@@ -326,6 +328,7 @@ propostasRouter.post(
   exigirPermissao('emitir_propostas'),
   asyncHandler(async (req: RequestAutenticado, res) => {
     const d = propostaSchema.parse(req.body);
+    if(!d.calculo_solar) throw new AppError(422,'Informe as premissas do cálculo da nova proposta.','calculo_obrigatorio');
     if (d.responsavel_tecnico_id) {
       const usuario = await consultarUm<{ nome: string; tipo_profissional: string | null; crea: string | null; crt: string | null }>(
         `SELECT nome, tipo_profissional, crea, crt FROM "SolarCosta_Usuarios" WHERE id = $1 AND excluido_em IS NULL AND status = 'ativo'`, [d.responsavel_tecnico_id]);
@@ -559,10 +562,10 @@ propostasRouter.patch(
 
     await emTransacao(async (cliente) => {
       if(status==='enviada'||status==='aceita') {
-        const {rows:validar}=await cliente.query('SELECT calculo_solar, consumo_kwh, tarifa_kwh, hsp, modulo_wp, forma_pagamento, parcelas_financiamento FROM "SolarCosta_Propostas" WHERE id=$1 FOR UPDATE',[id]);
+        const {rows:validar}=await cliente.query('SELECT calculo_solar, consumo_kwh, tarifa_kwh, hsp, modulo_wp, forma_pagamento, parcelas_financiamento, parcelas_cartao FROM "SolarCosta_Propostas" WHERE id=$1 AND excluido_em IS NULL FOR UPDATE',[id]);
         const p=validar[0];
         if(!p) throw naoEncontrado('Proposta');
-        if(p.calculo_solar && !p.calculo_solar.completo || !(Number(p.consumo_kwh)>0 && Number(p.tarifa_kwh)>0 && Number(p.hsp)>0 && Number(p.modulo_wp)>0) || p.forma_pagamento==='financiamento' && !(Number(p.parcelas_financiamento)>0)) throw new AppError(422,'Pendente de preenchimento: revise a proposta antes de emitir.','calculo_incompleto');
+        if(p.calculo_solar && !p.calculo_solar.completo || !(Number(p.consumo_kwh)>0 && Number(p.tarifa_kwh)>0 && Number(p.hsp)>0 && Number(p.modulo_wp)>0) || p.forma_pagamento==='financiamento' && !(Number(p.parcelas_financiamento)>0) || p.forma_pagamento==='cartao' && !(Number(p.parcelas_cartao)>0)) throw new AppError(422,'Pendente de preenchimento: revise a proposta antes de emitir.','calculo_incompleto');
       }
       const { rows } = await cliente.query(
         `UPDATE "SolarCosta_Propostas" SET

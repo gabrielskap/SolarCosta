@@ -420,6 +420,7 @@ function aninharItens(linhas: any[]): PropostaItem[] {
 
 export function paraProposta(linha: any): Proposta {
   return {
+    calculoSolar: linha.calculo_solar ?? undefined,
     id: linha.id,
     numero: linha.numero,
     leadId: linha.lead_id ?? '',

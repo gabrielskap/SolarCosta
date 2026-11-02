@@ -42,12 +42,13 @@ export function calcularProposta(e: EntradaSolar) {
   if(consumoMedio<=0 || compensacao<=0) erros.push('Informe consumo compensável maior que zero.');
   if(e.moduloWp<=0 || e.tarifa<=0 || e.inversorKw<=0) erros.push('Informe potência do módulo, inversor e tarifa maiores que zero.');
   if(e.modo==='tecnico' && (e.larguraM<=0||e.alturaM<=0)) erros.push('Informe as dimensões do módulo.');
-  if(e.modo==='excel' && e.geracaoAnualExcel<=0) erros.push('Informe a geração anual inicial da projeção Excel.');
+  if(e.modo==='excel' && e.geracaoAnualExcel<=0) erros.push('Informe a geração anual de referência.');
   const hspMedia = media(e.hspMensal);
   const dias = (ano:number,m:number)=>e.modo==='excel'?30:new Date(Date.UTC(ano,m+1,0)).getUTCDate();
   const producaoModulo = e.hspMensal.map((h,m)=>e.moduloWp/1000*(1-e.perdasPct/100)*h*dias(e.anoInicial,m));
   const quantidadeCalculada = media(producaoModulo)>0?compensacao/media(producaoModulo):0;
   const modulosQtd = e.quantidadeInstalada ?? Math.ceil(quantidadeCalculada);
+  if(modulosQtd<=0) erros.push('Informe uma quantidade instalada de módulos maior que zero.');
   const potenciaKwp = modulosQtd*e.moduloWp/1000;
   const potenciaNecessariaKwp = hspMedia>0?compensacao/30/hspMedia:0;
   const capacidadeInversor = e.inversorKw*(1+e.oversizingPct/100);
@@ -84,7 +85,6 @@ export function calcularProposta(e: EntradaSolar) {
     projecao.push({ano,tarifa,despesaAnual,despesaAcumulada:acumuladoSem,geracaoAnual:soma(geracoes),receitaAnual,custos,resultadoAnual,parcelasAno,resultadoAposParcelas:resultadoAnual-parcelasAno,saldoAcumulado:saldo,saldoComPoupanca:e.modo==='excel'?saldo*(1+e.poupancaMesPct/100):saldoPoupanca});
   }
   const resultado={versao:1 as const,entradas:e,completo:erros.length===0,erros,consumoMedio,compensacao,hspMedia,quantidadeCalculada,modulosQtd,potenciaKwp,potenciaNecessariaKwp,capacidadeInversor,areaEstimadaM2,geracaoMensal,geracaoMediaKwh,coberturaPct:consumoMedio>0?geracaoMediaKwh/consumoMedio*100:0,contaSemSolar,contaComSolar,valorGeracaoMensal:geracaoMediaKwh*e.tarifa,economiaOperacional,economiaMensal:economiaOperacional-(e.parcelas>0?e.parcela:0),economiaAnual:economiaOperacional*12,economia25Anos:saldo,paybackAnos,projecao};
-  if(JSON.stringify(resultado).includes(':null') && numeros.some(n=>!Number.isFinite(n))) resultado.completo=false;
   return resultado;
 }
 export type CalculoSolar = ReturnType<typeof calcularProposta>;

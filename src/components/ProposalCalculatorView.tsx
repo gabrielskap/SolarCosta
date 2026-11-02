@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2, MapPinned, ArrowLeft, Boxes } from 'lucide-react';
+import {
+  Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2,
+  MapPinned, ArrowLeft, Boxes, User as UserIcon, Zap, Sun, CreditCard,
+  Save, ShieldCheck, Info, CheckCircle2, Sliders, MapPin, X
+} from 'lucide-react';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { Proposta, PropostaItem, Produto, Kit, Lead, User } from '../types';
 import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ } from '../utils/format';
@@ -107,8 +111,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const editando = !!propostaExistente;
   const [levantamentoTelhado, setLevantamentoTelhado] = useState<LevantamentoTelhado | undefined>(propostaExistente?.levantamentoTelhado);
   const [editorManualAberto, setEditorManualAberto] = useState(false);
-  const manterEditorCaptura=useRef(false);
-  const [salvarVistaPendente,setSalvarVistaPendente] = useState(false);
+  const manterEditorCaptura = useRef(false);
+  const [salvarVistaPendente, setSalvarVistaPendente] = useState(false);
 
   // Lead vinculado. Sem lead selecionado o formulário nasce em branco — antes
   // ele caía num lead fixo de demonstração ("Cristiano Duarte Almeida").
@@ -248,14 +252,14 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [revisaoConfirmada, setRevisaoConfirmada] = useState(false);
   const [entradaSolar, setEntradaSolar] = useState<EntradaSolar>(() => propostaExistente?.calculoSolar?.entradas ?? {
     ...entradaSolarZerada(),
-    ...(propostaExistente ? {ucs:[{nome:'UC 1',meses:Array(12).fill(propostaExistente.consumoKwh),adicionalKwh:0,disponibilidadeKwh:0}],hspMensal:Array(12).fill(propostaExistente.hsp)} : {}),
+    ...(propostaExistente ? { ucs: [{ nome: 'UC 1', meses: Array(12).fill(propostaExistente.consumoKwh), adicionalKwh: 0, disponibilidadeKwh: 0 }], hspMensal: Array(12).fill(propostaExistente.hsp) } : {}),
   });
   const atualizarEntradaSolar = (e: EntradaSolar) => {
     setEntradaSolar(e);
-    setConsumoKwh(e.ucs.reduce((s,u)=>s+u.meses.reduce((a,b)=>a+b,0)/12,0));
-    setHsp(e.hspMensal.reduce((a,b)=>a+b,0)/12);
+    setConsumoKwh(e.ucs.reduce((s, u) => s + u.meses.reduce((a, b) => a + b, 0) / 12, 0));
+    setHsp(e.hspMensal.reduce((a, b) => a + b, 0) / 12);
     setModuloWp(e.moduloWp); setPerdasPct(e.perdasPct);
-    if(legado) setRevisaoConfirmada(false);
+    if (legado) setRevisaoConfirmada(false);
   };
 
   // Despesas fixas da conta — o que o cliente continua pagando mesmo gerando a
@@ -431,11 +435,15 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     parcelas: parcelasFinanciamento,
   });
 
-  const calculoSolar = calcularProposta({...entradaSolar, moduloWp, perdasPct, tarifa:tarifaKwh,
-    taxaSem:iluminacaoPublicaSemSfcr,disponibilidadeReais:custoDisponibilidade,taxaCom:iluminacaoPublicaComSfcr,
-    investimento:valorTotalInvestimento,parcela:formaPagamento==='financiamento'?pmtParcelaFinanciamento:0,
-    parcelas:formaPagamento==='financiamento'?parcelasFinanciamento:0,
-    quantidadeInstalada:levantamentoTelhado ? levantamentoTelhado.placas.length : null});
+  const calculoSolar = calcularProposta({
+    ...entradaSolar, moduloWp, perdasPct, tarifa: tarifaKwh,
+    larguraM: levantamentoTelhado?.modulo.larguraM ?? entradaSolar.larguraM,
+    alturaM: levantamentoTelhado?.modulo.alturaM ?? entradaSolar.alturaM,
+    taxaSem: iluminacaoPublicaSemSfcr, disponibilidadeReais: custoDisponibilidade, taxaCom: iluminacaoPublicaComSfcr,
+    investimento: valorTotalInvestimento, parcela: formaPagamento === 'financiamento' ? pmtParcelaFinanciamento : 0,
+    parcelas: formaPagamento === 'financiamento' ? parcelasFinanciamento : 0,
+    quantidadeInstalada: levantamentoTelhado ? levantamentoTelhado.placas.length : null
+  });
   const preservarLegado = legado && !revisaoConfirmada;
   const potenciaKwpCalculada = preservarLegado ? propostaExistente.potenciaKwp : calculoSolar.potenciaKwp;
   const modulosQtdCalculada = preservarLegado ? propostaExistente.modulosQtd : calculoSolar.modulosQtd;
@@ -549,6 +557,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const handleAddCatalogItem = () => {
     const prod = produtos.find(p => p.id === selectedCatalogProdutoId);
     if (!prod) return;
+    if (!(qtdAvulso > 0) || !Number.isFinite(qtdAvulso) || valorAvulso < 0 || !Number.isFinite(valorAvulso)) {
+      showToast('Item incompleto', 'error', 'Informe quantidade maior que zero e valor unitário válido.');
+      return;
+    }
 
     const total = qtdAvulso * valorAvulso;
     const newItem: PropostaItem = {
@@ -607,10 +619,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       return false;
     }
     if (!rascunho && levantamentoTelhado?.placas.length) {
-      const contar = (itens: PropostaItem[]): number => itens.reduce((s,item)=>s+
+      const contar = (itens: PropostaItem[]): number => itens.reduce((s, item) => s +
         (item.componentes?.length ? contar(item.componentes) :
-          (item.produtoId && slugDoTipoProduto(produtos.find(p=>p.id===item.produtoId)?.tipo)==='modulo' ? item.qtd : 0)),0);
-      if (contar(kitItens)!==levantamentoTelhado.placas.length) {
+          (item.produtoId && slugDoTipoProduto(produtos.find(p => p.id === item.produtoId)?.tipo) === 'modulo' ? item.qtd : 0)), 0);
+      if (contar(kitItens) !== levantamentoTelhado.placas.length) {
         showToast('Equipamentos diferentes do layout', 'error', `O levantamento tem ${levantamentoTelhado.placas.length} módulos. Ajuste os itens/kit para a mesma quantidade antes de salvar.`);
         return false;
       }
@@ -713,13 +725,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       setSalvamentoEmCurso(false);
     }
   };
-  useEffect(()=>{
-    if(!salvarVistaPendente)return;
-    void salvar(false,false).then(ok=>{
-      if(ok){if(!manterEditorCaptura.current)setEditorManualAberto(false);showToast('Vista e desenho salvos','success','Continue editando o levantamento.');}
-      else showToast('Vista ainda nao gravada','error','Confira os dados obrigatorios da proposta e tente novamente.');
-    }).catch(()=>showToast('Falha ao salvar a vista','error','O desenho permanece no editor. Tente novamente.')).finally(()=>setSalvarVistaPendente(false));
-  },[salvarVistaPendente]);
+  useEffect(() => {
+    if (!salvarVistaPendente) return;
+    void salvar(false, false).then(ok => {
+      if (ok) { if (!manterEditorCaptura.current) setEditorManualAberto(false); showToast('Vista e desenho salvos', 'success', 'Continue editando o levantamento.'); }
+      else showToast('Vista ainda nao gravada', 'error', 'Confira os dados obrigatorios da proposta e tente novamente.');
+    }).catch(() => showToast('Falha ao salvar a vista', 'error', 'O desenho permanece no editor. Tente novamente.')).finally(() => setSalvarVistaPendente(false));
+  }, [salvarVistaPendente]);
   const salvarAutomaticamente = useRef(() => { void salvar(false, true); });
   salvarAutomaticamente.current = () => { void salvar(false, true); };
   useEffect(() => {
@@ -730,80 +742,83 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const handleGeneratePDF = () => { void salvar(true); };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-[#004276] mb-1.5 transition"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Voltar para propostas
-            </button>
-          )}
-          <h1 className="text-2xl font-extrabold text-[#004276]">
-            {editando ? 'Editar proposta' : 'Proposta de orçamento'}
-          </h1>
-          <p className="text-xs text-slate-500 font-semibold mt-0.5">
-            {/* O número é gerado pelo banco ao salvar; a validade vem dos parâmetros. */}
-            {editando
-              ? `Nº ${propostaExistente!.numero || '—'} · criada em ${propostaExistente!.dataCriacao}`
-              : 'Nova proposta · nº gerado ao salvar'}
-            {' · '}
-            válida por {paramNum(config, 'proposta.validade_dias', 10)} dias
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 gap-y-2">
-          <button
-            onClick={handleSaveDraft}
-            disabled={salvamentoEmCurso}
-            className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-sm transition"
-          >
-            {editando ? 'Salvar alterações' : 'Salvar rascunho'}
-          </button>
-          <button
-            onClick={handleGeneratePDF}
-            disabled={salvamentoEmCurso}
-            className="px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow transition flex items-center gap-2"
-          >
-            <FileText className="w-4 h-4" />
-            <span>Gerar proposta em PDF</span>
-          </button>
-        </div>
-      </div>
-
-      {ultimaVersaoSalva && (
-        <p className="text-xs text-slate-500" role="status">
-          Última versão salva às {ultimaVersaoSalva.toLocaleTimeString('pt-BR')}
-        </p>
-      )}
-
-      {/* Main Form Layout (7/12 Form, 5/12 Sidebar) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* LEFT FORM (7/12 or 8/12) */}
-        <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-          {/* Passos — só no celular. Ver o comentário de `secaoVisivel`. */}
-          <div className="md:hidden -mx-4 px-4 flex gap-2 overflow-x-auto pb-1">
-            {PASSOS.map((rotulo, i) => {
-              const numero = i + 1;
-              const ativo = numero === secaoVisivel;
-              return (
+      <div className="space-y-4">
+        {/* Top Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs">
+            <div>
+              {onBack && (
                 <button
-                  key={rotulo}
-                  type="button"
-                  onClick={() => setSecaoVisivel(numero)}
-                  className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
-                    ativo ? 'bg-[#004276] text-white border-[#004276] shadow' : 'bg-white text-slate-600 border-slate-200'
-                  }`}
+                  onClick={onBack}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#004276] mb-1 transition"
                 >
-                  <span
-                    className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center ${
-                      ativo ? 'bg-white/20' : 'bg-slate-100 text-slate-500'
-                    }`}
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  Voltar para propostas
+                </button>
+              )}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl sm:text-2xl font-black text-[#004276]">
+                  {editando ? 'Editar proposta' : 'Nova proposta'}
+                </h1>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-[#004276] border border-blue-200">
+                  {editando ? `Nº ${propostaExistente!.numero || '—'}` : 'Rascunho'}
+                </span>
+                <span className="text-xs text-slate-400 font-medium">
+                  · criada em {editando ? propostaExistente!.dataCriacao : new Date().toLocaleDateString('pt-BR')}
+                  · válida por {paramNum(config, 'proposta.validade_dias', 10)} dias
+                </span>
+              </div>
+              {ultimaVersaoSalva && (
+                <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5" role="status">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  Última versão salva às {ultimaVersaoSalva.toLocaleTimeString('pt-BR')}
+                </p>
+              )}
+            </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleSaveDraft}
+                  disabled={salvamentoEmCurso}
+                  className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs sm:text-sm shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {salvamentoEmCurso ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                  ) : (
+                    <Save className="w-4 h-4 text-slate-500" />
+                  )}
+                  <span>{editando ? 'Salvar alterações' : 'Salvar rascunho'}</span>
+                </button>
+                <button
+                  onClick={handleGeneratePDF}
+                  disabled={salvamentoEmCurso}
+                  className="px-4 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-xs sm:text-sm shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Gerar proposta em PDF</span>
+                </button>
+              </div>
+            </div>
+
+              {/* Main Form Layout (8/12 Form, 4/12 Sidebar Sticky) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+
+                    {/* LEFT FORM (8/12) */}
+                    <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+                      {/* Passos — no celular */}
+                      <div className="md:hidden -mx-4 px-4 flex gap-1.5 overflow-x-auto pb-1">
+                        {PASSOS.map((rotulo, i) => {
+                          const numero = i + 1;
+                          const ativo = numero === secaoVisivel;
+                          return (
+                            <button
+                              key={rotulo}
+                              type="button"
+                              onClick={() => setSecaoVisivel(numero)}
+                  className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${ativo ? 'bg-[#004276] text-white border-[#004276] shadow-xs' : 'bg-white text-slate-600 border-slate-200'
+                                }`}
+                            >
+                              <span
+                                    }`}
                   >
                     {numero}
                   </span>
@@ -814,60 +829,81 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
           
           {/* Section 1: Dados do cliente */}
-          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 1 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
-                1
-              </span>
-              <h3 className="font-bold text-slate-900 text-base">Dados do cliente</h3>
-              <span className="text-xs text-slate-400 font-medium ml-auto">
-                {linkedLead ? `vinculado ao lead ${linkedLead.numero}` : 'sem lead vinculado'}
-              </span>
-            </div>
+          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 1 ? '' : 'hidden md:block'}`}>
+                                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                                          <UserIcon className="w-3.5 h-3.5" />
+                                        </div>
+                                        <div>
+                                          <h3 className="font-bold text-slate-900 text-sm">Dados do Cliente</h3>
+                                          <p className="text-[11px] text-slate-400">Identificação, contato e endereço de instalação</p>
+                                        </div>
+                                      </div>
+                                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                        {linkedLead ? `Lead ${linkedLead.numero}` : 'Sem lead vinculado'}
+                                      </span>
+                                    </div>
 
-            <div className="relative" onBlur={e => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setListaLeadsAberta(false);
-            }}>
-              <label htmlFor="lead-vinculado" className="block text-[11px] font-bold uppercase text-slate-500 mb-1">LEAD VINCULADO</label>
-              <input
-                id="lead-vinculado" role="combobox" aria-autocomplete="list"
-                aria-expanded={listaLeadsAberta} aria-controls="opcoes-lead"
-                aria-activedescendant={listaLeadsAberta ? 'opcao-lead-' + indiceLead : undefined}
-                autoComplete="off"
-                value={listaLeadsAberta ? buscaLead : linkedLead ? rotuloLead(linkedLead) : ''}
-                placeholder="Pesquisar por nome, número ou cidade"
-                onFocus={() => { setBuscaLead(''); setIndiceLead(0); setListaLeadsAberta(true); }}
-                onChange={e => { setBuscaLead(e.target.value); setIndiceLead(0); setListaLeadsAberta(true); }}
-                onKeyDown={e => {
-                  if (e.key === 'Escape') setListaLeadsAberta(false);
-                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                    e.preventDefault(); setListaLeadsAberta(true);
-                    setIndiceLead(i => Math.max(0, Math.min(leadsFiltrados.length, i + (e.key === 'ArrowDown' ? 1 : -1))));
-                  }
-                  if (e.key === 'Enter' && listaLeadsAberta) {
-                    e.preventDefault(); escolherLead(indiceLead === 0 ? '' : leadsFiltrados[indiceLead - 1]?.id ?? '');
-                  }
-                }}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-              />
-              {listaLeadsAberta && (
-                <div id="opcoes-lead" role="listbox" aria-label="Leads" className="absolute z-30 mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                                    {/* Lead Vinculado Combobox */}
+                                    <div className="relative" onBlur={e => {
+                                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setListaLeadsAberta(false);
+                                    }}>
+                                      <label htmlFor="lead-vinculado" className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                                        VINCULAR LEAD EXISTENTE (OPCIONAL)
+                                      </label>
+                                      <div className="relative">
+                                        <input
+                                          id="lead-vinculado" role="combobox" aria-autocomplete="list"
+                                          aria-expanded={listaLeadsAberta} aria-controls="opcoes-lead"
+                                          aria-activedescendant={listaLeadsAberta ? 'opcao-lead-' + indiceLead : undefined}
+                                          autoComplete="off"
+                                          value={listaLeadsAberta ? buscaLead : linkedLead ? rotuloLead(linkedLead) : ''}
+                                          placeholder="Pesquise por nome, número do lead ou cidade..."
+                                          onFocus={() => { setBuscaLead(''); setIndiceLead(0); setListaLeadsAberta(true); }}
+                                          onChange={e => { setBuscaLead(e.target.value); setIndiceLead(0); setListaLeadsAberta(true); }}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Escape') setListaLeadsAberta(false);
+                                            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                                              e.preventDefault(); setListaLeadsAberta(true);
+                                              setIndiceLead(i => Math.max(0, Math.min(leadsFiltrados.length, i + (e.key === 'ArrowDown' ? 1 : -1))));
+                                            }
+                                            if (e.key === 'Enter' && listaLeadsAberta) {
+                                              e.preventDefault(); escolherLead(indiceLead === 0 ? '' : leadsFiltrados[indiceLead - 1]?.id ?? '');
+                                            }
+                                          }}
+                                          className="w-full px-3 py-1.5 pr-8 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
+                                        />
+                                        {linkedLead && !listaLeadsAberta && (
+                                          <button
+                                            type="button"
+                                            onClick={() => escolherLead('')}
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                                            title="Desvincular lead"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                      {listaLeadsAberta && (
+                <div id="opcoes-lead" role="listbox" aria-label="Leads" className="absolute z-30 mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
                   {[null, ...leadsFiltrados].map((lead, indice) => (
                     <button key={lead?.id ?? 'nenhum'} id={'opcao-lead-' + indice} type="button" role="option"
                       aria-selected={lead ? lead.id === leadIdSelecionado : !leadIdSelecionado}
                       onMouseDown={e => e.preventDefault()} onMouseEnter={() => setIndiceLead(indice)}
                       onClick={() => escolherLead(lead?.id ?? '')}
-                      className={'block w-full px-3 py-2.5 text-left text-xs ' + (indice === indiceLead ? 'bg-slate-100 text-[#004276]' : 'text-slate-700')}
+                      className={'block w-full px-3 py-2 text-left text-xs transition ' + (indice === indiceLead ? 'bg-blue-50 text-[#004276] font-bold' : 'text-slate-700 hover:bg-slate-50')}
                     >{lead ? rotuloLead(lead) : 'Nenhum — preencher manualmente'}</button>
                   ))}
-                  {leadsFiltrados.length === 0 && <p className="px-3 py-2.5 text-xs text-slate-500">Nenhum lead encontrado.</p>}
+                  {leadsFiltrados.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">Nenhum lead encontrado.</p>}
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
+            {/* Grid dos Dados do Cliente */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                   NOME / RAZÃO SOCIAL
                 </label>
                 <input
@@ -875,12 +911,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   autoComplete="name"
                   value={clienteNome}
                   onChange={(e) => setClienteNome(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                   {docLabel(cpfCnpj)}
                 </label>
                 <input
@@ -888,186 +924,195 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   inputMode="numeric"
                   value={cpfCnpj}
                   onChange={(e) => setCpfCnpj(maskCPFCNPJ(e.target.value))}
-                  className={`w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-semibold focus:outline-none ${
-                    cpfInvalido ? 'border-rose-300 focus:border-rose-500 bg-rose-50/40' : 'border-slate-200 focus:border-[#004276]'
+                  className={`w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-semibold focus:outline-none transition ${
+                    cpfInvalido ? 'border-rose-300 focus:border-rose-500 bg-rose-50/40 text-rose-700' : 'border-slate-200 focus:border-[#004276]'
                   }`}
                 />
-                {cpfInvalido && <p className="text-[10px] text-rose-600 font-semibold mt-1">{docLabel(cpfCnpj)} inválido</p>}
+                {cpfInvalido && <p className="text-[10px] text-rose-600 font-semibold mt-0.5">{docLabel(cpfCnpj)} inválido</p>}
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                  TELEFONE
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  TELEFONE / WHATSAPP
                 </label>
                 <input
                   type="text"
                   inputMode="tel"
                   value={telefone}
                   onChange={(e) => setTelefone(maskPhone(e.target.value))}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                 />
               </div>
 
-              <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                    CEP
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={cep}
-                      onChange={(e) => {
-                        const masked = maskCEP(e.target.value);
-                        setCep(masked);
-                        // Sem onBlur: o onChange já cobre digitação, colagem e
-                        // autofill, e o par disparava duas consultas e dois
-                        // toasts — agora também duas rodadas de busca.
-                        if (onlyDigits(masked).length === 8) handleCepLookup(masked);
-                      }}
-                      placeholder="00000-000"
-                      className="w-full p-2.5 pr-8 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
-                      {cepLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPinned className="w-3.5 h-3.5" />}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                    NÚMERO
-                  </label>
-                  {/* Sem máscara: número de imóvel no Brasil é 512, 512A, s/n, km 12. */}
+              {/* Endereço: CEP, Número, Logradouro */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  CEP
+                </label>
+                <div className="relative">
                   <input
                     type="text"
-                    value={numeroEndereco}
-                    onChange={(e) => aoDigitarNumero(e.target.value)}
-                    placeholder="512"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                    ENDEREÇO DA INSTALAÇÃO
-                  </label>
-                  <input
-                    type="text"
-                    value={endereco}
+                    inputMode="numeric"
+                    value={cep}
                     onChange={(e) => {
-                      setEndereco(e.target.value);
-                      // A partir daqui a linha é do consultor: nem o CEP nem o
-                      // número voltam a reescrevê-la.
-                      setEnderecoEditadoAMao(true);
+                      const masked = maskCEP(e.target.value);
+                      setCep(masked);
+                      if (onlyDigits(masked).length === 8) handleCepLookup(masked);
                     }}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                    placeholder="00000-000"
+                    className="w-full px-2.5 py-1.5 pr-7 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                   />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
+                    {cepLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPinned className="w-3.5 h-3.5" />}
+                  </span>
                 </div>
               </div>
 
-              <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                    TIPO DE TELHADO
-                  </label>
-                  <select
-                    value={telhado}
-                    onChange={(e) => setTelhado(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-                  >
-                    <option value="Laje">Laje</option>
-                    <option value="Colonial">Colonial</option>
-                    <option value="Metálico">Metálico</option>
-                    <option value="Fibrocimento">Fibrocimento</option>
-                    <option value="Solo/Estrutura">Solo/Estrutura</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  NÚMERO
+                </label>
+                <input
+                  type="text"
+                  value={numeroEndereco}
+                  onChange={(e) => aoDigitarNumero(e.target.value)}
+                  placeholder="512"
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                    CONCESSIONÁRIA
-                  </label>
-                  <select
-                    value={concessionaria}
-                    onChange={(e) => setConcessionaria(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
-                  >
-                    <option value="CEMIG">CEMIG</option>
-                    <option value="ENEL">ENEL</option>
-                    <option value="CPFL">CPFL</option>
-                    <option value="LIGHT">LIGHT</option>
-                  </select>
-                </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  ENDEREÇO DA INSTALAÇÃO (LOGRADOURO, BAIRRO, CIDADE/UF)
+                </label>
+                <input
+                  type="text"
+                  value={endereco}
+                  onChange={(e) => {
+                    setEndereco(e.target.value);
+                    setEnderecoEditadoAMao(true);
+                  }}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
+                />
+              </div>
+
+              {/* Telhado & Concessionária */}
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  TIPO DE TELHADO
+                </label>
+                <select
+                  value={telhado}
+                  onChange={(e) => setTelhado(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#004276] transition"
+                >
+                  <option value="Laje">Laje</option>
+                  <option value="Colonial">Colonial</option>
+                  <option value="Metálico">Metálico</option>
+                  <option value="Fibrocimento">Fibrocimento</option>
+                  <option value="Solo/Estrutura">Solo/Estrutura</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  CONCESSIONÁRIA
+                </label>
+                <select
+                  value={concessionaria}
+                  onChange={(e) => setConcessionaria(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#004276] transition"
+                >
+                  <option value="CEMIG">CEMIG</option>
+                  <option value="ENEL">ENEL</option>
+                  <option value="CPFL">CPFL</option>
+                  <option value="LIGHT">LIGHT</option>
+                </select>
               </div>
             </div>
           </div>
 
           {/* Section 2: Dimensionamento do sistema */}
-          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 2 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
-                2
-              </span>
-              <h3 className="font-bold text-slate-900 text-base">Dimensionamento do sistema</h3>
+          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 2 ? '' : 'hidden md:block'}`}>
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <Sun className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Dimensionamento do Sistema</h3>
+                  <p className="text-[11px] text-slate-400">Consumo mensal, irradiação local e parâmetros de geração</p>
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {/* Inputs Principais de Dimensionamento */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  CONSUMO MÉDIO (EDITAR SUBSTITUI UCs)
+                  CONSUMO MÉDIO <span className="text-slate-400 font-normal">(KWH)</span>
                 </label>
                 <input
                   type="number"
                   value={consumoKwh}
-                  onChange={(e) => {const v=Number(e.target.value);setConsumoKwh(v);setEntradaSolar(prev=>({...prev,ucs:[{nome:'UC 1',meses:Array(12).fill(v),adicionalKwh:0,disponibilidadeKwh:0}]}));}}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setConsumoKwh(v);
+                    setEntradaSolar(prev => ({
+                      ...prev,
+                      ucs: [{ nome: 'UC 1', meses: Array(12).fill(v), adicionalKwh: 0, disponibilidadeKwh: 0 }],
+                    }));
+                  }}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#004276] transition"
                 />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  TARIFA R$/KWH
+                  TARIFA <span className="text-slate-400 font-normal">(R$/KWH)</span>
                 </label>
                 <input
                   type="number"
                   step="0.01"
                   value={tarifaKwh}
                   onChange={(e) => setTarifaKwh(Number(e.target.value))}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#004276] transition"
                 />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  HSP MÉDIA (EDITAR PREENCHE MESES)
+                  HSP MÉDIA <span className="text-slate-400 font-normal">(H/DIA)</span>
                 </label>
                 <input
                   type="number"
                   step="0.1"
                   value={hsp}
-                  onChange={(e) => {const v=Number(e.target.value);setHsp(v);setEntradaSolar(prev=>({...prev,hspMensal:Array(12).fill(v)}));}}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setHsp(v);
+                    setEntradaSolar(prev => ({ ...prev, hspMensal: Array(12).fill(v) }));
+                  }}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#004276] transition"
                 />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  PERDAS %
+                  PERDAS <span className="text-slate-400 font-normal">(%)</span>
                 </label>
                 <input
                   type="number"
                   step="0.5"
                   value={perdasPct}
                   onChange={(e) => setPerdasPct(Number(e.target.value))}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#004276] transition"
                 />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  MÓDULO WP
+                  MÓDULO <span className="text-slate-400 font-normal">(WP)</span>
                 </label>
                 <input
                   type="number"
@@ -1075,26 +1120,66 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   disabled={!!levantamentoTelhado}
                   title={levantamentoTelhado ? 'Altere a potência do módulo no levantamento do telhado.' : undefined}
                   onChange={(e) => setModuloWp(Number(e.target.value))}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#004276] transition disabled:opacity-60"
                 />
               </div>
             </div>
 
-            <PropostaPremissas entrada={{...entradaSolar,moduloWp,perdasPct}} onChange={atualizarEntradaSolar} resultado={calculoSolar} legado={legado} confirmado={revisaoConfirmada} anterior={propostaExistente} onConfirmar={()=>setRevisaoConfirmada(true)} />
+            {/* Calculated sizing banner - Compact KPI Strip */}
+            <div className="bg-gradient-to-r from-blue-50/80 to-slate-50 border border-blue-100 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center sm:text-left">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">POTÊNCIA</span>
+                <p className="text-base sm:text-lg font-black text-[#004276]">{potenciaKwpCalculada} kWp</p>
+              </div>
 
-            {/*
-              Despesas fixas da conta — o que a geração não compensa e que a
-              folha de despesas mensais do PDF imprime nas duas tabelas.
-              Vêm pré-preenchidas da concessionária; o consultor confere contra
-              a conta de energia do cliente e separa os valores.
-            */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">MÓDULOS</span>
+                <p className="text-base sm:text-lg font-black text-slate-800">{modulosQtdCalculada} un</p>
+                {!preservarLegado && calculoSolar.quantidadeCalculada > 0 && Number.isFinite(calculoSolar.quantidadeCalculada) && (
+                  <p
+                    className="mt-0.5 text-[10px] font-normal text-slate-500"
+                    title="Quantidade necessária antes do arredondamento para cima. Quando há levantamento do telhado, o total instalado segue os módulos do layout."
+                  >
+                    Calculado: {calculoSolar.quantidadeCalculada.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} un
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ÁREA ESTIMADA</span>
+                <p className="text-base sm:text-lg font-black text-slate-800">{areaEstimadaM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</p>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">GERAÇÃO MÉDIA</span>
+                <p className="text-base sm:text-lg font-black text-slate-800">{geracaoMediaKwh.toLocaleString('pt-BR')} kWh</p>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">COBERTURA</span>
+                <p className="text-base sm:text-lg font-black text-emerald-700">{coberturaPct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%</p>
+              </div>
+            </div>
+
+            {/* Premissas & Configurações Avançadas */}
+            <PropostaPremissas
+              entrada={{ ...entradaSolar, moduloWp, perdasPct }}
+              onChange={atualizarEntradaSolar}
+              resultado={calculoSolar}
+              legado={legado}
+              confirmado={revisaoConfirmada}
+              anterior={propostaExistente}
+              onConfirmar={() => setRevisaoConfirmada(true)}
+            />
+
+            {/* Despesas Fixas da Conta */}
             <div>
-              <h4 className="text-[10px] font-bold uppercase text-slate-500 mb-2 tracking-wide">
+              <h4 className="text-[10px] font-bold uppercase text-slate-500 mb-1.5 tracking-wider">
                 DESPESAS FIXAS DA CONTA (R$/MÊS)
               </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
                     TX. ILUM. PÚBLICA (HOJE)
                   </label>
                   <input
@@ -1102,12 +1187,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     step="0.01"
                     value={iluminacaoPublicaSemSfcr}
                     onChange={(e) => setIluminacaoPublicaSemSfcr(Number(e.target.value))}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
                     CUSTO DE DISPONIBILIDADE
                   </label>
                   <input
@@ -1115,12 +1200,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     step="0.01"
                     value={custoDisponibilidade}
                     onChange={(e) => setCustoDisponibilidade(Number(e.target.value))}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
                     TX. ILUM. PÚBLICA (COM SISTEMA)
                   </label>
                   <input
@@ -1128,76 +1213,123 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     step="0.01"
                     value={iluminacaoPublicaComSfcr}
                     onChange={(e) => setIluminacaoPublicaComSfcr(Number(e.target.value))}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#004276]"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                   />
                 </div>
               </div>
             </div>
-
-            {/* Calculated sizing banner */}
-            <div className="bg-blue-50/70 border border-blue-100 rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">POTÊNCIA</span>
-                <p className="text-xl font-black text-[#004276]">{potenciaKwpCalculada} kWp</p>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">MÓDULOS</span>
-                <p className="text-xl font-black text-slate-900">{modulosQtdCalculada} un</p>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">ÁREA ESTIMADA</span>
-                <p className="text-xl font-black text-slate-900">{areaEstimadaM2} m²</p>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">GERAÇÃO MÉDIA</span>
-                <p className="text-xl font-black text-slate-900">{geracaoMediaKwh.toLocaleString('pt-BR')} kWh</p>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-emerald-600 uppercase">COBERTURA</span>
-                <p className="text-xl font-black text-emerald-700">{coberturaPct}%</p>
-              </div>
-            </div>
           </div>
 
-          {/* Telhado por satélite — depois do dimensionamento porque precisa
-              da quantidade de módulos já calculada. */}
-          <div className={secaoVisivel === 2 ? '' : 'hidden md:block'}>
-          {/* O painel abre vazio mesmo com layout gravado — ver o comentário de
-              `dadosTelhado`. Sem este aviso, o consultor acharia que perdeu. */}
-          {editando && dadosTelhado && (
-            <div className="mb-3 bg-blue-50/70 border border-blue-100 rounded-xl p-3 text-[11px] font-semibold text-[#004276]">
-              O layout de telhado gravado nesta proposta foi mantido e sai no PDF.
-              Buscar de novo aqui embaixo substitui o que está guardado.
+          {/* Telhado por satélite */}
+          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3 ${secaoVisivel === 2 ? '' : 'hidden md:block'}`}>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-[#004276]" />
+                <h3 className="font-bold text-slate-900 text-sm">Levantamento do Telhado</h3>
+              </div>
+              {levantamentoTelhado && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {levantamentoTelhado.placas.length} módulos aplicados
+                </span>
+              )}
             </div>
-          )}
-          <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-            <h3 className="font-bold text-slate-800">LEVANTAMENTO DO TELHADO</h3>
-            <p className="text-xs text-slate-600">Busque a imagem de satélite ou importe uma imagem própria para medir o telhado, simular a luz solar e distribuir os módulos no mesmo editor.</p>
-            <div className="flex flex-wrap gap-3">
-              <button type="button" className="bg-sky-800 text-white rounded-lg px-4 py-2 font-bold text-sm" onClick={()=>setEditorManualAberto(true)}>{levantamentoTelhado?'Editar levantamento':'Abrir levantamento do telhado'}</button>
+
+            {editando && dadosTelhado && (
+              <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-2.5 text-[11px] font-medium text-[#004276]">
+                O layout de telhado gravado nesta proposta foi mantido e sai no PDF. Buscar novamente substitui o desenho atual.
+              </div>
+            )}
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Busque a imagem de satélite ou importe uma imagem própria para medir o telhado, simular a luz solar e distribuir os módulos.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                className="bg-[#004276] hover:bg-[#003159] text-white rounded-xl px-4 py-2 font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                onClick={() => setEditorManualAberto(true)}
+              >
+                <MapPinned className="w-3.5 h-3.5" />
+                {levantamentoTelhado ? 'Editar levantamento do telhado' : 'Abrir levantamento do telhado'}
+              </button>
+
+              {levantamentoTelhado && (
+                <button
+                  type="button"
+                  className="text-xs text-rose-600 hover:text-rose-800 font-bold underline px-2 py-1"
+                  onClick={() => setLevantamentoTelhado(undefined)}
+                >
+                  Remover levantamento
+                </button>
+              )}
             </div>
-            {levantamentoTelhado&&<>
-              {!editorManualAberto&&<PreviaLevantamento key={JSON.stringify(levantamentoTelhado.vistaGoogle)} dados={levantamentoTelhado} propostaId={propostaSalva.current?.id} chave={config?.google_maps_browser_key} googleAtivo={config?.google_maps_ativo!==false}/>}
-              <p className="text-sm text-slate-700">{levantamentoTelhado.placas.length} módulos · {areaSuperficie(levantamentoTelhado).toFixed(1)} m² de superfície · {levantamentoTelhado.modulo.modelo} · {levantamentoTelhado.modulo.potenciaWp} Wp</p>
-              <p className="text-xs text-slate-500">A potência e a geração usam a quantidade aplicada. Confira os componentes e quantidades do kit antes de salvar; kits mantêm seu preço fechado.</p>
-              <button type="button" className="text-xs text-red-700 underline" onClick={()=>setLevantamentoTelhado(undefined)}>Remover levantamento manual</button>
-            </>}
-          </div>
-          {editorManualAberto&&<LevantamentoManual valor={levantamentoTelhado} potenciaWp={moduloWp} hsp={hsp} perdasPct={perdasPct} alvo={modulosQtdCalculada} enderecoBusca={consultaAuto||[endereco,numeroEndereco,cidade].filter(Boolean).join(', ')} coordenadaInicial={coordenadaLead??undefined} leadId={linkedLead?.id} propostaId={propostaSalva.current?.id} podeAnexarCaptura={currentUser.cargo==='Administrador'||!!currentUser.permissoes?.anexarDocumentos&&!!currentUser.permissoes?.emitirPropostas} salvandoVista={salvamentoEmCurso||salvarVistaPendente} onSalvarVista={(l,manterAberto=true)=>{manterEditorCaptura.current=manterAberto;setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);if(l.placas.length)setDadosTelhado(null);setSalvarVistaPendente(true);}} chaveMaps={config?.google_maps_browser_key} googleAtivo={config?.google_maps_ativo!==false} onCancelar={()=>setEditorManualAberto(false)} onAplicar={l=>{setLevantamentoTelhado(l);setModuloWp(l.modulo.potenciaWp);setDadosTelhado(null);setEditorManualAberto(false);showToast('Levantamento aplicado','success','Potência e geração recalculadas. Confira os equipamentos do kit.');}}/>}
+
+            {levantamentoTelhado && (
+              <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-xs">
+                {!editorManualAberto && (
+                  <PreviaLevantamento
+                    key={JSON.stringify(levantamentoTelhado.vistaGoogle)}
+                    dados={levantamentoTelhado}
+                    propostaId={propostaSalva.current?.id}
+                    chave={config?.google_maps_browser_key}
+                    googleAtivo={config?.google_maps_ativo !== false}
+                  />
+                )}
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-700">
+                  <div>
+                    <strong>{levantamentoTelhado.placas.length} módulos</strong> · {areaSuperficie(levantamentoTelhado).toFixed(1)} m² de superfície · {levantamentoTelhado.modulo.modelo} ({levantamentoTelhado.modulo.potenciaWp} Wp)
+                  </div>
+                  <span className="text-[10px] text-slate-400">Potência recalculada pela quantidade do levantamento</span>
+                </div>
+              </div>
+            )}
+
+            {editorManualAberto && (
+              <LevantamentoManual
+                valor={levantamentoTelhado}
+                potenciaWp={moduloWp}
+                hsp={hsp}
+                perdasPct={perdasPct}
+                alvo={modulosQtdCalculada}
+                enderecoBusca={consultaAuto || [endereco, numeroEndereco, cidade].filter(Boolean).join(', ')}
+                coordenadaInicial={coordenadaLead ?? undefined}
+                leadId={linkedLead?.id}
+                propostaId={propostaSalva.current?.id}
+                podeAnexarCaptura={currentUser.cargo === 'Administrador' || (!!currentUser.permissoes?.anexarDocumentos && !!currentUser.permissoes?.emitirPropostas)}
+                salvandoVista={salvamentoEmCurso || salvarVistaPendente}
+                onSalvarVista={(l, manterAberto = true) => {
+                  manterEditorCaptura.current = manterAberto;
+                  setLevantamentoTelhado(l);
+                  setModuloWp(l.modulo.potenciaWp);
+                  if (l.placas.length) setDadosTelhado(null);
+                  setSalvarVistaPendente(true);
+                }}
+                chaveMaps={config?.google_maps_browser_key}
+                googleAtivo={config?.google_maps_ativo !== false}
+                onCancelar={() => setEditorManualAberto(false)}
+                onAplicar={l => {
+                  setLevantamentoTelhado(l);
+                  setModuloWp(l.modulo.potenciaWp);
+                  setDadosTelhado(null);
+                  setEditorManualAberto(false);
+                  showToast('Levantamento aplicado', 'success', 'Potência e geração recalculadas. Confira os equipamentos do kit.');
+                }}
+              />
+            )}
           </div>
 
           {/* Section 3: Kit de equipamentos e serviços */}
-          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 3 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
-                  3
-                </span>
-                <h3 className="font-bold text-slate-900 text-base">Kit de equipamentos e serviços</h3>
+          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 3 ? '' : 'hidden md:block'}`}>
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <Boxes className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Kit de Equipamentos e Serviços</h3>
+                  <p className="text-[11px] text-slate-400">Composição do sistema, módulos, inversores e serviços inclusos</p>
+                </div>
               </div>
 
               <button
@@ -1206,98 +1338,108 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   setAbaCatalogo(kits.length > 0 ? 'kit' : 'produto');
                   setIsAddItemOpen(true);
                 }}
-                className="text-xs font-bold text-[#004276] hover:underline flex items-center gap-1"
+                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#004276] text-xs font-bold rounded-xl transition flex items-center gap-1"
               >
-                + Adicionar kit ou produto
+                <Plus className="w-3.5 h-3.5" />
+                <span>Adicionar item</span>
               </button>
             </div>
 
-            {/* Kit Table */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <table className="tabela-mobile w-full text-left text-xs">
+            {/* Tabela do Kit */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
+              <table className="tabela-mobile w-full text-left">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
-                    <th className="p-3">DESCRIÇÃO</th>
-                    <th className="p-3 text-center">QTD.</th>
-                    <th className="p-3 text-right">VALOR UNIT.</th>
-                    <th className="p-3 text-right">TOTAL</th>
-                    <th className="p-3 text-center"></th>
+                  <tr className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
+                    <th className="py-2.5 px-3">DESCRIÇÃO</th>
+                    <th className="py-2.5 px-3 text-center w-24">QTD.</th>
+                    <th className="py-2.5 px-3 text-right w-32">VALOR UNIT.</th>
+                    <th className="py-2.5 px-3 text-right w-32">TOTAL</th>
+                    <th className="py-2.5 px-2 text-center w-10"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {kitItens.map((item) => (
-                    <React.Fragment key={item.id}>
-                      <tr className="hover:bg-slate-50">
-                        <td data-label="DESCRIÇÃO" className="p-3 font-semibold text-slate-900">
-                          {item.kitId && (
-                            <span className="bg-blue-50 text-[#004276] font-bold px-1.5 py-0.5 rounded text-[9px] mr-1.5 align-middle">
-                              KIT
-                            </span>
-                          )}
-                          {item.descricao}
-                        </td>
-                        <td data-label="QTD." className="p-3 text-center">
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.qtd}
-                            onChange={(e) => handleUpdateItemQtd(item.id, Number(e.target.value))}
-                            className="w-16 p-1 text-center bg-slate-50 border border-slate-200 rounded font-bold"
-                          />
-                        </td>
-                        <td data-label="VALOR UNIT." className="p-3 text-right">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.valorUnit}
-                            onChange={(e) => handleUpdateItemValor(item.id, Number(e.target.value))}
-                            className="w-28 p-1 text-right bg-slate-50 border border-slate-200 rounded font-bold"
-                          />
-                        </td>
-                        <td data-label="TOTAL" className="p-3 text-right font-bold text-slate-900">
-                          R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td data-label="" className="p-3 text-center">
-                          <button
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="text-slate-400 hover:text-rose-600 p-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-
-                      {/* Composição do kit: vai no PDF e na baixa de estoque da
-                          obra, mas sem valor — o preço está na linha acima. */}
-                      {(item.componentes ?? []).map((c) => (
-                        <tr key={c.id} className="bg-slate-50/60 text-slate-500">
-                          <td data-label="DESCRIÇÃO" className="p-2 pl-8 text-[11px]">↳ {c.descricao}</td>
-                          <td data-label="QTD." className="p-2 text-center text-[11px] font-bold">
-                            {c.qtd.toLocaleString('pt-BR')}
+                  {kitItens.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-slate-400 text-xs">
+                        Nenhum item adicionado à proposta. Clique em &quot;Adicionar item&quot; para selecionar um kit ou produto.
+                      </td>
+                    </tr>
+                  ) : (
+                    kitItens.map((item) => (
+                      <React.Fragment key={item.id}>
+                        <tr className="hover:bg-slate-50/80 transition">
+                          <td data-label="DESCRIÇÃO" className="py-2 px-3 font-semibold text-slate-900">
+                            {item.kitId && (
+                              <span className="bg-blue-50 text-[#004276] font-bold px-1.5 py-0.5 rounded text-[9px] mr-1.5 align-middle border border-blue-200">
+                                KIT
+                              </span>
+                            )}
+                            {item.descricao}
                           </td>
-                          <td data-label="VALOR UNIT." className="p-2 text-right text-[11px] italic">incluso no kit</td>
-                          <td data-label="TOTAL" className="p-2 text-right text-[11px]">—</td>
-                          <td className="p-2"></td>
+                          <td data-label="QTD." className="py-2 px-3 text-center">
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.qtd}
+                              onChange={(e) => handleUpdateItemQtd(item.id, Number(e.target.value))}
+                              className="w-16 px-1.5 py-1 text-center bg-white border border-slate-200 rounded-lg font-bold text-xs focus:outline-none focus:border-[#004276]"
+                            />
+                          </td>
+                          <td data-label="VALOR UNIT." className="py-2 px-3 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.valorUnit}
+                              onChange={(e) => handleUpdateItemValor(item.id, Number(e.target.value))}
+                              className="w-24 px-1.5 py-1 text-right bg-white border border-slate-200 rounded-lg font-bold text-xs focus:outline-none focus:border-[#004276]"
+                            />
+                          </td>
+                          <td data-label="TOTAL" className="py-2 px-3 text-right font-bold text-slate-900">
+                            R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td data-label="" className="py-2 px-2 text-center">
+                            <button
+                              onClick={() => handleRemoveItem(item.id)}
+                              className="text-slate-400 hover:text-rose-600 p-1 transition"
+                              title="Remover item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
+
+                        {/* Composição do kit */}
+                        {(item.componentes ?? []).map((c) => (
+                          <tr key={c.id} className="bg-slate-50/50 text-slate-500">
+                            <td data-label="DESCRIÇÃO" className="py-1.5 px-3 pl-8 text-[11px]">↳ {c.descricao}</td>
+                            <td data-label="QTD." className="py-1.5 px-3 text-center text-[11px] font-bold">
+                              {c.qtd.toLocaleString('pt-BR')}
+                            </td>
+                            <td data-label="VALOR UNIT." className="py-1.5 px-3 text-right text-[11px] italic text-slate-400">incluso no kit</td>
+                            <td data-label="TOTAL" className="py-1.5 px-3 text-right text-[11px] text-slate-400">—</td>
+                            <td className="py-1.5 px-2"></td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))
+                  )}
                 </tbody>
               </table>
 
-              <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-500">Soma dos itens</span>
-                  <span className="text-sm font-bold text-slate-700">
+              {/* Totalizadores e Negociação */}
+              <div className="p-3 bg-slate-50 border-t border-slate-200 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-slate-500">Soma dos itens</span>
+                  <span className="font-bold text-slate-700">
                     R$ {somaDosItens.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center gap-3">
                   <div className="min-w-0">
-                    <span className="text-xs font-bold text-slate-500">Valor negociado</span>
-                    <p className="text-[10px] text-slate-400">Em branco, vale a soma dos itens.</p>
+                    <span className="text-xs font-semibold text-slate-600">Valor negociado (ajuste livre)</span>
+                    <p className="text-[10px] text-slate-400">Quando informado, substitui o valor final.</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <input
@@ -1309,13 +1451,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       onChange={(e) => setValorNegociado(
                         e.target.value === '' ? null : Number(e.target.value),
                       )}
-                      className="w-36 p-2 text-right bg-white border border-slate-300 rounded-lg font-bold"
+                      className="w-32 px-2.5 py-1 text-right bg-white border border-slate-300 rounded-lg font-bold text-xs focus:outline-none focus:border-[#004276]"
                     />
                     {valorNegociado !== null && (
                       <button
                         type="button"
                         onClick={() => setValorNegociado(null)}
-                        className="text-[10px] font-bold text-slate-500 hover:text-rose-600 underline"
+                        className="text-[11px] font-bold text-slate-500 hover:text-rose-600 underline"
                       >
                         limpar
                       </button>
@@ -1323,16 +1465,16 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center border-t border-slate-200 pt-3">
-                  <span className="text-xs font-bold text-slate-500">
+                <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                     Total do investimento
                     {valorNegociado !== null && (
-                      <span className="ml-1.5 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                      <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">
                         NEGOCIADO
                       </span>
                     )}
                   </span>
-                  <span className="text-xl font-extrabold text-[#004276]">
+                  <span className="text-lg font-black text-[#004276]">
                     R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -1341,29 +1483,39 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 4: Forma de pagamento */}
-          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 4 ? '' : 'hidden md:block'}`}>
-            <h3 className="font-bold text-slate-900 text-base">Modalidades de pagamento</h3>
+          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 4 ? '' : 'hidden md:block'}`}>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <CreditCard className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Modalidades de Pagamento</h3>
+                  <p className="text-[11px] text-slate-400">Condições comerciais e prazos para simulação no PDF</p>
+                </div>
+              </div>
+            </div>
 
-            {/* Selector Tabs */}
-            <div className="grid grid-cols-3 gap-2">
+            {/* Segmented Selector */}
+            <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl">
               <button
                 type="button"
                 onClick={() => setFormaPagamento('avista')}
-                className={`py-2.5 rounded-xl font-bold text-xs transition border ${
+                className={`py-2 rounded-lg font-bold text-xs transition ${
                   formaPagamento === 'avista'
-                    ? 'bg-[#004276] text-white border-[#004276]'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-white text-[#004276] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                À vista (com desconto)
+                À vista (desconto)
               </button>
               <button
                 type="button"
                 onClick={() => setFormaPagamento('cartao')}
-                className={`py-2.5 rounded-xl font-bold text-xs transition border ${
+                className={`py-2 rounded-lg font-bold text-xs transition ${
                   formaPagamento === 'cartao'
-                    ? 'bg-[#004276] text-white border-[#004276]'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-white text-[#004276] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Cartão de crédito
@@ -1371,35 +1523,35 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <button
                 type="button"
                 onClick={() => setFormaPagamento('financiamento')}
-                className={`py-2.5 rounded-xl font-bold text-xs transition border ${
+                className={`py-2 rounded-lg font-bold text-xs transition ${
                   formaPagamento === 'financiamento'
-                    ? 'bg-[#004276] text-white border-[#004276]'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-white text-[#004276] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Financiamento bancário
+                Financiamento
               </button>
             </div>
 
-            {/* Payment Details Form based on selected mode */}
+            {/* Modo Financiamento */}
             {formaPagamento === 'financiamento' && (
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 space-y-3 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1">ENTRADA (%)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">ENTRADA (%)</label>
                     <input
                       type="number"
                       value={entradaFinanciamentoPct}
                       onChange={(e) => setEntradaFinanciamentoPct(Number(e.target.value))}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-bold text-slate-900"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#004276]"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1">PARCELAS</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">PARCELAS</label>
                     <select
                       value={parcelasFinanciamento}
                       onChange={(e) => setParcelasFinanciamento(Number(e.target.value))}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-bold text-slate-900"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#004276]"
                     >
                       <option value="12">12x</option>
                       <option value="24">24x</option>
@@ -1411,60 +1563,62 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1">JUROS MÊS (%)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">JUROS MÊS (%)</label>
                     <input
                       type="number"
                       step="0.05"
                       value={jurosFinanciamentoMesPct}
                       onChange={(e) => setJurosFinanciamentoMesPct(Number(e.target.value))}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-bold text-slate-900"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#004276]"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1">AGENTE / BANCO</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">AGENTE / BANCO</label>
                     <input
                       type="text"
                       value={bancoFinanciamento}
                       onChange={(e) => setBancoFinanciamento(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-semibold text-slate-900"
+                      placeholder="Ex: Santander, BV"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-[#004276]"
                     />
                   </div>
                 </div>
 
-                <div className="p-3 bg-white rounded-lg border border-slate-200 grid grid-cols-3 gap-2 text-center font-bold">
+                <div className="p-2.5 bg-white rounded-lg border border-slate-200 grid grid-cols-3 gap-2 text-center font-bold">
                   <div>
-                    <span className="text-[10px] text-slate-400 block uppercase">VALOR DA ENTRADA</span>
-                    <span className="text-slate-900">R$ {entradaValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span className="text-[9px] text-slate-400 block uppercase">VALOR DA ENTRADA</span>
+                    <span className="text-slate-800 text-xs sm:text-sm">R$ {entradaValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block uppercase">VALOR DA PARCELA ({parcelasFinanciamento}x)</span>
-                    <span className="text-[#004276] text-sm">R$ {pmtParcelaFinanciamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span className="text-[9px] text-slate-400 block uppercase">PARCELA ({parcelasFinanciamento}X)</span>
+                    <span className="text-[#004276] text-xs sm:text-sm font-black">R$ {pmtParcelaFinanciamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block uppercase">TOTAL DO FINANCIAMENTO</span>
-                    <span className="text-slate-900">R$ {(entradaValor + pmtParcelaFinanciamento * parcelasFinanciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span className="text-[9px] text-slate-400 block uppercase">TOTAL DO FINANCIAMENTO</span>
+                    <span className="text-slate-800 text-xs sm:text-sm">R$ {(entradaValor + pmtParcelaFinanciamento * parcelasFinanciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               </div>
             )}
 
+            {/* Modo À Vista */}
             {formaPagamento === 'avista' && (
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 text-xs">
-                <div className="flex items-center gap-4">
+              <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 text-xs">
+                <div className="flex flex-wrap items-center gap-4">
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1">PERCENTUAL DE DESCONTO (%)</label>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">DESCONTO (%)</label>
                     <input
                       type="number"
                       value={descontoAvistaPct}
                       onChange={(e) => setDescontoAvistaPct(Number(e.target.value))}
-                      className="p-2 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 w-32"
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 w-28 text-center"
                     />
                   </div>
-                  <div className="pt-5">
-                    <p className="font-bold text-slate-800">
-                      Economia extra à vista: <span className="text-emerald-600">R$ {((valorTotalInvestimento * descontoAvistaPct) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  <div className="text-xs space-y-0.5">
+                    <p className="font-semibold text-slate-700">
+                      Economia extra: <strong className="text-emerald-700">R$ {((valorTotalInvestimento * descontoAvistaPct) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
                     </p>
-                    <p className="text-xs text-slate-600 font-extrabold">
+                    <p className="text-sm font-black text-[#004276]">
                       Total com desconto: R$ {(valorTotalInvestimento * (1 - descontoAvistaPct / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
                   </div>
@@ -1473,14 +1627,14 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             )}
 
             {formaPagamento === 'cartao' && (
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 text-xs">
+              <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1">PARCELAS CARTÃO</label>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">PARCELAS CARTÃO</label>
                     <select
                       value={parcelasCartao}
                       onChange={(e) => setParcelasCartao(Number(e.target.value))}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-bold"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold"
                     >
                       <option value="0">Selecione o prazo</option>
                       <option value="6">6x</option>
@@ -1490,13 +1644,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1">TAXA DO CARTÃO (%)</label>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">TAXA DO CARTÃO (%)</label>
                     <input
                       type="number"
                       step="0.5"
                       value={taxaCartaoPct}
                       onChange={(e) => setTaxaCartaoPct(Number(e.target.value))}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-bold"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold"
                     />
                   </div>
                 </div>
@@ -1505,67 +1659,95 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 5: Observações & Personalização do PDF */}
-          <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 ${secaoVisivel === 5 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-[#004276] text-white font-bold text-xs flex items-center justify-center">
-                5
-              </span>
-              <h3 className="font-bold text-slate-900 text-base">Observações & Customização do PDF</h3>
+          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 5 ? '' : 'hidden md:block'}`}>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <FileText className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Observações & Responsável Técnico</h3>
+                  <p className="text-[11px] text-slate-400">Assinatura técnica da proposta, cláusulas e logo customizada</p>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                  OBSERVAÇÕES ESPECÍFICAS / CLÁUSULAS DA PROPOSTA
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* Observações */}
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold uppercase text-slate-500">
+                  OBSERVAÇÕES / CLÁUSULAS DA PROPOSTA
                 </label>
                 <textarea
                   rows={4}
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
                   placeholder="Escreva observações específicas sobre o projeto, vigência, desconto especial ou telhado..."
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#004276] leading-relaxed font-medium"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#004276] leading-relaxed font-medium"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="block text-[11px] font-bold uppercase text-slate-500">Responsável técnico
-                  <select aria-label="Responsável técnico" value={responsavelTecnicoId} onChange={e => selecionarResponsavel(e.target.value)} className="w-full mt-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900">
+              {/* Responsável Técnico & Logo */}
+              <div className="space-y-2.5">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                    RESPONSÁVEL TÉCNICO
+                  </label>
+                  <select
+                    aria-label="Responsável técnico"
+                    value={responsavelTecnicoId}
+                    onChange={e => selecionarResponsavel(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-[#004276]"
+                  >
                     <option value="">{responsavelTecnico && !responsavelTecnicoId ? responsavelTecnico + ' (salvo na proposta)' : 'Selecione um usuário'}</option>
-                    {responsavelTecnicoId && !usuariosTecnicos.some(u => u.id === responsavelTecnicoId) && <option value={responsavelTecnicoId}>{responsavelTecnico} (indisponível)</option>}
-                    {usuariosTecnicos.filter(u => u.status === 'ativo' || u.id === responsavelTecnicoId).map(u => <option key={u.id} value={u.id} disabled={u.status !== 'ativo' || !u.tipoProfissional || !(u.tipoProfissional === 'tecnico' ? u.crt : u.crea)?.trim()}>{u.nome}{u.tipoProfissional ? ' — ' + (u.tipoProfissional === 'tecnico' ? 'CRT ' + (u.crt || 'não informado') : 'CREA ' + (u.crea || 'não informado')) : ' — sem registro profissional'}</option>)}
+                    {responsavelTecnicoId && !usuariosTecnicos.some(u => u.id === responsavelTecnicoId) && (
+                      <option value={responsavelTecnicoId}>{responsavelTecnico} (indisponível)</option>
+                    )}
+                    {usuariosTecnicos.filter(u => u.status === 'ativo' || u.id === responsavelTecnicoId).map(u => (
+                      <option key={u.id} value={u.id} disabled={u.status !== 'ativo' || !u.tipoProfissional || !(u.tipoProfissional === 'tecnico' ? u.crt : u.crea)?.trim()}>
+                        {u.nome}{u.tipoProfissional ? ' — ' + (u.tipoProfissional === 'tecnico' ? 'CRT ' + (u.crt || 'não informado') : 'CREA ' + (u.crea || 'não informado')) : ' — sem registro'}
+                      </option>
+                    ))}
                   </select>
-                </label>
-                <label className="block text-[11px] font-bold uppercase text-slate-500">{conselhoProfissional}
-                  <input aria-label="Registro do responsável técnico" readOnly value={crea} placeholder="Preenchido pelo usuário selecionado" className="w-full mt-1 p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-medium text-slate-900" />
-                </label>
-                <p className="sm:col-span-2 text-[11px] text-slate-500">{erroUsuarios ? 'Não foi possível carregar os usuários. Recarregue a página para selecionar o responsável.' : 'O nome e o registro do usuário selecionado serão exibidos na proposta. Cadastre a formação e o CREA ou CRT em Usuários.'}</p>
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                  URL DE LOGO CUSTOMIZADA (OPCIONAL)
-                </label>
-                <input
-                  type="url"
-                  value={customLogoUrl}
-                  onChange={(e) => setCustomLogoUrl(e.target.value)}
-                  placeholder="https://exemplo.com/logo-solar-costa.png"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Caso permaneça em branco, a proposta utilizará a marca e o logotipo oficial da Solar Costa Energia.
-                </p>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                    {conselhoProfissional} (REGISTRO)
+                  </label>
+                  <input
+                    aria-label="Registro do responsável técnico"
+                    readOnly
+                    value={crea}
+                    placeholder="Preenchido pelo usuário selecionado"
+                    className="w-full px-2.5 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
+                  />
+                  {erroUsuarios && <p className="text-[10px] text-rose-600 mt-1">Não foi possível carregar os usuários.</p>}
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                    URL LOGO CUSTOMIZADA (OPCIONAL)
+                  </label>
+                  <input
+                    type="url"
+                    value={customLogoUrl}
+                    onChange={(e) => setCustomLogoUrl(e.target.value)}
+                    placeholder="https://exemplo.com/logo.png"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-[#004276]"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Avanço entre seções no celular. */}
-          <div className="md:hidden flex items-center gap-3">
+          {/* Navegação Celular */}
+          <div className="md:hidden flex items-center gap-2 pt-2">
             <button
               type="button"
               onClick={() => setSecaoVisivel((n) => Math.max(1, n - 1))}
               disabled={secaoVisivel === 1}
-              className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm disabled:opacity-40"
+              className="flex-1 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs disabled:opacity-40"
             >
               Anterior
             </button>
@@ -1573,90 +1755,120 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               type="button"
               onClick={() => setSecaoVisivel((n) => Math.min(PASSOS.length, n + 1))}
               disabled={secaoVisivel === PASSOS.length}
-              className="flex-1 py-2.5 rounded-xl bg-[#004276] text-white font-bold text-sm disabled:opacity-40"
+              className="flex-1 py-2 rounded-xl bg-[#004276] text-white font-bold text-xs disabled:opacity-40"
             >
               Próximo
             </button>
           </div>
         </div>
 
-        {/* RIGHT SIDEBAR (5/12 or 4/12) */}
-        <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+        {/* RIGHT SIDEBAR (STICKY ON DESKTOP) */}
+        <div className="lg:col-span-5 xl:col-span-4 sticky top-4 space-y-3.5 self-start">
           
           {/* Card Dark Blue "RESUMO DA PROPOSTA" */}
-          <div className="bg-[#004276] text-white p-6 rounded-2xl shadow-xl space-y-5">
-            <span className="text-[10px] font-bold text-[#FFD100] uppercase tracking-widest block">
-              RESUMO DA PROPOSTA
-            </span>
-
-            {!preservarLegado && !calculoSolar.completo && <p role="status">Pendente de preenchimento</p>}
-            <div className="space-y-2 text-xs border-b border-blue-900/60 pb-4">
-              <div className="flex justify-between">
-                <span className="text-blue-200">Potência instalada</span>
-                <span className="font-extrabold text-white">{potenciaKwpCalculada} kWp</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-blue-200">Geração média/mês</span>
-                <span className="font-extrabold text-white">{geracaoMediaKwh.toLocaleString('pt-BR')} kWh</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-blue-200">Área do sistema</span>
-                <span className="font-extrabold text-white">{areaEstimadaM2} m²</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-blue-200">Perdas consideradas</span>
-                <span className="font-extrabold text-white">{perdasPct}%</span>
-              </div>
+          <div className="bg-gradient-to-br from-[#004276] to-[#003159] text-white p-5 rounded-2xl shadow-md space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-[#FFD100] uppercase tracking-wider">
+                RESUMO DA PROPOSTA
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-blue-100">
+                {coberturaPct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% cobertura
+              </span>
             </div>
 
             <div>
-              <span className="text-[11px] text-blue-200 font-medium">Investimento total</span>
-              <h2 className="text-3xl font-black text-white mt-0.5">
+              <span className="text-[10px] text-blue-200 font-medium uppercase tracking-wider">INVESTIMENTO TOTAL</span>
+              <h2 className="text-2xl sm:text-3xl font-black text-white mt-0.5">
                 R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </h2>
             </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs border-t border-white/10 pt-3">
+              <div className="bg-white/5 p-2 rounded-lg">
+                <span className="text-blue-200 text-[10px] block">Potência</span>
+                <span className="font-extrabold text-white text-sm">{potenciaKwpCalculada} kWp</span>
+              </div>
+              <div className="bg-white/5 p-2 rounded-lg">
+                <span className="text-blue-200 text-[10px] block">Geração Média</span>
+                <span className="font-extrabold text-white text-sm">{geracaoMediaKwh.toLocaleString('pt-BR')} kWh</span>
+              </div>
+              <div className="bg-white/5 p-2 rounded-lg">
+                <span className="text-blue-200 text-[10px] block">Área Estimada</span>
+                <span className="font-extrabold text-white text-sm">{areaEstimadaM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</span>
+              </div>
+              <div className="bg-white/5 p-2 rounded-lg">
+                <span className="text-blue-200 text-[10px] block">Perdas</span>
+                <span className="font-extrabold text-white text-sm">{perdasPct}%</span>
+              </div>
+            </div>
+
+            {!preservarLegado && !calculoSolar.completo && (
+              <p role="status" className="text-[11px] text-amber-300 font-semibold bg-amber-500/20 p-2 rounded-lg">
+                Pendente de preenchimento de parâmetros
+              </p>
+            )}
           </div>
 
           {/* Card "Economia estimada" */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <h4 className="font-bold text-slate-900 text-sm">Economia estimada</h4>
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3">
+            <h4 className="font-bold text-slate-900 text-xs sm:text-sm">Economia Estimada</h4>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">Por mês</span>
-                <span className="font-bold text-emerald-600 text-base">
+                <span className="text-slate-500 font-medium">Após parcelas / mês</span>
+                <span className="font-extrabold text-emerald-600 text-sm">
                   R$ {economiaMensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">Por ano</span>
-                <span className="font-bold text-slate-900">
+                <span className="text-slate-500 font-medium">Operacional / ano</span>
+                <span className="font-bold text-slate-800">
                   R$ {economiaAnual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
                 <span className="text-slate-500 font-medium">Saldo em 25 anos</span>
-                <span className="font-bold text-slate-900">
+                <span className="font-bold text-slate-800">
                   R$ {economia25Anos.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
 
-              <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-center text-emerald-900 font-bold text-xs mt-2 flex justify-between items-center">
-                <span>Retorno do investimento</span>
-                <span className="bg-emerald-600 text-white px-2 py-0.5 rounded-full text-xs font-black">
+              <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-emerald-900 font-bold text-xs mt-2 flex justify-between items-center">
+                <span className="text-[11px]">Payback estimado</span>
+                <span className="bg-emerald-600 text-white px-2.5 py-0.5 rounded-full text-xs font-black">
                   {paybackAnos == null ? 'Sem retorno no período' : `${paybackAnos.toFixed(1)} anos`}
                 </span>
               </div>
             </div>
           </div>
 
+          {/* Card de Ações Rápidas no Sidebar */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-xs space-y-2">
+            <button
+              onClick={handleSaveDraft}
+              disabled={salvamentoEmCurso}
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              {salvamentoEmCurso ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5 text-slate-500" />}
+              <span>{editando ? 'Salvar alterações' : 'Salvar rascunho'}</span>
+            </button>
+            <button
+              onClick={handleGeneratePDF}
+              disabled={salvamentoEmCurso}
+              className="w-full py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Gerar proposta em PDF</span>
+            </button>
+          </div>
+
           {/* Card "CONDIÇÕES COMERCIAIS" */}
-          <div className="bg-amber-50/60 border border-amber-200/80 p-5 rounded-2xl text-xs space-y-2 text-amber-900">
-            <h4 className="font-bold text-amber-950 uppercase tracking-wider text-[11px]">CONDIÇÕES COMERCIAIS</h4>
-            <p className="leading-relaxed">
-              Proposta válida por {paramNum(config, 'proposta.validade_dias', 10)} dias · despacho em até 30 dias · instalação agendada após a entrega dos equipamentos · crédito sujeito a aprovação.
+          <div className="bg-amber-50/70 border border-amber-200/80 p-3.5 rounded-2xl text-[11px] space-y-1 text-amber-900">
+            <h4 className="font-bold text-amber-950 uppercase tracking-wider text-[10px]">CONDIÇÕES COMERCIAIS</h4>
+            <p className="leading-relaxed text-amber-800">
+              Válida por {paramNum(config, 'proposta.validade_dias', 10)} dias · despacho em até 30 dias · instalação agendada após a entrega dos equipamentos · crédito sujeito a aprovação.
             </p>
           </div>
         </div>
@@ -1811,7 +2023,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     </button>
                     <button
                       type="button"
-                      disabled={!selectedCatalogProdutoId}
+                      disabled={!selectedCatalogProdutoId || !(qtdAvulso > 0)}
                       onClick={handleAddCatalogItem}
                       className="btn-modal-salvar"
                     >

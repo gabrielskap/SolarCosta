@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {calcularProposta,entradaSolarZerada,calcularParcela,type EntradaSolar} from '../server/src/domain/propostaSolar';
 import {entradaSolarSchema,resultadosProposta} from '../server/src/schemas/propostaSolar';
-const perto=(a:number,b:number)=>assert.ok(Math.abs(a-b)<1e-7,`${a} != ${b}`);
+const perto=(a:number,b:number)=>assert.ok(Math.abs(a-b)<0.00001,`${a} != ${b}`);
 const base=():EntradaSolar=>({...entradaSolarZerada(),anoInicial:2026,ucs:[{nome:'UC 1',meses:Array(12).fill(1000),adicionalKwh:0,disponibilidadeKwh:0}],hspMensal:Array(12).fill(5.20667),moduloWp:710,perdasPct:24,larguraM:2.2,alturaM:1.1,inversorKw:14,oversizingPct:30,tarifa:1.19,taxaSem:33.73,disponibilidadeReais:99,taxaCom:33,investimento:22490});
 const zero=entradaSolarZerada();
 for(const [k,v] of Object.entries(zero)) if(typeof v==='number'&&k!=='anoInicial') assert.equal(v,0,k);

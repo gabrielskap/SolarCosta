@@ -579,7 +579,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                * de quem lê.
                */
               const prestacao =
-                prop?.formaPagamento === 'financiamento'
+                snapshot ? (snapshot.entradas.parcelas>0?snapshot.entradas.parcela:0) : prop?.formaPagamento === 'financiamento'
                   ? parcelaFinanciamento({
                       valorFinanciado: valorInvestimento - (prop.entradaFinanciamentoValor ?? 0),
                       jurosMesPct: prop.jurosFinanciamentoMesPct ?? 0,
@@ -891,7 +891,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                           </div>
                           <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">RETORNO DO INVESTIMENTO</h3>
                           <p className="text-2xl font-black text-white">
-                            EM ATÉ {prop?.paybackAnos == null ? 'SEM RETORNO NO PERÍODO' : `${prop.paybackAnos.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ANOS`}
+                            {prop?.paybackAnos == null ? 'SEM RETORNO NO PERÍODO' : `EM ATÉ ${prop.paybackAnos.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ANOS`}
                           </p>
                         </div>
                       </div>
@@ -1034,7 +1034,11 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                               </td>
                             </tr>
                             <tr>
-                              <td className="p-2.5 border-r border-slate-200 font-bold">(I) Total:</td>
+                              <td className="p-2.5 border-r border-slate-200">(I) Energia não compensada:</td>
+                              <td className="p-2.5 text-center font-bold">{formatCurrencyBRL(snapshot ? Math.max(0,snapshot.contaComSolar-custoDisp-cipCom) : 0)}</td>
+                            </tr>
+                            <tr>
+                              <td className="p-2.5 border-r border-slate-200 font-bold">(J) Total:</td>
                               <td className="p-2.5 text-center text-sm font-black text-[#0070C0]">
                                 {formatCurrencyBRL(totalComSfcr)}
                               </td>
