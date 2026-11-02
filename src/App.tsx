@@ -3,9 +3,12 @@ import { Routes, Route, Navigate, useNavigate, useParams, useSearchParams, useMa
 import { Api, Auth, carregarTudo, type ConfigApp } from './services/api';
 import { aoExpirarSessao, ErroApi } from './services/http';
 import {
-  Lead, Proposta, Contrato, Boleto, LancamentoFinanceiro, Produto, Fornecedor,
+  Lead, Proposta, Contrato, Procuracao, Boleto, LancamentoFinanceiro, Produto, Fornecedor,
   Kit, User, LeadStage, Agendamento, AuditEntry, Obra, AppNotification,
 } from './types';
+
+/** O que o PDFModal sabe desenhar. */
+type TipoDocumentoPDF = 'proposta' | 'contrato' | 'procuracao' | 'boleto';
 import { Sidebar } from './components/Sidebar';
 import { PlacasView } from './components/PlacasView';
 import { LoginView } from './components/LoginView';
@@ -183,6 +186,7 @@ export default function App() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [propostas, setPropostas] = useState<Proposta[]>([]);
   const [contratos, setContratos] = useState<Contrato[]>([]);
+  const [procuracoes, setProcuracoes] = useState<Procuracao[]>([]);
   const [boletos, setBoletos] = useState<Boleto[]>([]);
   const [lancamentos, setLancamentos] = useState<LancamentoFinanceiro[]>([]);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
@@ -202,7 +206,7 @@ export default function App() {
   // PDF Modal State
   const [pdfModal, setPdfModal] = useState<{
     isOpen: boolean;
-    type: 'proposta' | 'contrato' | 'boleto';
+    type: TipoDocumentoPDF;
     data: any;
   }>({ isOpen: false, type: 'proposta', data: null });
 
@@ -289,6 +293,7 @@ export default function App() {
       setLeads(dados.leads);
       setPropostas(dados.propostas);
       setContratos(dados.contratos);
+      setProcuracoes(dados.procuracoes);
       setBoletos(dados.boletos);
       setLancamentos(dados.lancamentos);
       setAgendamentos(dados.agendamentos);
@@ -351,6 +356,7 @@ export default function App() {
     setLeads([]);
     setPropostas([]);
     setContratos([]);
+    setProcuracoes([]);
     setBoletos([]);
     setLancamentos([]);
     setAgendamentos([]);
@@ -471,6 +477,45 @@ export default function App() {
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível excluir o contrato');
+    }
+  };
+
+  /* ------------------------------------------------------ procurações -- */
+
+  /** Mesmo contrato do handleSalvarContrato: devolve o que o banco gravou e relança o erro. */
+  const handleSalvarProcuracao = async (procuracao: Procuracao): Promise<Procuracao> => {
+    try {
+      const r = await Api.salvarProcuracao(procuracao);
+      setProcuracoes(r.procuracoes);
+      void atualizarAuditoria();
+      return r.procuracao;
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível salvar a procuração');
+      throw erro;
+    }
+  };
+
+  const handleAssinarProcuracao = async (id: string, data: string): Promise<void> => {
+    try {
+      const r = await Api.assinarProcuracao(id, data);
+      setProcuracoes(r.procuracoes);
+      showToast('Procuração assinada', 'success', `Procuração nº ${r.procuracao.numero} travada para edição.`);
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível marcar a procuração como assinada');
+      throw erro;
+    }
+  };
+
+  const handleDeleteProcuracao = async (id: string): Promise<void> => {
+    try {
+      await Api.deleteProcuracao(id);
+      setProcuracoes((anteriores) => anteriores.filter((p) => p.id !== id));
+      showToast('Procuração excluída', 'success', 'Procuração removida com sucesso.');
+      void atualizarAuditoria();
+    } catch (erro) {
+      tratarErro(erro, 'Não foi possível excluir a procuração');
+      throw erro;
     }
   };
 
@@ -706,7 +751,7 @@ export default function App() {
     navigate('/sistema/contratos');
   };
 
-  const handleOpenPDF = (type: 'proposta' | 'contrato' | 'boleto', data: any) => {
+  const handleOpenPDF = (type: TipoDocumentoPDF, data: any) => {
     setPdfModal({ isOpen: true, type, data });
   };
 
@@ -985,11 +1030,15 @@ export default function App() {
                   element={
                     <ContractsView
                       contratos={contratos}
+                      procuracoes={procuracoes}
                       leads={leads}
                       propostas={propostas}
                       onSalvarContrato={handleSalvarContrato}
                       onAssinarContrato={handleAssinarContrato}
                       onDeleteContract={handleDeleteContract}
+                      onSalvarProcuracao={handleSalvarProcuracao}
+                      onAssinarProcuracao={handleAssinarProcuracao}
+                      onDeleteProcuracao={handleDeleteProcuracao}
                       config={config}
                       onConfigAlterada={setConfig}
                       onOpenPDF={handleOpenPDF}
@@ -1186,6 +1235,8 @@ export default function App() {
                         leads={leads}
                         propostas={propostas}
                         contratos={contratos}
+                        procuracoes={procuracoes}
+                        envioProcuracaoAtivo={!!config?.procuracao_envio_ativo}
                       />
                     ) : (
                       <Navigate to="/sistema/dashboard" replace />

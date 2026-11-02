@@ -25,6 +25,7 @@ interface Props {
 const CONTEXTOS: { id: ModeloMensagem['contexto']; rotulo: string; ajuda: string }[] = [
   { id: 'proposta', rotulo: 'Proposta', ajuda: 'Aparece quando há uma proposta anexada.' },
   { id: 'contrato', rotulo: 'Contrato', ajuda: 'Aparece quando há um contrato anexado.' },
+  { id: 'procuracao', rotulo: 'Procuração', ajuda: 'Aparece quando há uma procuração anexada.' },
   { id: 'lead', rotulo: 'Lead', ajuda: 'Primeiro contato, sem documento anexado.' },
   { id: 'livre', rotulo: 'Livre', ajuda: 'Disponível em qualquer envio sem anexo.' },
 ];

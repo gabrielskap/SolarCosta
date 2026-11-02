@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
-  CheckCheck, Clock, FileText, History, Loader2, RefreshCw, ScrollText, XCircle,
+  CheckCheck, Clock, FileText, History, Loader2, RefreshCw, ScrollText, Stamp, XCircle,
 } from 'lucide-react';
 import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { ErroApi } from '../../services/http';
 import {
+  ROTULO_DOCUMENTO,
   WhatsApp,
   type EnvioRegistrado,
   type StatusMensagem,
@@ -179,10 +180,12 @@ export const AbaHistorico: React.FC<Props> = ({ showToast, recarregarEm }) => {
                           <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#004276] bg-blue-50 px-2 py-1 rounded-lg">
                             {m.referenciaTipo === 'proposta' ? (
                               <FileText className="w-3 h-3" />
-                            ) : (
+                            ) : m.referenciaTipo === 'contrato' ? (
                               <ScrollText className="w-3 h-3" />
+                            ) : (
+                              <Stamp className="w-3 h-3" />
                             )}
-                            {m.referenciaTipo === 'proposta' ? 'Proposta' : 'Contrato'}{' '}
+                            {ROTULO_DOCUMENTO[m.referenciaTipo]}{' '}
                             {m.referenciaNumero ?? ''}
                           </span>
                         ) : (
@@ -254,7 +257,7 @@ export const AbaHistorico: React.FC<Props> = ({ showToast, recarregarEm }) => {
               {detalhe.referenciaTipo && (
                 <p className="text-slate-700">
                   <span className="text-slate-400">Documento:</span>{' '}
-                  {detalhe.referenciaTipo === 'proposta' ? 'Proposta' : 'Contrato'}{' '}
+                  {ROTULO_DOCUMENTO[detalhe.referenciaTipo]}{' '}
                   {detalhe.referenciaNumero ?? ''}
                 </p>
               )}

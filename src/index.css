@@ -768,6 +768,122 @@
   }
 }
 
+/* =========================== PROCURAÇÃO =========================== */
+/*
+ * A procuração no modelo da Solar Costa (src/components/procuracao/
+ * DocumentoProcuracao.tsx). Uma página só, em Arial como o .docx, sem faixa
+ * nem rodapé da empresa.
+ *
+ * Mesma escala da folha do contrato (896px, que a impressão reduz por 0,784
+ * até os 186mm úteis do A4: 1px ≈ 0,21mm no papel):
+ *   · corpo 19px ≈ 11pt;
+ *   · 63px/87px de recuo + os 12mm do @page ≈ as margens de 2,5cm/3cm do .docx;
+ *   · o quadro OUTORGANTE/OUTORGADOS/PODERES é a tabela sem bordas do .docx,
+ *     aqui em grid: rótulo à esquerda, texto à direita.
+ *
+ * Arial não existe no Linux do container que gera o PDF do WhatsApp: lá a
+ * folha sai em FreeSans (ttf-freefont, já no Dockerfile), de largura parecida.
+ * Liberation Sans entra na lista para quem a tiver instalada.
+ */
+.folha-procuracao {
+  font-family: Arial, 'Liberation Sans', Helvetica, FreeSans, sans-serif;
+  font-size: 19px;
+  line-height: 1.45;
+  color: #000;
+}
+.folha-procuracao .procuracao-corpo {
+  padding: 63px 87px 56px;
+  text-align: justify;
+  hyphens: manual;
+}
+.folha-procuracao .procuracao-titulo {
+  margin: 0 0 30px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.folha-procuracao p {
+  margin: 0 0 10px;
+  orphans: 2;
+  widows: 2;
+}
+.folha-procuracao p.procuracao-item {
+  padding-left: 30px;
+}
+.folha-procuracao .procuracao-secao {
+  margin-bottom: 16px;
+}
+.folha-procuracao .procuracao-quadro {
+  margin: 22px 0 26px;
+}
+.folha-procuracao .procuracao-linha {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.folha-procuracao .procuracao-rotulo {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: left;
+  padding-top: 2px;
+}
+.folha-procuracao .procuracao-fecho {
+  margin-top: 30px;
+  text-align: left;
+}
+.folha-procuracao .procuracao-assinatura {
+  margin-top: 84px;
+  text-align: center;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.folha-procuracao .procuracao-assinatura p {
+  margin: 0 0 2px;
+}
+.folha-procuracao .procuracao-linha-assinatura {
+  width: 62%;
+  margin: 0 auto 8px;
+  border-top: 1px solid #000;
+}
+
+/* Na tela, a folha tem a altura de um A4 — o que se vê é a página inteira. */
+@media screen {
+  .folha-procuracao {
+    min-height: 1267px;
+  }
+  /* Só na pré-visualização do editor, como no contrato. */
+  .folha-procuracao.procuracao-destacar .procuracao-vazio {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  .folha-procuracao.procuracao-destacar .procuracao-desconhecido {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+  .folha-procuracao .procuracao-secao-foco {
+    outline: 3px dashed #f59e0b;
+    outline-offset: 8px;
+    border-radius: 4px;
+  }
+}
+
+@media print {
+  /* Uma página só: a altura vem do texto, e não o mínimo das folhas da
+     proposta — com ele uma linha a mais empurraria a assinatura para uma
+     página em branco. */
+  body.documento-aberto .folha-pdf.folha-procuracao,
+  body.documento-pagina .folha-pdf.folha-procuracao {
+    min-height: 0 !important;
+    break-after: auto;
+    page-break-after: auto;
+  }
+}
+
 /* ==================== BARRA DE ROLAGEM DA SIDEBAR ==================== */
 /*
  * Rolagem discreta e fina (5px) para a sidebar no desktop e navegadores WebKit/Firefox,

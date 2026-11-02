@@ -7,6 +7,7 @@
 
 import type { ContratadaContrato, Contrato, TermosContrato } from '../types';
 import type { ConfigApp } from '../services/api';
+import type { MarcadorModelo, Trecho } from '../documento/textoModelo';
 import { formatCurrencyBRL, onlyDigits } from '../utils/format';
 import { numeroComExtenso, percentualComExtenso, valorPorExtenso } from '../utils/extenso';
 import {
@@ -37,23 +38,9 @@ export function prepararContrato(
   return { contrato, termos, contratada };
 }
 
-/** Pedaço de texto já resolvido. `vazio` = dado não preenchido (sai como linha em branco). */
-export interface Trecho {
-  texto: string;
-  negrito?: boolean;
-  vazio?: boolean;
-  /** Marcador que não existe nesta lista. */
-  desconhecido?: boolean;
-}
-
-export interface Marcador {
-  chave: string;
-  rotulo: string;
-  grupo: string;
-  /** Ocupa a linha inteira e vira um bloco (a tabela de garantias). */
-  bloco?: boolean;
-  valor: (d: DadosContrato) => string | Trecho[];
-}
+// Trecho e o formato do marcador vêm do motor dividido com a procuração.
+export type { Trecho };
+export type Marcador = MarcadorModelo<DadosContrato>;
 
 const ESTADOS: Record<string, string> = {
   AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará',

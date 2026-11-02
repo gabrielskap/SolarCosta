@@ -3,12 +3,12 @@ import { useParams } from 'react-router-dom';
 import { Loader2, LinkIcon } from 'lucide-react';
 import { http, ErroApi } from '../../services/http';
 import { useSeo } from '../../site/seo';
-import { paraContrato, paraProposta } from '../../services/mappers';
-import type { Contrato, Proposta } from '../../types';
+import { paraContrato, paraProcuracao, paraProposta } from '../../services/mappers';
+import type { Contrato, Procuracao, Proposta } from '../../types';
 import { PDFModal } from '../PDFModal';
 
 /*
- * /p/:token — a proposta ou o contrato abertos pelo CLIENTE.
+ * /p/:token — a proposta, o contrato ou a procuração abertos pelo CLIENTE.
  *
  * Fica fora de /sistema e fora do SiteLayout: não leva menu, não leva rodapé
  * institucional e não pede login. O token da URL é a credencial inteira.
@@ -26,7 +26,14 @@ type Estado =
   | { fase: 'carregando' }
   | { fase: 'erro'; mensagem: string }
   | { fase: 'pronto'; tipo: 'proposta'; documento: Proposta; empresa: Record<string, any> | null }
-  | { fase: 'pronto'; tipo: 'contrato'; documento: Contrato; empresa: Record<string, any> | null };
+  | { fase: 'pronto'; tipo: 'contrato'; documento: Contrato; empresa: Record<string, any> | null }
+  | { fase: 'pronto'; tipo: 'procuracao'; documento: Procuracao; empresa: Record<string, any> | null };
+
+const TITULO: Record<'proposta' | 'contrato' | 'procuracao', string> = {
+  proposta: 'Proposta',
+  contrato: 'Contrato',
+  procuracao: 'Procuração',
+};
 
 export const DocumentoPublico: React.FC = () => {
   const { token = '' } = useParams<{ token: string }>();
@@ -42,20 +49,13 @@ export const DocumentoPublico: React.FC = () => {
 
         // Os mesmos mappers do CRM: a rota pública devolve um SUBCONJUNTO das
         // mesmas colunas, então o que não vem simplesmente fica vazio.
+        const empresa = r.empresa ?? null;
         setEstado(
           r.tipo === 'proposta'
-            ? {
-                fase: 'pronto',
-                tipo: 'proposta',
-                documento: paraProposta(r.documento),
-                empresa: r.empresa ?? null,
-              }
-            : {
-                fase: 'pronto',
-                tipo: 'contrato',
-                documento: paraContrato(r.documento),
-                empresa: r.empresa ?? null,
-              },
+            ? { fase: 'pronto', tipo: 'proposta', documento: paraProposta(r.documento), empresa }
+            : r.tipo === 'procuracao'
+              ? { fase: 'pronto', tipo: 'procuracao', documento: paraProcuracao(r.documento), empresa }
+              : { fase: 'pronto', tipo: 'contrato', documento: paraContrato(r.documento), empresa },
         );
       } catch (e) {
         if (!vivo) return;
@@ -84,7 +84,7 @@ export const DocumentoPublico: React.FC = () => {
   useSeo({
     titulo:
       estado.fase === 'pronto'
-        ? `${estado.tipo === 'proposta' ? 'Proposta' : 'Contrato'} ${estado.documento.numero}`
+        ? `${TITULO[estado.tipo]} ${estado.documento.numero}`
         : 'Documento',
     descricao: 'Documento emitido pela Solar Costa.',
     naoIndexar: true,

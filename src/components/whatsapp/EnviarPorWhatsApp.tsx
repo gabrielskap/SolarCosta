@@ -2,11 +2,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, MessageCircle, Paperclip, Send } from 'lucide-react';
 import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { ErroApi } from '../../services/http';
-import { WhatsApp, type ModeloMensagem } from '../../services/whatsapp';
+import { WhatsApp, type ModeloMensagem, type TipoDocumentoWhatsApp } from '../../services/whatsapp';
 import { maskPhone } from '../../utils/format';
 
+const NOME_DOCUMENTO: Record<TipoDocumentoWhatsApp, string> = {
+  proposta: 'proposta',
+  contrato: 'contrato',
+  procuracao: 'procuração',
+};
+
 /*
- * Enviar proposta ou contrato pelo WhatsApp.
+ * Enviar proposta, contrato ou procuração pelo WhatsApp.
  *
  * Substitui o `wa.me` do AcoesContato neste caminho específico. A diferença
  * não é cosmética: o wa.me abre o app e o sistema perde a mensagem de vista —
@@ -20,7 +26,7 @@ import { maskPhone } from '../../utils/format';
  */
 
 interface Props {
-  referencia: { tipo: 'proposta' | 'contrato'; id: string };
+  referencia: { tipo: TipoDocumentoWhatsApp; id: string };
   /** Só para a tela; quem decide o destino final é o servidor. */
   clienteNome: string;
   telefoneSugerido?: string | null;
@@ -97,7 +103,7 @@ export const EnviarPorWhatsApp: React.FC<Props> = ({
       <div className="modal-painel modal-entrada-painel bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         <ModalCabecalho
           icone={MessageCircle}
-          titulo={`Enviar ${referencia.tipo === 'proposta' ? 'proposta' : 'contrato'} por WhatsApp`}
+          titulo={`Enviar ${NOME_DOCUMENTO[referencia.tipo]} por WhatsApp`}
           subtitulo="Mensagem e link do documento para o cliente"
           onFechar={onFechar}
         />

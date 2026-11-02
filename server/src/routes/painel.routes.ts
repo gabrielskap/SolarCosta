@@ -118,7 +118,10 @@ configRouter.use(exigirLogin);
 configRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
-    const [empresa, parametros, concessionarias, origens, telhados, categorias, pastas, bancos, presets, clausulas] =
+    const [
+      empresa, parametros, concessionarias, origens, telhados, categorias, pastas, bancos, presets, clausulas,
+      envioProcuracao,
+    ] =
       await Promise.all([
         consultarUm(`SELECT * FROM "SolarCosta_Empresa" LIMIT 1`),
         consultar(`SELECT chave, valor, tipo, grupo, descricao FROM "SolarCosta_Parametros" ORDER BY grupo, chave`),
@@ -134,6 +137,12 @@ configRouter.get(
                     WHERE ativo ORDER BY ordem`),
         consultar(`SELECT id, titulo, texto, padrao, ordem FROM "SolarCosta_ClausulasPadrao"
                     WHERE ativo ORDER BY ordem`),
+        // As CHECKs que a V027 (ou o 05_habilitar_envio_procuracao.sql) cria
+        // quando consegue. Sem elas o banco recusa link e mensagem de procuração.
+        consultarUm<{ ativo: boolean }>(
+          `SELECT count(*) = 2 AS ativo FROM pg_constraint
+            WHERE conname IN ('SolarCosta_LinksPublicos_tipo_valido',
+                              'SolarCosta_WhatsAppMensagens_referencia_tipo_valida')`),
       ]);
 
     res.json({
@@ -150,6 +159,9 @@ configRouter.get(
       // é a restrição de referrer e o teto de cota — mas não custa nada manter
       // fora do alcance de quem nunca autenticou.
       google_maps_browser_key: config.GOOGLE_MAPS_BROWSER_KEY ?? null,
+      // Falso onde a V027 não conseguiu mexer nas tabelas do WhatsApp (dono
+      // `postgres`): a tela desliga o "Enviar" da procuração e diz o porquê.
+      procuracao_envio_ativo: envioProcuracao?.ativo ?? false,
     });
   }),
 );

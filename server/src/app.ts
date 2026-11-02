@@ -25,6 +25,7 @@ import {
   notificacoesRouter,
 } from './routes/painel.routes.js';
 import { capturasTelhadoRouter } from './routes/capturasTelhado.routes.js';
+import { procuracoesRouter } from './routes/procuracoes.routes.js';
 import { propostasRouter } from './routes/propostas.routes.js';
 import { publicoRouter } from './routes/publico.routes.js';
 import { siteRouter } from './routes/site.routes.js';
@@ -163,6 +164,7 @@ export function criarApp(): express.Express {
   app.use('/api/propostas', capturasTelhadoRouter);
   app.use('/api/propostas', propostasRouter);
   app.use('/api/contratos', contratosRouter);
+  app.use('/api/procuracoes', procuracoesRouter);
   app.use('/api/obras', obrasRouter);
   app.use('/api/financeiro', financeiroRouter);
   app.use('/api/catalogo', catalogoRouter);

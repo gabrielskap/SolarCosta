@@ -32,10 +32,20 @@ export interface EstadoWhatsApp {
   ativo: boolean;
 }
 
+/** Documento que uma mensagem pode levar anexo (V009; 'procuracao' desde a V027). */
+export type TipoDocumentoWhatsApp = 'proposta' | 'contrato' | 'procuracao';
+
+/** Como o documento aparece nas telas do WhatsApp ("Procuração PROC-2026-0001"). */
+export const ROTULO_DOCUMENTO: Record<TipoDocumentoWhatsApp, string> = {
+  proposta: 'Proposta',
+  contrato: 'Contrato',
+  procuracao: 'Procuração',
+};
+
 export interface ModeloMensagem {
   id: string;
   nome: string;
-  contexto: 'proposta' | 'contrato' | 'lead' | 'livre';
+  contexto: TipoDocumentoWhatsApp | 'lead' | 'livre';
   texto: string;
   ordem: number;
   /** Modelo inativo some do seletor de envio, mas continua na aba Modelos. */
@@ -64,7 +74,7 @@ export interface EnvioRegistrado {
   texto: string | null;
   status: StatusMensagem;
   erro: string | null;
-  referenciaTipo: 'proposta' | 'contrato' | null;
+  referenciaTipo: TipoDocumentoWhatsApp | null;
   referenciaId: string | null;
   /** Número do documento (2026-0184), quando a mensagem entregou um. */
   referenciaNumero: string | null;
@@ -125,7 +135,7 @@ export interface Mensagem {
   erro: string | null;
   ocorridoEm: string;
   enviadaPorNome: string | null;
-  referenciaTipo: 'proposta' | 'contrato' | null;
+  referenciaTipo: TipoDocumentoWhatsApp | null;
   referenciaId: string | null;
 }
 
@@ -248,7 +258,7 @@ export const WhatsApp = {
     telefone?: string;
     texto?: string;
     modeloId?: string;
-    referencia?: { tipo: 'proposta' | 'contrato'; id: string };
+    referencia?: { tipo: TipoDocumentoWhatsApp; id: string };
     leadId?: string;
   }): Promise<{
     conversaId: string;
@@ -322,7 +332,7 @@ export const WhatsApp = {
       limite?: number;
       antesDe?: string;
       status?: StatusMensagem;
-      referenciaTipo?: 'proposta' | 'contrato';
+      referenciaTipo?: TipoDocumentoWhatsApp;
     } = {},
   ): Promise<PaginaEnviadas> {
     const q = new URLSearchParams();

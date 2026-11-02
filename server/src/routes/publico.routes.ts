@@ -408,6 +408,37 @@ publicoRouter.get(
       return;
     }
 
+    if (link.tipo === 'procuracao') {
+      // outorgados e termos (V027) são a procuração inteira: sem eles o link e
+      // o PDF do WhatsApp cairiam nos padrões, e não no que foi emitido. O
+      // número do contrato entra porque o texto pode citá-lo
+      // ({contrato_numero}); telefone e lead ficam de fora, o documento não usa.
+      const procuracao = await consultarUm(
+        `SELECT p.id, p.numero, p.contrato_id, ct.numero AS contrato_numero, p.modelo_versao,
+                p.cliente_nome, p.cpf_cnpj, p.rg_inscricao, p.endereco, p.cep,
+                p.outorgados, p.termos, p.status, p.data_emissao, p.data_assinatura
+           FROM "SolarCosta_Procuracoes" p
+           LEFT JOIN "SolarCosta_Contratos" ct ON ct.id = p.contrato_id
+          WHERE p.id = $1 AND p.excluido_em IS NULL`,
+        [link.referencia_id],
+      );
+
+      if (!procuracao) {
+        documentoNaoEncontrado(res);
+        return;
+      }
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ tipo: 'procuracao', documento: procuracao, empresa });
+      return;
+    }
+
+    // Tipo novo sem ramo aqui não pode cair no contrato por exclusão.
+    if (link.tipo !== 'contrato') {
+      documentoNaoEncontrado(res);
+      return;
+    }
+
     // modelo_versao, contratada e termos (V024) são o contrato inteiro no
     // modelo Solar Costa — sem eles aqui, o link do cliente e o PDF do
     // WhatsApp cairiam nos padrões do modelo enquanto o CRM imprimiria o que

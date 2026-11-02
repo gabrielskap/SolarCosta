@@ -56,8 +56,9 @@ BEGIN
         -- que é o contador tanto em '#187' quanto em '2026-0184'.
         EXECUTE format(
             'SELECT COALESCE(max(regexp_replace(numero, ''^.*?(\d+)$'', ''\1'')::integer), 0)'
-            '  FROM %I'
+            '  FROM (SELECT %I AS numero FROM %I) AS origem'
             ' WHERE numero LIKE %L AND numero ~ ''\d$''',
+            CASE WHEN s.chave = 'kit' THEN 'codigo' ELSE 'numero' END,
             s.tabela,
             s.prefixo || CASE WHEN s.usa_ano THEN v_ano::text ELSE '' END || '%'
         ) INTO v_max;

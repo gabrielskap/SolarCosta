@@ -510,6 +510,84 @@ export interface Contrato {
   situacaoPagamento?: 'pago' | 'aguardando' | 'vencido' | null;
 }
 
+/*
+ * Procuração do cliente para a Solar Costa representá-lo perante a
+ * concessionária (V027). Mesmo desenho do contrato: o texto mora em
+ * src/procuracao/modeloProcuracao.ts e aqui ficam só os DADOS. `outorgados` e
+ * `termos` vão para o banco como jsonb, em camelCase — o zod de
+ * server/src/schemas/procuracao.ts é o espelho destas interfaces.
+ */
+
+/** Seções do modelo cujo texto pode ser personalizado em uma procuração. */
+export type ChaveSecaoProcuracao =
+  | 'abertura'
+  | 'outorgante'
+  | 'outorgados'
+  | 'poderes'
+  | 'vigencia'
+  | 'fecho';
+
+/** Concordância do texto. '' = neutra: "inscrito(a)", "portador(a)". */
+export type GeneroPessoa = '' | 'M' | 'F';
+
+/** Um procurador. Cópia dos padrões no momento da emissão. */
+export interface OutorgadoProcuracao {
+  nome: string;
+  genero: GeneroPessoa;
+  nacionalidade: string;
+  cpf: string;
+  /** Opcional; sai na qualificação quando preenchido. */
+  rg: string;
+  /** Endereço completo em texto livre (rua, número, bairro, cidade/UF, CEP). */
+  endereco: string;
+}
+
+/** Tudo o que o modelo deixa variar. Plano pelo mesmo motivo de TermosContrato. */
+export interface TermosProcuracao {
+  outorganteGenero: GeneroPessoa;
+  outorganteNacionalidade: string;
+  outorganteEstadoCivil: string;
+  outorganteProfissao: string;
+  /** Outorgante pessoa jurídica: quem assina por ela. */
+  representanteNome: string;
+  representanteGenero: GeneroPessoa;
+  representanteCpf: string;
+  /** "perante a Concessionária …". */
+  concessionaria: string;
+  /** "Belo Horizonte/MG" do fecho. */
+  localAssinatura: string;
+  /** AAAA-MM-DD; vazio imprime a data em branco. */
+  dataDocumento: string;
+  /** Só as seções personalizadas nesta procuração; o resto segue o modelo. */
+  textos: Partial<Record<ChaveSecaoProcuracao, string>>;
+}
+
+export interface Procuracao {
+  id: string;
+  numero: string;
+  leadId: string;
+  /** Contrato de origem; vazio quando a procuração foi preenchida à mão. */
+  contratoId: string;
+  /** Número do contrato de origem — só leitura, vem da consulta. */
+  contratoNumero: string;
+  modeloVersao: number;
+  /* Outorgante: os mesmos nomes do contratante, de onde nasce a cópia. */
+  clienteNome: string;
+  cpfCnpj: string;
+  /** RG (PF) ou inscrição estadual (PJ). */
+  rgInscricao: string;
+  endereco: string;
+  cep: string;
+  telefone: string;
+  outorgados: OutorgadoProcuracao[];
+  termos: TermosProcuracao;
+  status: 'aguardando' | 'assinada';
+  /** DD/MM/AAAA. */
+  dataEmissao: string;
+  /** DD/MM/AAAA. */
+  dataAssinatura?: string;
+}
+
 export interface Boleto {
   id: string;
   numeroDocumento: string;

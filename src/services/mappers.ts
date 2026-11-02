@@ -8,7 +8,7 @@
 import {
   Agendamento, AuditEntry, Boleto, Contrato, DocumentoItem, Fornecedor,
   HistoricoItem, Kit, KitItem, LancamentoFinanceiro, Lead, Obra, PastaDocumento,
-  Produto, Proposta, PropostaItem, TipoProdutoSlug, User,
+  Procuracao, Produto, Proposta, PropostaItem, TipoProdutoSlug, User,
 } from '../types';
 
 /* ============================================================== DATAS === */
@@ -652,6 +652,48 @@ export function deContrato(c: Contrato): Record<string, unknown> {
     responsavel_tecnico: c.responsavelTecnico || null,
     crea: c.crea || null,
     clausulas: c.clausulas ?? [],
+  };
+}
+
+/* ======================================================== PROCURAÇÕES === */
+
+export function paraProcuracao(linha: any): Procuracao {
+  return {
+    id: linha.id,
+    numero: linha.numero,
+    leadId: linha.lead_id ?? '',
+    contratoId: linha.contrato_id ?? '',
+    contratoNumero: txt(linha.contrato_numero),
+    modeloVersao: num(linha.modelo_versao) || 1,
+    clienteNome: txt(linha.cliente_nome),
+    cpfCnpj: txt(linha.cpf_cnpj),
+    rgInscricao: txt(linha.rg_inscricao),
+    endereco: txt(linha.endereco),
+    cep: txt(linha.cep),
+    telefone: txt(linha.telefone),
+    // jsonb já vem em camelCase (é gravado assim pelo deProcuracao). Campo que
+    // faltar é completado por prepararProcuracao/rascunhoDeProcuracao.
+    outorgados: Array.isArray(linha.outorgados) ? linha.outorgados : [],
+    termos: linha.termos ?? {},
+    status: linha.status === 'assinada' ? 'assinada' : 'aguardando',
+    dataEmissao: paraDataBR(linha.data_emissao),
+    dataAssinatura: paraDataBR(linha.data_assinatura),
+  };
+}
+
+export function deProcuracao(p: Procuracao): Record<string, unknown> {
+  return {
+    contrato_id: p.contratoId || null,
+    lead_id: p.leadId || null,
+    modelo_versao: p.modeloVersao,
+    cliente_nome: p.clienteNome,
+    cpf_cnpj: p.cpfCnpj,
+    rg_inscricao: p.rgInscricao || null,
+    endereco: p.endereco,
+    cep: p.cep || null,
+    telefone: p.telefone || null,
+    outorgados: p.outorgados,
+    termos: p.termos,
   };
 }
 

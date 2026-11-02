@@ -42,6 +42,14 @@ inteiro (`Alt+X`). Todos abrem com `BEGIN` e fecham com `COMMIT`.
 > o S001 não tinha rodado por inteiro. A V026 parte do maior número já gravado
 > em cada tabela, então rodar antes ou depois do S001 dá no mesmo.
 
+> **Procurações (V027) e o `05_habilitar_envio_procuracao.sql`.** A V027 cria
+> `SolarCosta_Procuracoes` e tenta incluir `'procuracao'` em três CHECKs de
+> tabelas da V009. Onde essas tabelas têm dono `postgres`, ela só avisa
+> (`WARNING: V027 …`) e segue: as procurações funcionam, menos o link público e
+> o WhatsApp. Para ligar os dois, rode
+> [`05_habilitar_envio_procuracao.sql`](05_habilitar_envio_procuracao.sql) como
+> superusuário, uma vez.
+
 > **V008 e V009 têm `ALTER TYPE … ADD VALUE` FORA da transação**, nas primeiras
 > linhas. O Postgres não deixa usar um valor de ENUM na mesma transação em que
 > ele é adicionado, e por isso esses dois arquivos não podem ser envelopados num

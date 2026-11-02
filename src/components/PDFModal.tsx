@@ -6,13 +6,14 @@ import {
   Upload, FileText, Check, RotateCcw, Sparkles, Layers, Eye, EyeOff, Palette, MessageSquare, User,
   CreditCard, Landmark
 } from 'lucide-react';
-import { Proposta, Contrato, Boleto } from '../types';
+import { Proposta, Contrato, Procuracao, Boleto } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import logoFull from '../assets/logo-full.png';
 import logoIcon from '../assets/logo-icon.png';
 import { TelhadoSatelite } from './mapa/TelhadoSatelite';
 import { DocumentoContrato } from './contrato/DocumentoContrato';
 import { ContratoLegado, usaLayoutLegado } from './contrato/ContratoLegado';
+import { DocumentoProcuracao } from './procuracao/DocumentoProcuracao';
 import { FiguraLevantamento } from './mapa/LevantamentoManual';
 import { areaSuperficie } from '../utils/levantamentoTelhado';
 import { imagemTelhado } from '../services/solar';
@@ -23,8 +24,8 @@ import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 
 interface PDFModalProps {
-  type: 'proposta' | 'contrato' | 'boleto';
-  data: Proposta | Contrato | Boleto | null;
+  type: 'proposta' | 'contrato' | 'procuracao' | 'boleto';
+  data: Proposta | Contrato | Procuracao | Boleto | null;
   onClose: () => void;
   /**
    * `modal` (padrão) é o uso de dentro do CRM: sobreposição no <body>, barra
@@ -426,6 +427,10 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                   ((data as Contrato).numero
                     ? `Contrato de Prestação nº ${(data as Contrato).numero}`
                     : 'Contrato de Prestação — rascunho não salvo')}
+                {type === 'procuracao' &&
+                  ((data as Procuracao).numero
+                    ? `Procuração nº ${(data as Procuracao).numero}`
+                    : 'Procuração — rascunho não salvo')}
                 {type === 'boleto' && `Boleto Bancário nº ${(data as Boleto).parcela}`}
               </h3>
             </div>
@@ -1416,6 +1421,9 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                 ? <ContratoLegado contrato={cont} />
                 : <DocumentoContrato contrato={cont} empresa={empresa} />;
             })()}
+
+            {/* PROCURAÇÃO — o mesmo documento do editor e do link do cliente. */}
+            {type === 'procuracao' && <DocumentoProcuracao procuracao={data as Procuracao} />}
 
             {/* BOLETO BANCO DO BRASIL VIEW
                 Layout simplificado (um cartão só, não a ficha de compensação +

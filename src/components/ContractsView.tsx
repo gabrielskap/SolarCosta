@@ -1,15 +1,20 @@
 import React, { useState, useMemo } from 'react';
-import { CheckCircle2, FileText, Plus, MessageCircle, Search, X, Trash2, AlertTriangle, PencilLine, Eye, Settings2 } from 'lucide-react';
-import { Contrato, Lead, Proposta, User } from '../types';
+import { CheckCircle2, FileText, Plus, MessageCircle, Search, X, Trash2, AlertTriangle, PencilLine, Eye, Settings2, Stamp } from 'lucide-react';
+import { Contrato, Lead, Procuracao, Proposta, User } from '../types';
 import { type ConfigApp } from '../services/api';
+import type { TipoDocumentoWhatsApp } from '../services/whatsapp';
 import { EnviarPorWhatsApp } from './whatsapp/EnviarPorWhatsApp';
 import { EditorContrato } from './contrato/EditorContrato';
 import { PadroesContrato } from './contrato/PadroesContrato';
+import { EditorProcuracao } from './procuracao/EditorProcuracao';
+import { ListaProcuracoes } from './procuracao/ListaProcuracoes';
 import { hojeISO } from '../contrato/padroes';
 import { rascunhoDeContrato } from '../contrato/rascunho';
 
 interface ContractsViewProps {
   contratos: Contrato[];
+  /** Procurações (V027): a outra aba desta tela, geradas a partir dos contratos. */
+  procuracoes: Procuracao[];
   leads: Lead[];
   /** Propostas disponíveis para gerar o contrato a partir do dimensionamento. */
   propostas?: Proposta[];
@@ -20,23 +25,42 @@ interface ContractsViewProps {
   /** `data` em AAAA-MM-DD. */
   onAssinarContrato: (contratoId: string, data: string) => Promise<void>;
   onDeleteContract?: (contratoId: string) => Promise<void> | void;
-  onOpenPDF: (type: 'proposta' | 'contrato' | 'boleto', data: any) => void;
+  /** Salva e devolve a procuração gravada — o editor continua com id e número. */
+  onSalvarProcuracao: (procuracao: Procuracao) => Promise<Procuracao>;
+  /** `data` em AAAA-MM-DD. */
+  onAssinarProcuracao: (procuracaoId: string, data: string) => Promise<void>;
+  onDeleteProcuracao?: (procuracaoId: string) => Promise<void>;
+  onOpenPDF: (type: 'proposta' | 'contrato' | 'procuracao' | 'boleto', data: any) => void;
   /** Padrões do contrato salvos: empresa e parâmetros novos. */
   onConfigAlterada?: (config: ConfigApp) => void;
   currentUser: User;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
 }
 
-type Aba = 'lista' | 'editor' | 'padroes';
+/** 'lista' é a dos contratos; cada documento tem a sua lista e o seu editor. */
+type Aba = 'lista' | 'editor' | 'procuracoes' | 'editorProcuracao' | 'padroes';
+
+/** O que o modal de envio por WhatsApp precisa de um contrato ou procuração. */
+interface DocumentoEnviado {
+  tipo: TipoDocumentoWhatsApp;
+  id: string;
+  clienteNome: string;
+  telefone: string;
+  leadId: string;
+}
 
 export const ContractsView: React.FC<ContractsViewProps> = ({
   contratos,
+  procuracoes,
   leads,
   propostas = [],
   config,
   onSalvarContrato,
   onAssinarContrato,
   onDeleteContract,
+  onSalvarProcuracao,
+  onAssinarProcuracao,
+  onDeleteProcuracao,
   onOpenPDF,
   onConfigAlterada,
   currentUser,
@@ -52,8 +76,19 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   const [emEdicao, setEmEdicao] = useState<Contrato | null>(null);
   const [chaveEditor, setChaveEditor] = useState(0);
 
-  /** Contrato escolhido para envio; null com o modal fechado. */
-  const [enviando, setEnviando] = useState<Contrato | null>(null);
+  /** Documento escolhido para envio; null com o modal fechado. */
+  const [enviando, setEnviando] = useState<DocumentoEnviado | null>(null);
+  const enviarContrato = (c: Contrato) =>
+    setEnviando({ tipo: 'contrato', id: c.id, clienteNome: c.clienteNome, telefone: c.telefone, leadId: c.leadId });
+  const enviarProcuracao = (p: Procuracao) =>
+    setEnviando({ tipo: 'procuracao', id: p.id, clienteNome: p.clienteNome, telefone: p.telefone, leadId: p.leadId });
+
+  /**
+   * Procuração aberta no editor (null = nova) e, quando ela nasce da ação
+   * "Procuração" de um contrato, o contrato que a preenche.
+   */
+  const [procuracaoEmEdicao, setProcuracaoEmEdicao] = useState<Procuracao | null>(null);
+  const [origemProcuracao, setOrigemProcuracao] = useState<Contrato | null>(null);
 
   /** Contrato selecionado para confirmação de exclusão */
   const [contratoParaExcluir, setContratoParaExcluir] = useState<Contrato | null>(null);
@@ -75,6 +110,16 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
   const podeExcluir = podeEmitir;
   // Mesma permissão que PATCH /api/config/empresa e /parametros exigem.
   const podeEditarPadroes = ehAdmin || !!currentUser.permissoes?.gerenciarUsuarios;
+  // Falso onde a V027 não pôde mexer nas tabelas do WhatsApp (ver painel.routes.ts).
+  const envioProcuracaoAtivo = !!config?.procuracao_envio_ativo;
+
+  /** A procuração mais recente de cada contrato, para a ação "Procuração" da lista. */
+  const procuracaoPorContrato = useMemo(() => {
+    const mapa = new Map<string, Procuracao>();
+    for (const p of procuracoes) if (p.contratoId && !mapa.has(p.contratoId)) mapa.set(p.contratoId, p);
+    return mapa;
+  }, [procuracoes]);
+  const procuracoesAguardando = procuracoes.filter((p) => p.status === 'aguardando').length;
 
   const normalizarBusca = (texto: string) =>
     (texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -102,6 +147,19 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
     setEmEdicao(contrato);
     setChaveEditor((k) => k + 1);
     setAba('editor');
+  };
+
+  const abrirEditorProcuracao = (procuracao: Procuracao | null, origem: Contrato | null = null) => {
+    setProcuracaoEmEdicao(procuracao);
+    setOrigemProcuracao(origem);
+    setChaveEditor((k) => k + 1);
+    setAba('editorProcuracao');
+  };
+
+  /** Abre a procuração do contrato ou, se ainda não houver, uma nova já preenchida com ele. */
+  const procuracaoDoContrato = (c: Contrato) => {
+    const existente = procuracaoPorContrato.get(c.id);
+    abrirEditorProcuracao(existente ?? null, existente ? null : c);
   };
 
   const confirmarExclusao = async () => {
@@ -162,8 +220,33 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
           }}
           onAssinar={pedirAssinatura}
           onAbrirPDF={(c) => onOpenPDF('contrato', c)}
-          onEnviar={setEnviando}
+          onEnviar={enviarContrato}
           onVoltar={() => setAba('lista')}
+          showToast={showToast}
+        />
+      ) : aba === 'editorProcuracao' ? (
+        <EditorProcuracao
+          key={chaveEditor}
+          inicial={procuracaoEmEdicao}
+          origem={origemProcuracao}
+          contratos={contratos}
+          config={config}
+          podeEditar={podeEmitir}
+          podeEnviar={podeEnviarWhatsApp}
+          envioAtivo={envioProcuracaoAtivo}
+          onSalvar={async (p) => {
+            const salva = await onSalvarProcuracao(p);
+            setProcuracaoEmEdicao(salva);
+            return salva;
+          }}
+          onAssinar={async (id, data) => {
+            await onAssinarProcuracao(id, data);
+            // Assinada no editor: volta para a lista, onde ela aparece travada.
+            setAba('procuracoes');
+          }}
+          onAbrirPDF={(p) => onOpenPDF('procuracao', p)}
+          onEnviar={enviarProcuracao}
+          onVoltar={() => setAba('procuracoes')}
           showToast={showToast}
         />
       ) : (
@@ -172,7 +255,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-extrabold text-[#004276]">
-                {aba === 'lista' ? 'Contratos' : 'Padrões do contrato'}
+                {aba === 'lista' ? 'Contratos' : aba === 'procuracoes' ? 'Procurações' : 'Padrões'}
               </h1>
               <p className="text-xs text-slate-500 font-semibold mt-0.5">
                 {aba === 'lista' ? (
@@ -185,8 +268,14 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                     {' · '}
                     {aguardandoAssinatura} aguardando assinatura
                   </>
+                ) : aba === 'procuracoes' ? (
+                  <>
+                    {procuracoes.length} {procuracoes.length === 1 ? 'procuração' : 'procurações'}
+                    {' · '}
+                    {procuracoesAguardando} aguardando assinatura
+                  </>
                 ) : (
-                  'Dados da Solar Costa, prazos, multas e garantias que todo contrato novo traz preenchidos.'
+                  'Dados da Solar Costa, prazos, multas e garantias de todo contrato novo, e os outorgados de toda procuração nova.'
                 )}
               </p>
             </div>
@@ -198,7 +287,15 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                   onClick={() => setAba('lista')}
                   className={`px-3 py-1.5 rounded-lg transition ${aba === 'lista' ? 'bg-[#004276] text-white' : 'text-slate-600 hover:text-[#004276]'}`}
                 >
-                  Lista
+                  Contratos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAba('procuracoes')}
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg transition ${aba === 'procuracoes' ? 'bg-[#004276] text-white' : 'text-slate-600 hover:text-[#004276]'}`}
+                >
+                  <Stamp className="w-3.5 h-3.5" />
+                  Procurações
                 </button>
                 <button
                   type="button"
@@ -206,10 +303,18 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                   className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg transition ${aba === 'padroes' ? 'bg-[#004276] text-white' : 'text-slate-600 hover:text-[#004276]'}`}
                 >
                   <Settings2 className="w-3.5 h-3.5" />
-                  Padrões do contrato
+                  Padrões
                 </button>
               </div>
-              {podeEmitir && (
+              {podeEmitir && (aba === 'procuracoes' ? (
+                <button
+                  onClick={() => abrirEditorProcuracao(null)}
+                  className="inline-flex items-center gap-2 px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nova procuração
+                </button>
+              ) : (
                 <button
                   onClick={() => abrirEditor(null)}
                   className="inline-flex items-center gap-2 px-5 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-sm shadow transition"
@@ -217,7 +322,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                   <Plus className="w-4 h-4" />
                   Cadastrar novo contrato
                 </button>
-              )}
+              ))}
             </div>
           </div>
 
@@ -227,6 +332,18 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
               podeEditar={podeEditarPadroes}
               onConfigAlterada={(c) => onConfigAlterada?.(c)}
               showToast={showToast}
+            />
+          ) : aba === 'procuracoes' ? (
+            <ListaProcuracoes
+              procuracoes={procuracoes}
+              podeEmitir={podeEmitir}
+              podeEnviar={podeEnviarWhatsApp}
+              envioAtivo={envioProcuracaoAtivo}
+              onAbrir={(p) => abrirEditorProcuracao(p)}
+              onPDF={(p) => onOpenPDF('procuracao', p)}
+              onEnviar={enviarProcuracao}
+              onAssinar={onAssinarProcuracao}
+              onExcluir={onDeleteProcuracao}
             />
           ) : (
             /* LIST OF EMITTED CONTRACTS */
@@ -391,10 +508,25 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
                                 <FileText className="w-3.5 h-3.5" />
                                 PDF
                               </button>
+                              {(podeEmitir || procuracaoPorContrato.has(c.id)) && (
+                                <button
+                                  type="button"
+                                  onClick={() => procuracaoDoContrato(c)}
+                                  className="text-violet-700 hover:underline inline-flex items-center gap-1"
+                                  title={
+                                    procuracaoPorContrato.has(c.id)
+                                      ? `Abrir a procuração nº ${procuracaoPorContrato.get(c.id)?.numero}`
+                                      : 'Gerar a procuração deste contrato'
+                                  }
+                                >
+                                  <Stamp className="w-3.5 h-3.5" />
+                                  Procuração
+                                </button>
+                              )}
                               {podeEnviarWhatsApp && (
                                 <button
                                   type="button"
-                                  onClick={() => setEnviando(c)}
+                                  onClick={() => enviarContrato(c)}
                                   className="text-emerald-700 hover:underline inline-flex items-center gap-1"
                                 >
                                   <MessageCircle className="w-3.5 h-3.5" />
@@ -427,7 +559,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({
 
       {enviando && (
         <EnviarPorWhatsApp
-          referencia={{ tipo: 'contrato', id: enviando.id }}
+          referencia={{ tipo: enviando.tipo, id: enviando.id }}
           clienteNome={enviando.clienteNome}
           telefoneSugerido={enviando.telefone}
           leadId={enviando.leadId || null}

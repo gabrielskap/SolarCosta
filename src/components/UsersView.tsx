@@ -12,7 +12,7 @@ const PERMISSOES: { chave: keyof UserPermissions; rotulo: string; descricao: str
   { chave: 'criarEditarLeads', rotulo: 'Leads', descricao: 'Cadastrar e editar leads.' },
   { chave: 'emitirPropostas', rotulo: 'Propostas', descricao: 'Montar e emitir orçamentos.' },
   { chave: 'anexarDocumentos', rotulo: 'Documentos', descricao: 'Anexar arquivos ao lead.' },
-  { chave: 'emitirContratos', rotulo: 'Contratos', descricao: 'Gerar e assinar contratos.' },
+  { chave: 'emitirContratos', rotulo: 'Contratos e procurações', descricao: 'Gerar e assinar contratos e procurações.' },
   {
     chave: 'verLancamentosFinanceiro',
     rotulo: 'Financeiro',

@@ -6,7 +6,7 @@ import {
 import { ErroApi } from '../../services/http';
 import { formatarTelefoneInternacional } from '../../utils/contato';
 import { WhatsApp, type EstadoWhatsApp, type InstanciaWhatsApp } from '../../services/whatsapp';
-import type { Contrato, Lead, Proposta, User } from '../../types';
+import type { Contrato, Lead, Procuracao, Proposta, User } from '../../types';
 import { AbaEnviar } from './AbaEnviar';
 import { AbaHistorico } from './AbaHistorico';
 import { AbaModelos } from './AbaModelos';
@@ -54,6 +54,9 @@ interface Props {
    */
   propostas: Proposta[];
   contratos: Contrato[];
+  procuracoes: Procuracao[];
+  /** Falso onde o banco ainda não aceita procuração no link e na mensagem. */
+  envioProcuracaoAtivo: boolean;
 }
 
 type Aba = 'enviar' | 'modelos' | 'historico';
@@ -77,6 +80,8 @@ export const WhatsAppView: React.FC<Props> = ({
   leads,
   propostas,
   contratos,
+  procuracoes,
+  envioProcuracaoAtivo,
 }) => {
   const [estado, setEstado] = useState<EstadoWhatsApp | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -318,6 +323,8 @@ export const WhatsAppView: React.FC<Props> = ({
           leads={leads}
           propostas={propostas}
           contratos={contratos}
+          procuracoes={procuracoes}
+          envioProcuracaoAtivo={envioProcuracaoAtivo}
           showToast={showToast}
           onEnviado={() => setRecarregarHistorico((n) => n + 1)}
         />

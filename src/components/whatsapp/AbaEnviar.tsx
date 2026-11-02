@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, FileText, Loader2, Paperclip, Plus, ScrollText, Search, Send, Users, X,
+  AlertTriangle, FileText, Loader2, Paperclip, Plus, ScrollText, Search, Send, Stamp, Users, X,
 } from 'lucide-react';
 import { ErroApi } from '../../services/http';
-import { WhatsApp, type ModeloMensagem } from '../../services/whatsapp';
+import { WhatsApp, type ModeloMensagem, type TipoDocumentoWhatsApp } from '../../services/whatsapp';
 import { formatCurrencyBRL, maskPhone, onlyDigits } from '../../utils/format';
-import type { Contrato, Lead, Proposta } from '../../types';
+import type { Contrato, Lead, Procuracao, Proposta } from '../../types';
 import { BotoesMarcador, inserirMarcador, PreviaMensagem } from './PreviaMensagem';
 
 /*
@@ -38,14 +38,30 @@ interface Props {
   leads: Lead[];
   propostas: Proposta[];
   contratos: Contrato[];
+  procuracoes: Procuracao[];
+  /**
+   * Falso onde o banco ainda não aceita procuração no link e na mensagem
+   * (V027 sem a parte das tabelas do WhatsApp): aí ela nem aparece como anexo.
+   */
+  envioProcuracaoAtivo: boolean;
   showToast: (title: string, type: 'success' | 'error' | 'info', description?: string) => void;
   /** Avisa o shell para a aba Histórico recarregar quando for aberta. */
   onEnviado: () => void;
 }
 
 type Modo = 'livre' | 'modelo';
-type TipoAnexo = 'nenhum' | 'proposta' | 'contrato';
+type TipoAnexo = 'nenhum' | TipoDocumentoWhatsApp;
 type ModoDestinatario = 'lead' | 'telefone';
+
+/** Nome do documento no meio da frase, e com artigo. */
+const NOME_ANEXO: Record<TipoDocumentoWhatsApp, { nome: string; comArtigo: string; rotulo: string; nenhum: string }> = {
+  proposta: { nome: 'proposta', comArtigo: 'uma proposta', rotulo: 'Proposta', nenhum: 'Nenhuma proposta encontrada.' },
+  contrato: { nome: 'contrato', comArtigo: 'um contrato', rotulo: 'Contrato', nenhum: 'Nenhum contrato encontrado.' },
+  procuracao: { nome: 'procuração', comArtigo: 'uma procuração', rotulo: 'Procuração', nenhum: 'Nenhuma procuração encontrada.' },
+};
+
+const ehDocumento = (contexto: ModeloMensagem['contexto']): contexto is TipoDocumentoWhatsApp =>
+  contexto === 'proposta' || contexto === 'contrato' || contexto === 'procuracao';
 
 interface Destinatario {
   /** Id do lead, ou os dígitos do telefone quando é avulso. */
@@ -56,14 +72,15 @@ interface Destinatario {
   leadId: string | null;
 }
 
-/** Item de lista do seletor de anexo, achatado a partir de Proposta/Contrato. */
+/** Item de lista do seletor de anexo, achatado a partir de Proposta/Contrato/Procuração. */
 interface Documento {
   id: string;
   numero: string;
   clienteNome: string;
   telefone: string;
   leadId: string;
-  valorTotal: number;
+  /** Null na procuração, que não tem valor. */
+  valorTotal: number | null;
   status: string;
 }
 
@@ -118,6 +135,8 @@ export const AbaEnviar: React.FC<Props> = ({
   leads,
   propostas,
   contratos,
+  procuracoes,
+  envioProcuracaoAtivo,
   showToast,
   onEnviado,
 }) => {
@@ -182,15 +201,25 @@ export const AbaEnviar: React.FC<Props> = ({
             valorTotal: p.valorTotal,
             status: p.status,
           }))
-        : contratos.map((c) => ({
-            id: c.id,
-            numero: c.numero,
-            clienteNome: c.clienteNome,
-            telefone: c.telefone,
-            leadId: c.leadId,
-            valorTotal: c.valorTotal,
-            status: c.status,
-          }));
+        : tipoAnexo === 'contrato'
+          ? contratos.map((c) => ({
+              id: c.id,
+              numero: c.numero,
+              clienteNome: c.clienteNome,
+              telefone: c.telefone,
+              leadId: c.leadId,
+              valorTotal: c.valorTotal,
+              status: c.status,
+            }))
+          : procuracoes.map((p) => ({
+              id: p.id,
+              numero: p.numero,
+              clienteNome: p.clienteNome,
+              telefone: p.telefone,
+              leadId: p.leadId,
+              valorTotal: null,
+              status: p.status,
+            }));
 
     const termo = buscaDoc.trim().toLowerCase();
     const filtrados = termo
@@ -201,7 +230,7 @@ export const AbaEnviar: React.FC<Props> = ({
       : lista;
 
     return filtrados.slice(0, TETO_LISTA);
-  }, [tipoAnexo, buscaDoc, propostas, contratos]);
+  }, [tipoAnexo, buscaDoc, propostas, contratos, procuracoes]);
 
   /**
    * TODOS os modelos ativos aparecem, agrupados por contexto.
@@ -220,6 +249,7 @@ export const AbaEnviar: React.FC<Props> = ({
     const ordem: { contexto: ModeloMensagem['contexto']; rotulo: string }[] = [
       { contexto: 'proposta', rotulo: 'Proposta' },
       { contexto: 'contrato', rotulo: 'Contrato' },
+      { contexto: 'procuracao', rotulo: 'Procuração' },
       { contexto: 'lead', rotulo: 'Lead' },
       { contexto: 'livre', rotulo: 'Livre' },
     ];
@@ -318,16 +348,15 @@ export const AbaEnviar: React.FC<Props> = ({
   /**
    * Modelo de documento escolhido sem o documento correspondente.
    *
-   * Só `proposta` e `contrato` entram nesta conta: são os únicos que citam
-   * {{numero}}, {{valor}}, {{validade}} e {{economia_mensal}}, que o servidor
-   * só sabe preencher a partir do documento anexado. `lead` e `livre` usam
-   * apenas nome, consultor e empresa, que existem em qualquer envio.
+   * Só os modelos de documento (proposta, contrato, procuração) entram nesta
+   * conta: são os únicos que citam {{numero}}, {{valor}}, {{validade}} e
+   * {{economia_mensal}}, que o servidor só sabe preencher a partir do
+   * documento anexado. `lead` e `livre` usam apenas nome, consultor e
+   * empresa, que existem em qualquer envio.
    */
+  const contextoDoModelo = modeloEscolhido?.contexto;
   const modeloForaDoAnexo =
-    modo === 'modelo' &&
-    !!modeloEscolhido &&
-    (modeloEscolhido.contexto === 'proposta' || modeloEscolhido.contexto === 'contrato') &&
-    modeloEscolhido.contexto !== tipoAnexo;
+    modo === 'modelo' && !!contextoDoModelo && ehDocumento(contextoDoModelo) && contextoDoModelo !== tipoAnexo;
 
   const temMensagem = modo === 'modelo' ? !!modeloId : textoLivre.trim().length > 0;
   const anexoPendente = tipoAnexo !== 'nenhum' && !doc;
@@ -337,7 +366,7 @@ export const AbaEnviar: React.FC<Props> = ({
   const motivoBloqueio = !conectada
     ? 'Conecte o número da empresa para poder enviar.'
     : anexoPendente
-      ? `Escolha qual ${tipoAnexo} anexar, ou volte para "Sem anexo".`
+      ? `Escolha qual ${NOME_ANEXO[tipoAnexo].nome} anexar, ou volte para "Sem anexo".`
       : !temMensagem
         ? 'Escreva a mensagem ou escolha um modelo.'
         : destinatarios.length === 0
@@ -491,15 +520,13 @@ export const AbaEnviar: React.FC<Props> = ({
                   quem manda fica sabendo que os campos do documento vão sair
                   vazios.
                 */}
-                {modeloForaDoAnexo && modeloEscolhido && (
+                {modeloForaDoAnexo && contextoDoModelo && ehDocumento(contextoDoModelo) && (
                   <p className="mt-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-start gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    Este modelo é de {modeloEscolhido.contexto === 'proposta'
-                      ? 'proposta'
-                      : 'contrato'}
+                    Este modelo é de {NOME_ANEXO[contextoDoModelo].nome}
                     , e {tipoAnexo === 'nenhum'
                       ? 'não há documento anexado'
-                      : `o anexo escolhido é ${tipoAnexo === 'proposta' ? 'uma proposta' : 'um contrato'}`}
+                      : `o anexo escolhido é ${NOME_ANEXO[tipoAnexo].comArtigo}`}
                     . Campos como <code className="font-mono">{'{{numero}}'}</code> e{' '}
                     <code className="font-mono">{'{{valor}}'}</code> vão sair vazios.
                   </p>
@@ -521,6 +548,7 @@ export const AbaEnviar: React.FC<Props> = ({
               { id: 'nenhum', rotulo: 'Sem anexo' },
               { id: 'proposta', rotulo: 'Proposta' },
               { id: 'contrato', rotulo: 'Contrato' },
+              ...(envioProcuracaoAtivo ? [{ id: 'procuracao' as const, rotulo: 'Procuração' }] : []),
             ]}
             onEscolher={trocarTipoAnexo}
           />
@@ -540,7 +568,7 @@ export const AbaEnviar: React.FC<Props> = ({
               {doc && (
                 <div className="flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
                   <span className="min-w-0 text-xs font-bold text-[#004276] truncate">
-                    {tipoAnexo === 'proposta' ? 'Proposta' : 'Contrato'} {doc.numero} ·{' '}
+                    {NOME_ANEXO[tipoAnexo].rotulo} {doc.numero} ·{' '}
                     {doc.clienteNome}
                   </span>
                   <button
@@ -557,9 +585,7 @@ export const AbaEnviar: React.FC<Props> = ({
               <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
                 {documentos.length === 0 ? (
                   <p className="text-xs text-slate-400 text-center py-6">
-                    {tipoAnexo === 'proposta'
-                      ? 'Nenhuma proposta encontrada.'
-                      : 'Nenhum contrato encontrado.'}
+                    {NOME_ANEXO[tipoAnexo].nenhum}
                   </p>
                 ) : (
                   documentos.map((d) => (
@@ -574,15 +600,18 @@ export const AbaEnviar: React.FC<Props> = ({
                       <span className="flex items-center gap-2 text-sm font-bold text-slate-800">
                         {tipoAnexo === 'proposta' ? (
                           <FileText className="w-3.5 h-3.5 text-[#004276] shrink-0" />
-                        ) : (
+                        ) : tipoAnexo === 'contrato' ? (
                           <ScrollText className="w-3.5 h-3.5 text-[#004276] shrink-0" />
+                        ) : (
+                          <Stamp className="w-3.5 h-3.5 text-[#004276] shrink-0" />
                         )}
                         <span className="truncate">
                           {d.numero} · {d.clienteNome}
                         </span>
                       </span>
                       <span className="block text-[11px] text-slate-500 mt-0.5 pl-6">
-                        {formatCurrencyBRL(d.valorTotal)} · {d.status}
+                        {d.valorTotal != null ? `${formatCurrencyBRL(d.valorTotal)} · ` : ''}
+                        {d.status}
                       </span>
                     </button>
                   ))

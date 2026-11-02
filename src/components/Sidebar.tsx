@@ -41,7 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       section: 'OPERAÇÃO', items: [
         { to: '/sistema/leads', label: 'Leads', icon: Users },
         { to: '/sistema/propostas', label: 'Propostas de orçamento', icon: FileText },
-        { to: '/sistema/contratos', label: 'Contratos', icon: FileCheck },
+        { to: '/sistema/contratos', label: 'Contratos e Procurações', icon: FileCheck },
         { to: '/sistema/obras', label: 'Obras & Instalação', icon: HardHat },
         { to: '/sistema/whatsapp', label: 'WhatsApp', icon: MessageCircle, permissao: 'usarWhatsapp' as keyof UserPermissions },
       ]

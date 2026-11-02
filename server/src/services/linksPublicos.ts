@@ -17,8 +17,10 @@
 import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { consultarUm, type Cliente } from '../db.js';
+import { AppError } from '../errors.js';
 
-export type TipoDocumento = 'proposta' | 'contrato';
+/** 'procuracao' só passa na CHECK do banco depois da V027 (ou do 05_…). */
+export type TipoDocumento = 'proposta' | 'contrato' | 'procuracao';
 
 /**
  * Validade padrão.
@@ -60,11 +62,25 @@ export async function obterOuCriarLink(
   if (existente[0]) return existente[0].token;
 
   const token = crypto.randomBytes(32).toString('base64url');
-  await cliente.query(
-    `INSERT INTO "SolarCosta_LinksPublicos" (token, tipo, referencia_id, expira_em, criado_por_id)
-     VALUES ($1, $2, $3, now() + ($4 || ' days')::interval, $5)`,
-    [token, tipo, referenciaId, String(VALIDADE_DIAS), criadoPorId],
-  );
+  try {
+    await cliente.query(
+      `INSERT INTO "SolarCosta_LinksPublicos" (token, tipo, referencia_id, expira_em, criado_por_id)
+       VALUES ($1, $2, $3, now() + ($4 || ' days')::interval, $5)`,
+      [token, tipo, referenciaId, String(VALIDADE_DIAS), criadoPorId],
+    );
+  } catch (e) {
+    // Onde a V027 não pôde alterar a CHECK (tabela de dono `postgres`), o banco
+    // recusa a procuração. O 422 genérico de check_violation não diria o que
+    // fazer; este diz.
+    if (tipo === 'procuracao' && (e as { code?: string }).code === '23514') {
+      throw new AppError(
+        503,
+        'O banco ainda não aceita enviar procuração. Rode database/05_habilitar_envio_procuracao.sql como superusuário.',
+        'procuracao_envio_indisponivel',
+      );
+    }
+    throw e;
+  }
   return token;
 }
 

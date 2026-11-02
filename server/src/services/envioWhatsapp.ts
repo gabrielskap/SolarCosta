@@ -33,7 +33,7 @@ export interface DadosEnvio {
    * evita um objeto opcional dentro de outro — que o tsconfig da raiz, sem
    * `strict`, infere como `{tipo?, id?}` e recusa.
    */
-  referenciaTipo: 'proposta' | 'contrato' | null;
+  referenciaTipo: 'proposta' | 'contrato' | 'procuracao' | null;
   referenciaId: string | null;
   /** Texto do registro de auditoria, quando há documento. */
   descricaoAuditoria: string | null;

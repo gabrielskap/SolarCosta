@@ -23,7 +23,7 @@ import { config } from '../config.js';
 import { consultar, consultarUm, emTransacao, type Cliente } from '../db.js';
 import { asyncHandler, AppError, naoEncontrado } from '../errors.js';
 import { ator, exigirLogin, exigirPermissao, type RequestAutenticado } from '../auth/middleware.js';
-import { obterOuCriarLink } from '../services/linksPublicos.js';
+import { obterOuCriarLink, type TipoDocumento } from '../services/linksPublicos.js';
 import { gerarPdfDocumento } from '../services/pdfDocumento.js';
 import { telefoneInternacional } from '../utils/telefone.js';
 import * as uazapi from '../services/uazapi.js';
@@ -214,7 +214,11 @@ whatsappRouter.post(
 
 /* ============================================================ MODELOS == */
 
-const CONTEXTOS = ['proposta', 'contrato', 'lead', 'livre'] as const;
+// 'procuracao' só passa na CHECK do banco depois da V027 (ou do 05_…).
+const CONTEXTOS = ['proposta', 'contrato', 'procuracao', 'lead', 'livre'] as const;
+
+/** Documentos que uma mensagem pode levar anexo. */
+const TIPOS_DOCUMENTO = ['proposta', 'contrato', 'procuracao'] as const;
 
 /** Colunas devolvidas em toda rota de modelo — a tela espera sempre as mesmas. */
 const COLUNAS_MODELO = 'id, nome, contexto, texto, ordem, ativo';
@@ -445,7 +449,7 @@ interface DadosDocumento {
 
 /** Reúne o que os modelos de mensagem sabem citar sobre o documento. */
 async function dadosDoDocumento(
-  tipo: 'proposta' | 'contrato',
+  tipo: TipoDocumento,
   id: string,
 ): Promise<DadosDocumento> {
   const empresa = await consultarUm<{ nome_fantasia: string }>(
@@ -489,6 +493,34 @@ async function dadosDoDocumento(
     };
   }
 
+  if (tipo === 'procuracao') {
+    const p = await consultarUm<{
+      numero: string;
+      cliente_nome: string;
+      telefone: string | null;
+      lead_id: string | null;
+    }>(
+      `SELECT numero, cliente_nome, telefone, lead_id
+         FROM "SolarCosta_Procuracoes" WHERE id = $1 AND excluido_em IS NULL`,
+      [id],
+    );
+    if (!p) throw new AppError(404, 'Procuração não encontrada.', 'nao_encontrado');
+
+    return {
+      telefone: p.telefone,
+      leadId: p.lead_id,
+      valores: {
+        cliente: p.cliente_nome,
+        primeiro_nome: primeiroNome(p.cliente_nome),
+        numero: p.numero,
+        valor: '—',
+        economia_mensal: '—',
+        validade: '—',
+        empresa: nomeEmpresa,
+      },
+    };
+  }
+
   const c = await consultarUm<{
     numero: string;
     cliente_nome: string;
@@ -521,6 +553,13 @@ function primeiroNome(nome: string): string {
   return nome.trim().split(/\s+/)[0] ?? nome;
 }
 
+/** O marco que o envio de documento deixa na timeline do lead. */
+const LINHA_DA_TIMELINE: Record<TipoDocumento, string> = {
+  proposta: 'Proposta {numero} enviado por WhatsApp.',
+  contrato: 'Contrato {numero} enviado por WhatsApp.',
+  procuracao: 'Procuração {numero} enviada por WhatsApp.',
+};
+
 const envioSchema = z
   .object({
     /** Livre quando não há documento; havendo, o padrão é o telefone dele. */
@@ -530,7 +569,7 @@ const envioSchema = z
     modelo_id: z.string().uuid().optional(),
     referencia: z
       .object({
-        tipo: z.enum(['proposta', 'contrato']),
+        tipo: z.enum(TIPOS_DOCUMENTO),
         id: z.string().uuid(),
       })
       .optional(),
@@ -652,7 +691,7 @@ whatsappRouter.post(
                VALUES ($1, $2, 'whatsapp', $3, $4)`,
               [
                 leadId,
-                `${d.referencia.tipo === 'proposta' ? 'Proposta' : 'Contrato'} ${doc?.valores.numero ?? ''} enviado por WhatsApp.`.replace(
+                `${LINHA_DA_TIMELINE[d.referencia.tipo].replace('{numero}', doc?.valores.numero ?? '')}`.replace(
                   /\s+/g,
                   ' ',
                 ),
@@ -709,7 +748,7 @@ const enviadasSchema = z.object({
   /** Cursor de timestamp, igual ao de /conversas: pega o que for mais antigo. */
   antes_de: z.string().datetime({ offset: true }).optional(),
   status: z.enum(STATUS_MENSAGEM).optional(),
-  referencia_tipo: z.enum(['proposta', 'contrato']).optional(),
+  referencia_tipo: z.enum(TIPOS_DOCUMENTO).optional(),
 });
 
 interface LinhaEnviada {
@@ -761,12 +800,12 @@ whatsappRouter.get(
       // de SolarCosta_WhatsAppMidia vale em qualquer consulta que um dia possa
       // ganhar um JOIN com ela.
       //
-      // Os dois LEFT JOIN de documento são condicionados pelo referencia_tipo
-      // porque referencia_id aponta para duas tabelas diferentes e não tem FK.
-      // O COALESCE devolve o número de qualquer um dos dois.
+      // Os LEFT JOIN de documento são condicionados pelo referencia_tipo
+      // porque referencia_id aponta para tabelas diferentes e não tem FK. O
+      // COALESCE devolve o número de qualquer um deles.
       `SELECT m.id, m.ocorrido_em, m.texto, m.status, m.erro,
               m.referencia_tipo, m.referencia_id,
-              COALESCE(p.numero, ct.numero) AS referencia_numero,
+              COALESCE(p.numero, ct.numero, pr.numero) AS referencia_numero,
               c.id AS conversa_id, c.telefone, c.nome_exibicao,
               l.id AS lead_id, l.numero AS lead_numero, l.nome AS lead_nome,
               u.nome AS enviada_por_nome
@@ -779,6 +818,8 @@ whatsappRouter.get(
                 ON m.referencia_tipo = 'proposta' AND p.id = m.referencia_id
          LEFT JOIN "SolarCosta_Contratos" ct
                 ON m.referencia_tipo = 'contrato' AND ct.id = m.referencia_id
+         LEFT JOIN "SolarCosta_Procuracoes" pr
+                ON m.referencia_tipo = 'procuracao' AND pr.id = m.referencia_id
         WHERE ${condicoes.join(' AND ')}
         ORDER BY m.ocorrido_em DESC
         LIMIT $${params.length}`,

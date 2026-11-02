@@ -1,25 +1,29 @@
-// Padrões do contrato: o cadastro da contratada (com o representante legal) e
-// os números do modelo — prazos, multas, garantias.
+// Padrões do contrato e da procuração: o cadastro da contratada (com o
+// representante legal), os números do modelo — prazos, multas, garantias — e
+// os outorgados que toda procuração nova traz (V027).
 //
-// Vale para contratos NOVOS. Cada contrato guarda a própria cópia (contratada
-// e termos, V024), então mudar algo aqui não reescreve contrato já emitido —
-// para trazer o cadastro novo a um contrato aberto, há "Recarregar do
-// cadastro" no módulo da Solar Costa.
+// Vale para documentos NOVOS. Cada contrato e cada procuração guardam a
+// própria cópia, então mudar algo aqui não reescreve o que já foi emitido —
+// para trazer o cadastro novo a um documento aberto, há "Recarregar do
+// cadastro" no módulo da Solar Costa e "Recarregar dos padrões" no dos
+// outorgados.
 //
 // As rotas exigem gerenciar_usuarios (painel.routes.ts): é administração do
 // sistema, não atendimento de um cliente.
 
 import React, { useState } from 'react';
 import { Loader2, Save } from 'lucide-react';
-import type { GarantiaContrato } from '../../types';
+import type { GarantiaContrato, OutorgadoProcuracao } from '../../types';
 import { Api, type ConfigApp } from '../../services/api';
 import { ErroApi } from '../../services/http';
 import {
   CHAVES_PARAMETRO, NUMEROS_PADRAO, PARAMETRO_CONCESSIONARIA, PARAMETRO_GARANTIAS, garantiasDoParametro,
 } from '../../contrato/padroes';
+import { PARAMETRO_OUTORGADOS, lerOutorgados } from '../../procuracao/padroes';
 import { maskCEP, maskCNPJ, maskCPF, maskPhone } from '../../utils/format';
 import { CabecalhoModulo, Campo, CampoNumero, Grade } from './campos';
 import { TabelaGarantiasEditavel } from './modulos/ModuloGarantias';
+import { ListaOutorgadosEditavel } from '../procuracao/modulos/ModuloOutorgados';
 
 interface Props {
   config: ConfigApp | null;
@@ -69,7 +73,11 @@ export const PadroesContrato: React.FC<Props> = ({ config, podeEditar, onConfigA
     () => config?.parametros.find((p) => p.chave === PARAMETRO_CONCESSIONARIA)?.valor ?? 'Cemig',
   );
   const [garantias, setGarantias] = useState<GarantiaContrato[]>(() => garantiasDoParametro(config));
+  const [outorgados, setOutorgados] = useState<OutorgadoProcuracao[]>(() => lerOutorgados(config));
   const [salvando, setSalvando] = useState(false);
+  // O PATCH de parâmetros só altera chave que já existe (404 nas outras): sem a
+  // V027 no banco, os outorgados ficam de fora em vez de derrubar o salvar todo.
+  const temParametroOutorgados = !!config?.parametros.some((p) => p.chave === PARAMETRO_OUTORGADOS);
 
   const somenteLeitura = !podeEditar;
   const mudarEmpresa = (campo: CampoEmpresa, valor: string) => setEmpresa((e) => ({ ...e, [campo]: valor }));
@@ -92,11 +100,14 @@ export const PadroesContrato: React.FC<Props> = ({ config, podeEditar, onConfigA
           chave: PARAMETRO_GARANTIAS,
           valor: JSON.stringify(garantias.filter((g) => g.equipamento.trim() || g.prazo.trim() || g.causa.trim())),
         },
+        ...(temParametroOutorgados
+          ? [{ chave: PARAMETRO_OUTORGADOS, valor: JSON.stringify(outorgados.filter((o) => o.nome.trim() || o.cpf.trim())) }]
+          : []),
       ];
       const p = await Api.salvarParametros(parametros);
 
       onConfigAlterada({ ...config, empresa: r.empresa ?? config.empresa, parametros: p.parametros ?? config.parametros });
-      showToast('Padrões salvos', 'success', 'Valem para os próximos contratos. Os já emitidos mantêm a própria cópia.');
+      showToast('Padrões salvos', 'success', 'Valem para os próximos contratos e procurações. Os já emitidos mantêm a própria cópia.');
     } catch (e) {
       showToast('Não foi possível salvar', 'error', e instanceof ErroApi ? e.mensagemCompleta : 'Erro inesperado.');
     } finally {
@@ -119,7 +130,7 @@ export const PadroesContrato: React.FC<Props> = ({ config, podeEditar, onConfigA
     <div className="space-y-6">
       {somenteLeitura && (
         <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          Só o Administrador (ou quem gerencia usuários) altera os padrões do contrato.
+          Só o Administrador (ou quem gerencia usuários) altera os padrões do contrato e da procuração.
         </p>
       )}
 
@@ -178,6 +189,21 @@ export const PadroesContrato: React.FC<Props> = ({ config, podeEditar, onConfigA
         <CabecalhoModulo titulo="Tabela de garantias" onde="Cláusula 7.2 — prazos dos fornecedores." />
         <TabelaGarantiasEditavel garantias={garantias} onChange={setGarantias} somenteLeitura={somenteLeitura} />
       </div>
+
+      {temParametroOutorgados && (
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <CabecalhoModulo
+            titulo="Outorgados da procuração"
+            onde="Os procuradores que toda procuração nova traz, nesta ordem. Sem nenhum cadastrado, entra o representante legal acima, com o endereço da empresa."
+          />
+          <ListaOutorgadosEditavel
+            outorgados={outorgados}
+            onChange={setOutorgados}
+            somenteLeitura={somenteLeitura}
+            vazio="Nenhum cadastrado: toda procuração nova sai com o representante legal da empresa."
+          />
+        </div>
+      )}
 
       {podeEditar && (
         <div className="flex justify-end">

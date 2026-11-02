@@ -9,15 +9,15 @@
 
 import {
   Agendamento, AuditEntry, Boleto, Contrato, Fornecedor, Kit, LancamentoFinanceiro,
-  Lead, LeadStage, Obra, PastaDocumento, Produto, Proposta, User,
+  Lead, LeadStage, Obra, PastaDocumento, Procuracao, Produto, Proposta, User,
 } from '../types';
 import { definirTokens, http, limparTokens, obterRefreshToken, temSessaoSalva } from './http';
 import {
   deAgendamento, deBoleto, deContrato, deFornecedor, deHomologacao, deKit, deLancamento,
-  deLead, deObra, deProduto, deProposta, deUser,
+  deLead, deObra, deProcuracao, deProduto, deProposta, deUser,
   paraAgendamento, paraAuditEntry, paraBoleto, paraContrato, paraDocumento,
   paraFornecedor, paraHistorico, paraKit, paraLancamento, paraLead, paraObra,
-  paraPastaDocumento, paraProduto, paraProposta, paraUser, paraUserAutenticado,
+  paraPastaDocumento, paraProcuracao, paraProduto, paraProposta, paraUser, paraUserAutenticado,
 } from './mappers';
 
 /* ============================================================== SESSÃO === */
@@ -332,6 +332,34 @@ export const Api = {
     return Api.getContratos();
   },
 
+  /* ------------------------------------------------------ procurações -- */
+
+  /** A lista já vem completa (outorgados e termos), sem buscar uma a uma. */
+  getProcuracoes: async (): Promise<Procuracao[]> => {
+    const r = await http.get<any>('/api/procuracoes');
+    return (r.procuracoes ?? []).map(paraProcuracao);
+  },
+
+  /** Como salvarContrato: devolve a procuração gravada (com id e número) e a lista nova. */
+  salvarProcuracao: async (p: Procuracao): Promise<{ procuracao: Procuracao; procuracoes: Procuracao[] }> => {
+    const corpo = deProcuracao(p);
+    const r = p.id
+      ? await http.put<any>(`/api/procuracoes/${p.id}`, corpo)
+      : await http.post<any>('/api/procuracoes', corpo);
+    return { procuracao: paraProcuracao(r.procuracao), procuracoes: await Api.getProcuracoes() };
+  },
+
+  /** Assina e trava a procuração. `data` em AAAA-MM-DD; sem ela, hoje. */
+  assinarProcuracao: async (id: string, data?: string): Promise<{ procuracao: Procuracao; procuracoes: Procuracao[] }> => {
+    const r = await http.post<any>(`/api/procuracoes/${id}/assinar`, data ? { data_assinatura: data } : {});
+    return { procuracao: paraProcuracao(r.procuracao), procuracoes: await Api.getProcuracoes() };
+  },
+
+  deleteProcuracao: async (id: string): Promise<Procuracao[]> => {
+    await http.delete(`/api/procuracoes/${id}`);
+    return Api.getProcuracoes();
+  },
+
   /* ------------------------------------------------------- financeiro -- */
 
   getBoletos: async (): Promise<Boleto[]> => {
@@ -520,6 +548,13 @@ export interface ConfigApp {
    * funcionaria no navegador.
    */
   google_maps_browser_key?: string | null;
+  /**
+   * Falso onde a V027 não pôde incluir 'procuracao' nas CHECKs do WhatsApp
+   * (tabelas de dono `postgres`). Sem isso o banco recusa o link e a mensagem,
+   * então a tela desliga o "Enviar" da procuração — ver
+   * database/05_habilitar_envio_procuracao.sql.
+   */
+  procuracao_envio_ativo?: boolean;
 }
 
 /** Lê um parâmetro do banco como texto. */
@@ -563,8 +598,16 @@ export async function carregarTudo() {
     auditoria = [];
   }
 
+  // Mesma regra para as procurações: um erro só delas não fecha a entrada do CRM.
+  let procuracoes: Procuracao[] = [];
+  try {
+    procuracoes = await Api.getProcuracoes();
+  } catch {
+    procuracoes = [];
+  }
+
   return {
-    leads, propostas, contratos, boletos, lancamentos,
+    leads, propostas, contratos, procuracoes, boletos, lancamentos,
     agendamentos, produtos, fornecedores, kits, usuarios, obras, auditoria, config,
   };
 }

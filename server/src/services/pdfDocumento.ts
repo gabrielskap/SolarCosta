@@ -26,6 +26,7 @@ import { existsSync } from 'node:fs';
 import { launch, type Browser } from 'puppeteer-core';
 import { config } from '../config.js';
 import { AppError } from '../errors.js';
+import type { TipoDocumento } from './linksPublicos.js';
 import { cabecalhosDeRender } from './renderInterno.js';
 
 /**
@@ -213,7 +214,7 @@ async function obterNavegador(): Promise<Browser> {
   return navegador;
 }
 
-function chaveDe(tipo: 'proposta' | 'contrato', id: string): string {
+function chaveDe(tipo: TipoDocumento, id: string): string {
   return `${tipo}:${id}`;
 }
 
@@ -237,9 +238,16 @@ function guardarNoCache(chave: string, pdf: PdfGerado): void {
   }
 }
 
+/** Sem acento: é nome de arquivo, e ele passa por uazapi e WhatsApp. */
+const ROTULO_ARQUIVO: Record<TipoDocumento, string> = {
+  proposta: 'Proposta',
+  contrato: 'Contrato',
+  procuracao: 'Procuracao',
+};
+
 /** `Proposta 2026-0184.pdf` — é este o nome que aparece no WhatsApp. */
-function nomeDoArquivo(tipo: 'proposta' | 'contrato', numero: string): string {
-  const rotulo = tipo === 'proposta' ? 'Proposta' : 'Contrato';
+function nomeDoArquivo(tipo: TipoDocumento, numero: string): string {
+  const rotulo = ROTULO_ARQUIVO[tipo];
   const limpo = (numero || '').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '');
   return `${rotulo}${limpo ? ` ${limpo}` : ''}.pdf`;
 }
@@ -320,7 +328,7 @@ async function imprimir(token: string): Promise<Buffer> {
  * alguém manda uma proposta.
  */
 export async function gerarPdfDocumento(
-  tipo: 'proposta' | 'contrato',
+  tipo: TipoDocumento,
   id: string,
   numero: string,
   token: string,

@@ -4,7 +4,7 @@ import {
   Clock, Link2, Loader2, MapPin, Send, User, Users, XCircle,
 } from 'lucide-react';
 import { formatarTelefoneInternacional } from '../../utils/contato';
-import type { Conversa, Mensagem, StatusMensagem } from '../../services/whatsapp';
+import { ROTULO_DOCUMENTO, type Conversa, type Mensagem, type StatusMensagem } from '../../services/whatsapp';
 import { MidiaMensagem } from './MidiaMensagem';
 
 /*
@@ -219,7 +219,7 @@ export const ThreadConversa: React.FC<Props> = ({
                       esta mensagem levou a proposta, não só o texto dela. */}
                   {m.referenciaTipo && (
                     <p className="text-[10px] mt-1 opacity-75">
-                      {m.referenciaTipo === 'proposta' ? 'Proposta' : 'Contrato'} enviado
+                      {ROTULO_DOCUMENTO[m.referenciaTipo]} {m.referenciaTipo === 'contrato' ? 'enviado' : 'enviada'}
                     </p>
                   )}
 
