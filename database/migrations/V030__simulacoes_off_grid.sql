@@ -1,5 +1,6 @@
 BEGIN;
-CREATE TABLE "SolarCosta_SimulacoesOffGrid" (
+-- Preserva instalações onde a tabela já foi criada antes do registro da V030.
+CREATE TABLE IF NOT EXISTS "SolarCosta_SimulacoesOffGrid" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   lead_id uuid REFERENCES "SolarCosta_Leads"(id) ON DELETE SET NULL,
   titulo varchar(200) NOT NULL,
@@ -9,7 +10,8 @@ CREATE TABLE "SolarCosta_SimulacoesOffGrid" (
   criado_em timestamptz NOT NULL DEFAULT now(),
   atualizado_em timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX ON "SolarCosta_SimulacoesOffGrid" (lead_id);
+CREATE INDEX IF NOT EXISTS "SolarCosta_SimulacoesOffGrid_lead_id_idx"
+  ON "SolarCosta_SimulacoesOffGrid" (lead_id);
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'solarcosta_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON "SolarCosta_SimulacoesOffGrid" TO solarcosta_app;
