@@ -245,7 +245,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
     const prodObj: Produto = {
       id: editingProduct ? editingProduct.id : `novo-${Date.now()}`,
-      codigo: editingProduct ? editingProduct.codigo : `PRD-00${produtos.length + 42}`,
+      codigo: editingProduct ? editingProduct.codigo : '',
       nome: nomeProd,
       tipo: tipoProd,
       fornecedorId: fornecedorIdProd,

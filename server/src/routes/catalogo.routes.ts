@@ -125,7 +125,7 @@ catalogoRouter.delete(
 /* ============================================================== PRODUTOS == */
 
 const produtoSchema = z.object({
-  codigo: z.string().min(1, 'Informe o código.').max(40),
+  codigo: z.string().min(1, 'Informe o código.').max(40).optional(),
   nome: z.string().min(1, 'Informe o nome.').max(200),
   tipo_codigo: z.enum(['modulo', 'inversor', 'estrutura', 'cabo', 'protecao', 'acessorio', 'outro']),
   fornecedor_id: z.string().uuid().nullish(),
@@ -177,12 +177,19 @@ catalogoRouter.post(
     const estoqueInicial = z.coerce.number().min(0).default(0).parse(req.body?.estoque ?? 0);
 
     const produto = await emTransacao(async (cliente) => {
+      // Inclui os inativos e serializa a geração entre cadastros simultâneos.
+      await cliente.query("SELECT pg_advisory_xact_lock(hashtext('SolarCosta_Produtos_codigo'))");
+      const { rows: sequencia } = await cliente.query<{ ultimo: string }>(
+        `SELECT COALESCE(MAX(substring(codigo FROM '^PRD-([0-9]+)$')::numeric), 0)::text AS ultimo
+           FROM "SolarCosta_Produtos"`,
+      );
+      const codigo = 'PRD-' + (BigInt(sequencia[0]!.ultimo) + 1n).toString().padStart(4, '0');
       const { rows } = await cliente.query(
         `INSERT INTO "SolarCosta_Produtos"
             (codigo, nome, tipo_codigo, fornecedor_id, preco, estoque, estoque_minimo, unidade, potencia_wp, ncm, ativo)
          VALUES ($1,$2,$3,$4,$5,0,$6,$7,$8,$9,$10)
          RETURNING id`,
-        [d.codigo, d.nome, d.tipo_codigo, d.fornecedor_id ?? null, d.preco,
+        [codigo, d.nome, d.tipo_codigo, d.fornecedor_id ?? null, d.preco,
          d.estoque_minimo, d.unidade, d.potencia_wp ?? null, d.ncm ?? null, d.ativo],
       );
       const id = rows[0]!.id as string;

@@ -205,6 +205,7 @@ export const Api = {
       delete (corpo as Record<string, unknown>).estoque;
       await http.patch(`/api/catalogo/produtos/${p.id}`, corpo);
     } else {
+      delete (corpo as Record<string, unknown>).codigo;
       await http.post('/api/catalogo/produtos', corpo);
     }
     return Api.getProdutos();
