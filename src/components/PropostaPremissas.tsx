@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Sliders, Plus, Trash2, Download, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { entradaSolarZerada, type EntradaSolar, type CalculoSolar } from '../../server/src/domain/propostaSolar';
 import { listarSimulacoesOffGrid, abrirSimulacaoOffGrid, type ResumoOffGrid, type SimulacaoOffGrid } from '../services/offGrid';
@@ -30,6 +30,17 @@ export function PropostaPremissas({
   const [previa, setPrevia] = useState<SimulacaoOffGrid | null>(null);
   const [erro, setErro] = useState('');
   const [carregandoSimulacoes, setCarregandoSimulacoes] = useState(false);
+  const [buscouSimulacoes, setBuscouSimulacoes] = useState(false);
+  const carregarSimulacoes = useCallback(async () => {
+    setErro('');
+    setCarregandoSimulacoes(true);
+    try { setSimulacoes(await listarSimulacoesOffGrid()); }
+    catch { setErro('Não foi possível carregar as simulações. Tente atualizar a lista.'); }
+    finally { setBuscouSimulacoes(true); setCarregandoSimulacoes(false); }
+  }, []);
+  useEffect(() => {
+    if (expandido && abaAtiva === 'offgrid') void carregarSimulacoes();
+  }, [expandido, abaAtiva, carregarSimulacoes]);
 
   const numero = (label: string, key: keyof EntradaSolar, unidade?: string, step = 'any') => (
     <div key={key}>
@@ -99,6 +110,11 @@ export function PropostaPremissas({
         </div>
       </div>
 
+      <div className="px-4 pb-3">
+        <button type="button" onClick={() => { setExpandido(true); setAbaAtiva('offgrid'); }} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-[#004276] hover:bg-blue-50">
+          <Plus className="w-3.5 h-3.5" /> Incluir dimensionamento off-grid
+        </button>
+      </div>
       {/* Conteúdo Expansível */}
       {expandido && (
         <div className="p-4 pt-1 border-t border-slate-200 bg-white space-y-4">
@@ -353,21 +369,13 @@ export function PropostaPremissas({
                   type="button"
                   disabled={carregandoSimulacoes}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1.5 transition"
-                  onClick={async () => {
-                    try {
-                      setErro('');
-                      setCarregandoSimulacoes(true);
-                      setSimulacoes(await listarSimulacoesOffGrid());
-                    } catch {
-                      setErro('Não foi possível carregar as simulações.');
-                    } finally {
-                      setCarregandoSimulacoes(false);
-                    }
-                  }}
+                  onClick={() => void carregarSimulacoes()}
                 >
                   <Download className="w-3.5 h-3.5" />
-                  {carregandoSimulacoes ? 'Carregando...' : 'Buscar simulação off-grid'}
+                  {carregandoSimulacoes ? 'Carregando...' : 'Atualizar simulações'}
                 </button>
+
+                <a href="/sistema/dimensionamento-off-grid" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-[#004276] underline">Criar dimensionamento off-grid</a>
 
                 {simulacoes.length > 0 && (
                   <select
@@ -393,6 +401,9 @@ export function PropostaPremissas({
                 )}
               </div>
 
+              {buscouSimulacoes && !carregandoSimulacoes && !erro && simulacoes.length === 0 && (
+                <p role="status" className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">Nenhum dimensionamento off-grid salvo. Crie e salve um dimensionamento pelo link acima e depois clique em Atualizar simulações.</p>
+              )}
               {previa && (
                 <div className="border border-blue-200 bg-blue-50/60 rounded-xl p-3 text-xs space-y-2">
                   <p className="font-bold text-[#004276]">

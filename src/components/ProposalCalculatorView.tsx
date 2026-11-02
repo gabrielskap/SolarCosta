@@ -479,6 +479,19 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     !!item.produtoId &&
     slugDoTipoProduto(produtos.find(p => p.id === item.produtoId)?.tipo) === 'modulo';
 
+  const contarPaineis = (itens: PropostaItem[]): number => itens.reduce((total, item) => total + (
+    item.componentes?.length
+      ? contarPaineis(item.componentes)
+      : item.produtoId && slugDoTipoProduto(produtos.find(p => p.id === item.produtoId)?.tipo) === 'modulo' ? item.qtd : 0
+  ), 0);
+  const modulosRecomendados = preservarLegado ? modulosQtdCalculada : Math.ceil(calculoSolar.quantidadeCalculada);
+  const avisoPaineis = (itens: PropostaItem[]): string | null => {
+    const quantidade = contarPaineis(itens);
+    if (!itens.length || !(modulosRecomendados > quantidade)) return null;
+    return `Painéis: ${quantidade.toLocaleString('pt-BR')}/${modulosRecomendados.toLocaleString('pt-BR')} recomendados.`;
+  };
+  const avisoPaineisAtual = avisoPaineis(kitItens);
+
   useEffect(() => {
     if (montagemDoKit.current) {
       montagemDoKit.current = false;
@@ -551,7 +564,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setKitItens(prev => [...prev, novoItem]);
     setIsAddItemOpen(false);
     setSelectedCatalogKitId('');
-    showToast('Kit adicionado', 'success', `${kit.nome} incluído na proposta.`);
+    const aviso = avisoPaineis([...kitItens, novoItem]);
+    showToast(aviso ? 'Kit incluído com menos painéis que o recomendado' : 'Kit adicionado', aviso ? 'info' : 'success', aviso ?? `${kit.nome} incluído na proposta.`);
   };
 
   const handleAddCatalogItem = () => {
@@ -580,7 +594,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setSelectedCatalogProdutoId('');
     setQtdAvulso(0);
     setValorAvulso(0);
-    showToast('Item adicionado', 'success', `${prod.nome} incluído na proposta.`);
+    const aviso = avisoPaineis([...kitItens, newItem]);
+    showToast(aviso ? 'Item incluído; quantidade de painéis inferior à recomendada' : 'Item adicionado', aviso ? 'info' : 'success', aviso ?? `${prod.nome} incluído na proposta.`);
   };
 
   // Espelha os requisitos mínimos do backend (propostaSchema): sem isso, o
@@ -817,9 +832,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${ativo ? 'bg-[#004276] text-white border-[#004276] shadow-xs' : 'bg-white text-slate-600 border-slate-200'
                                 }`}
                             >
-                              <span
-                                    }`}
-                  >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px]">
                     {numero}
                   </span>
                   {rotulo}
@@ -1375,6 +1388,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                               </span>
                             )}
                             {item.descricao}
+                            {avisoPaineisAtual && (item.kitId || contarPaineis([item]) > 0) && (
+                              <p role="status" className="mt-0.5 text-[10px] font-medium text-red-600">
+                                {avisoPaineisAtual}
+                              </p>
+                            )}
                           </td>
                           <td data-label="QTD." className="py-2 px-3 text-center">
                             <input
