@@ -31,9 +31,10 @@ const fornecedorSchema = z.object({
 
 catalogoRouter.get(
   '/fornecedores',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const inativos = req.query.status === 'inativos';
     const fornecedores = await consultar(
-      `SELECT * FROM "SolarCosta_vw_Fornecedores" ORDER BY nome`,
+      `SELECT * FROM "SolarCosta_vw_Fornecedores" WHERE ativo = $1 ORDER BY nome`, [!inativos],
     );
     res.json({ fornecedores });
   }),

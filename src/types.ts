@@ -99,6 +99,7 @@ export interface Lead {
 }
 
 export interface Fornecedor {
+  ativo?: boolean;
   id: string;
   nome: string;
   cnpj: string;

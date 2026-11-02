@@ -237,6 +237,7 @@ export function deLead(l: Partial<Lead>): Record<string, unknown> {
 
 export function paraFornecedor(linha: any): Fornecedor {
   return {
+    ativo: linha.ativo !== false,
     id: linha.id,
     nome: linha.nome,
     cnpj: txt(linha.cnpj),
@@ -255,6 +256,7 @@ export function paraFornecedor(linha: any): Fornecedor {
 export function deFornecedor(f: Partial<Fornecedor>): Record<string, unknown> {
   const { cidade, uf } = separarCidadeUf(f.cidade);
   return {
+    ativo: f.ativo,
     nome: f.nome,
     cnpj: f.cnpj || null,
     cidade,

@@ -559,6 +559,7 @@ export default function App() {
   const handleDeleteFornecedor = async (id: string) => {
     try {
       setFornecedores(await Api.deleteFornecedor(id));
+      showToast('Fornecedor removido', 'success');
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível excluir o fornecedor');

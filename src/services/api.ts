@@ -171,8 +171,8 @@ export const Api = {
 
   /* ---------------------------------------------------- fornecedores -- */
 
-  getFornecedores: async (): Promise<Fornecedor[]> => {
-    const r = await http.get<any>('/api/catalogo/fornecedores');
+  getFornecedores: async (status: 'ativos' | 'inativos' = 'ativos'): Promise<Fornecedor[]> => {
+    const r = await http.get<any>(`/api/catalogo/fornecedores?status=${status}`);
     return (r.fornecedores ?? []).map(paraFornecedor);
   },
 

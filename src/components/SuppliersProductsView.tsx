@@ -1,3 +1,5 @@
+import { Api } from '../services/api';
+import { useCnpjLookup } from '../services/useCnpjLookup';
 import React, { useEffect, useState } from 'react';
 import { Package, Truck, Search, Plus, Edit2, Trash2, ExternalLink, AlertTriangle, Boxes, PackageX, ChevronDown, Info } from 'lucide-react';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
@@ -42,6 +44,20 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'produtos' | 'fornecedores' | 'kits'>(mode || 'produtos');
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFornecedor, setStatusFornecedor] = useState<'ativos' | 'inativos'>('ativos');
+  const [inativos, setInativos] = useState<Fornecedor[]>([]);
+  const [carregandoInativos, setCarregandoInativos] = useState(false);
+  const [erroInativos, setErroInativos] = useState('');
+  useEffect(() => {
+    if (activeTab !== 'fornecedores') return;
+    let ativo = true;
+    setCarregandoInativos(true);
+    setErroInativos('');
+    Api.getFornecedores('inativos').then(dados => { if (ativo) setInativos(dados); })
+      .catch(() => { if (ativo) setErroInativos('Não foi possível carregar os fornecedores inativos.'); })
+      .finally(() => { if (ativo) setCarregandoInativos(false); });
+    return () => { ativo = false; };
+  }, [activeTab, fornecedores, statusFornecedor]);
 
   useEffect(() => {
     if (mode) {
@@ -77,6 +93,13 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   const [contatoForn, setContatoForn] = useState('');
   const [telefoneForn, setTelefoneForn] = useState('');
   const [siteForn, setSiteForn] = useState('');
+  const [emailForn, setEmailForn] = useState('');
+  const { loading: cnpjLoading, erro: cnpjErro } = useCnpjLookup(cnpjForn, isNewSupplierOpen, dados => {
+    setNomeForn(dados.nome_fantasia || dados.razao_social || '');
+    setCidadeForn([dados.municipio, dados.uf].filter(Boolean).join('/'));
+    setTelefoneForn(maskPhone(dados.ddd_telefone_1 || ''));
+    setEmailForn(dados.email || '');
+  });
 
   /* ---------------------------------------------------- fechar modais -- */
   /*
@@ -132,7 +155,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     p.fornecedorNome.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredSuppliers = fornecedores.filter(f =>
+  const filteredSuppliers = (statusFornecedor === 'ativos' ? fornecedores : inativos).filter(f =>
     f.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
     f.cnpj.includes(searchQuery)
   );
@@ -250,15 +273,26 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     e.preventDefault();
     if (!nomeForn) return;
 
+    const documento = cnpjForn.replace(/\D/g, '');
+    const existente = [...fornecedores, ...inativos].find(f => documento && f.cnpj.replace(/\D/g, '') === documento);
+    if (existente) {
+      if (existente.ativo === false) {
+        setStatusFornecedor('inativos');
+        setSearchQuery(cnpjForn);
+        setIsNewSupplierOpen(false);
+        showToast('Fornecedor inativo', 'info', 'Este CNPJ já está cadastrado. Localize o fornecedor na aba Inativos e clique em Reativar.');
+      } else showToast('CNPJ já cadastrado', 'error', 'Este fornecedor já consta na aba Ativos.');
+      return;
+    }
     const fornObj: Fornecedor = {
       id: `novo-${Date.now()}`,
       nome: nomeForn,
-      cnpj: cnpjForn || '00.000.000/0001-00',
-      cidade: cidadeForn || 'Belo Horizonte/MG',
-      contato: contatoForn || 'Comercial',
-      telefone: telefoneForn || '(31) 3000-0000',
-      email: `${nomeForn.toLowerCase().replace(/\s+/g, '')}@fornecedor.com.br`,
-      site: siteForn || 'www.fornecedor.com.br',
+      cnpj: cnpjForn,
+      cidade: cidadeForn,
+      contato: contatoForn,
+      telefone: telefoneForn,
+      email: emailForn,
+      site: siteForn,
       produtosCount: 0
     };
 
@@ -370,7 +404,11 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
           {(mode === 'fornecedores' || !mode) && (
             <button
-              onClick={() => setIsNewSupplierOpen(true)}
+              onClick={() => {
+                setNomeForn(''); setCnpjForn(''); setCidadeForn(''); setContatoForn('');
+                setTelefoneForn(''); setEmailForn(''); setSiteForn('');
+                setIsNewSupplierOpen(true);
+              }}
               className="px-4 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-xs shadow transition flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" /> Novo fornecedor
@@ -609,6 +647,17 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
       {/* FORNECEDORES TAB */}
       {activeTab === 'fornecedores' && (
+        <div className="space-y-4">
+          <div role="tablist" aria-label="Status dos fornecedores" className="flex gap-2">
+            {(['ativos', 'inativos'] as const).map(status => (
+              <button key={status} role="tab" aria-selected={statusFornecedor === status} onClick={() => setStatusFornecedor(status)} className={statusFornecedor === status ? 'px-4 py-2 rounded-xl bg-[#004276] text-white text-sm font-bold' : 'px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-bold'}>
+                {status === 'ativos' ? 'Ativos' : 'Inativos'} ({status === 'ativos' ? fornecedores.length : inativos.length})
+              </button>
+            ))}
+          </div>
+          {statusFornecedor === 'inativos' && carregandoInativos && <p role="status">Carregando inativos…</p>}
+          {statusFornecedor === 'inativos' && erroInativos && <p role="alert" className="text-rose-600">{erroInativos}</p>}
+          {!carregandoInativos && filteredSuppliers.length === 0 && <p className="text-sm text-slate-500">Nenhum fornecedor encontrado nesta aba.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredSuppliers.map((f) => (
             <div key={f.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 hover:border-blue-300 transition">
@@ -646,16 +695,17 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
                 <button
                   onClick={() => {
-                    onDeleteFornecedor(f.id);
-                    showToast('Fornecedor removido', 'info', `${f.nome} excluído.`);
+                    if (statusFornecedor === 'inativos') onSaveFornecedor({ ...f, ativo: true });
+                    else onDeleteFornecedor(f.id);
                   }}
                   className="text-xs text-rose-600 font-bold hover:underline"
                 >
-                  Excluir
+                  {statusFornecedor === 'inativos' ? 'Reativar' : 'Excluir'}
                 </button>
               </div>
             </div>
           ))}
+        </div>
         </div>
       )}
 
@@ -787,6 +837,19 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
             <form onSubmit={handleSupplierSubmit} className="campos-modal flex-1 min-h-0 flex flex-col">
               <div className="modal-corpo campos-modal flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+                  <div>
+                    <label className={rotulo}>CNPJ</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={cnpjForn}
+                      onChange={(e) => setCnpjForn(maskCNPJ(e.target.value))}
+                      placeholder="00.000.000/0001-00"
+                      className={`${campo} font-mono`}
+                    />
+                    <p role="status" className="mt-1 text-xs text-slate-500">{cnpjLoading ? 'Consultando CNPJ…' : 'Preenchimento automático pela BrasilAPI ao informar o CNPJ completo.'}</p>
+                    {cnpjErro && <p role="alert" className="mt-1 text-xs text-amber-700">{cnpjErro}</p>}
+                  </div>
                 <div>
                   <label className={rotulo}>
                     Nome da empresa / fornecedor <span className="text-rose-500">*</span>
@@ -802,17 +865,6 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={rotulo}>CNPJ</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={cnpjForn}
-                      onChange={(e) => setCnpjForn(maskCNPJ(e.target.value))}
-                      placeholder="00.000.000/0001-00"
-                      className={`${campo} font-mono`}
-                    />
-                  </div>
                   <div>
                     <label className={rotulo}>Cidade / UF</label>
                     <input
@@ -850,6 +902,10 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </div>
 
                 <div>
+                  <label className={rotulo}>E-mail</label>
+                  <input type="email" value={emailForn} onChange={e => setEmailForn(e.target.value)} className={campo} />
+                </div>
+                <div>
                   <label className={rotulo}>Website</label>
                   <input
                     type="text"
@@ -863,8 +919,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 <div className="flex gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <Info className="w-4 h-4 shrink-0 mt-px text-slate-400" />
                   <p className="text-[11px] leading-relaxed text-slate-600">
-                    Só o nome é obrigatório — os demais campos entram com um valor padrão
-                    e podem ser completados depois.
+                    Só o nome é obrigatório. Revise os dados da consulta e complete os demais campos manualmente.
                   </p>
                 </div>
               </div>
