@@ -1,3 +1,4 @@
+import { AbasAtividade } from './comuns/AbasAtividade';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listarPlacas, salvarPlaca, type PlacaSolar } from '../services/placas';
@@ -11,6 +12,8 @@ const campos = [
 ] as const;
 export function PlacasView() {
  const [placas, setPlacas] = useState<PlacaSolar[]>([]);
+ const [inativos, setInativos] = useState(false);
+ const visiveis = placas.filter(p => !p.ativo === inativos);
  const [produtos, setProdutos] = useState<ProdutoOpcao[]>([]);
  const [form, setForm] = useState({ ...vazio });
  const [id, setId] = useState<string>();
@@ -45,9 +48,10 @@ export function PlacasView() {
    <label className="flex gap-2"><input type="checkbox" checked={form.ativo} onChange={e => setForm({...form,ativo:e.target.checked})}/>Disponível para novas seleções</label>
    <div className="flex gap-3"><button disabled={ocupado} className="bg-[#004276] text-white rounded-lg px-4 py-2 disabled:opacity-50">{ocupado ? 'Salvando…' : 'Salvar placa'}</button><button type="button" disabled={ocupado} onClick={() => setEditando(false)}>Cancelar</button></div>
   </form>}
+<AbasAtividade inativos={inativos} onChange={setInativos} />
   <div className="bg-white border rounded-xl overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50"><tr>{['Fabricante / modelo','Potência','Dimensões','Peso','Status',''].map((v,i) => <th key={i} className="p-4">{v}</th>)}</tr></thead><tbody>
-   {placas.map(p => <tr key={p.id} className="border-t"><td className="p-4"><strong>{p.fabricante}</strong><br/>{p.modelo}<p className="text-xs text-slate-500">{p.produtoId ? `${p.produtoCodigo} · ${p.produtoNome}` : 'Vincule um produto para utilizar esta placa'}</p></td><td className="p-4">{p.potenciaWp} Wp</td><td className="p-4">{p.larguraM} × {p.alturaM} m</td><td className="p-4">{p.pesoKg} kg</td><td className="p-4">{p.ativo ? 'Ativa' : 'Inativa'}</td><td className="p-4"><button className="text-sky-800 underline" onClick={() => {setForm({...p,produtoId:p.produtoId??''});setId(p.id);setEditando(true);setErro('');}}>Editar</button></td></tr>)}
-   {!placas.length && <tr><td colSpan={6} className="p-6 text-slate-500">{carregando ? 'Carregando placas…' : 'Nenhuma placa cadastrada.'}</td></tr>}
+   {visiveis.map(p => <tr key={p.id} className="border-t"><td className="p-4"><strong>{p.fabricante}</strong><br/>{p.modelo}<p className="text-xs text-slate-500">{p.produtoId ? `${p.produtoCodigo} · ${p.produtoNome}` : 'Vincule um produto para utilizar esta placa'}</p></td><td className="p-4">{p.potenciaWp} Wp</td><td className="p-4">{p.larguraM} × {p.alturaM} m</td><td className="p-4">{p.pesoKg} kg</td><td className="p-4">{p.ativo ? 'Ativa' : 'Inativa'}</td><td className="p-4"><button className="text-sky-800 underline" onClick={() => {setForm({...p,produtoId:p.produtoId??''});setId(p.id);setEditando(true);setErro('');}}>Editar</button></td></tr>)}
+   {!visiveis.length && <tr><td colSpan={6} className="p-6 text-slate-500">{carregando ? 'Carregando placas…' : 'Nenhuma placa cadastrada.'}</td></tr>}
   </tbody></table></div>
  </div>;
 }

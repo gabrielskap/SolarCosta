@@ -85,6 +85,7 @@ export function paraUser(linha: any): User {
     email: linha.email,
     telefone: linha.telefone ?? undefined,
     perfil: linha.cargo,
+    trocarSenha: !!linha.trocar_senha,
     cargo: linha.cargo,
     status: linha.status,
     situacao: linha.status === 'ativo' ? 'Ativo' : 'Inativo',
@@ -236,6 +237,7 @@ export function deLead(l: Partial<Lead>): Record<string, unknown> {
 
 export function paraFornecedor(linha: any): Fornecedor {
   return {
+    ativo: linha.ativo !== false,
     id: linha.id,
     nome: linha.nome,
     cnpj: txt(linha.cnpj),
@@ -254,6 +256,7 @@ export function paraFornecedor(linha: any): Fornecedor {
 export function deFornecedor(f: Partial<Fornecedor>): Record<string, unknown> {
   const { cidade, uf } = separarCidadeUf(f.cidade);
   return {
+    ativo: f.ativo,
     nome: f.nome,
     cnpj: f.cnpj || null,
     cidade,
@@ -270,6 +273,7 @@ export function deFornecedor(f: Partial<Fornecedor>): Record<string, unknown> {
 
 export function paraProduto(linha: any): Produto {
   return {
+    ativo: linha.ativo !== false,
     id: linha.id,
     codigo: linha.codigo,
     nome: linha.nome,
@@ -322,6 +326,7 @@ export function deProduto(p: Partial<Produto> & { estoque?: number }): Record<st
     codigo: p.codigo,
     nome: p.nome,
     tipo_codigo: SLUG_POR_ROTULO[tipo] ?? tipo,
+    ativo: p.ativo,
     fornecedor_id: p.fornecedorId || null,
     preco: p.preco ?? 0,
     unidade: p.unidade ?? 'un',

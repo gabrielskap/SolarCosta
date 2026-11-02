@@ -1,3 +1,4 @@
+import { AbasAtividade } from '../comuns/AbasAtividade';
 import React, { useEffect, useRef, useState } from 'react';
 import { FileText, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { ModalCabecalho } from '../comuns/ModalCabecalho';
@@ -44,6 +45,8 @@ const novoModelo = (): DadosModelo => ({
 
 export const AbaModelos: React.FC<Props> = ({ showToast }) => {
   const [modelos, setModelos] = useState<ModeloMensagem[]>([]);
+ const [inativos, setInativos] = useState(false);
+ const visiveis = modelos.filter(m => !m.ativo === inativos);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -180,14 +183,15 @@ export const AbaModelos: React.FC<Props> = ({ showToast }) => {
         </button>
       </div>
 
-      {modelos.length === 0 ? (
+<AbasAtividade inativos={inativos} onChange={setInativos} />
+      {visiveis.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl py-16 text-center text-slate-400">
           <FileText className="w-10 h-10 mx-auto mb-3 opacity-40" />
           <p className="text-sm">Nenhum modelo cadastrado.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {modelos.map((m) => (
+          {visiveis.map((m) => (
             <article key={m.id} className="bg-white border border-slate-200 rounded-2xl p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">

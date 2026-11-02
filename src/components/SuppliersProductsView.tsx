@@ -1,3 +1,6 @@
+import { AbasAtividade } from './comuns/AbasAtividade';
+import { Api } from '../services/api';
+import { useCnpjLookup } from '../services/useCnpjLookup';
 import React, { useEffect, useState } from 'react';
 import { Package, Truck, Search, Plus, Edit2, Trash2, ExternalLink, AlertTriangle, Boxes, PackageX, ChevronDown, Info } from 'lucide-react';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
@@ -9,7 +12,7 @@ interface SuppliersProductsViewProps {
   produtos: Produto[];
   fornecedores: Fornecedor[];
   kits: Kit[];
-  onSaveProduto: (produto: Produto) => void;
+  onSaveProduto: (produto: Produto) => Promise<boolean>;
   onDeleteProduto: (id: string) => void;
   onSaveFornecedor: (fornecedor: Fornecedor) => void;
   onDeleteFornecedor: (id: string) => void;
@@ -41,7 +44,59 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   mode
 }) => {
   const [activeTab, setActiveTab] = useState<'produtos' | 'fornecedores' | 'kits'>(mode || 'produtos');
+  const [verKitsInativos, setVerKitsInativos] = useState(false);
+  const [kitsInativos, setKitsInativos] = useState<Kit[]>([]);
+  const [carregandoKits, setCarregandoKits] = useState(false);
+  const [erroKits, setErroKits] = useState('');
+  useEffect(() => {
+    if (activeTab !== 'kits') return;
+    let atual = true;
+    setCarregandoKits(true); setErroKits('');
+    Api.getKits('inativos').then(d => { if (atual) setKitsInativos(d); })
+      .catch(() => { if (atual) setErroKits('Não foi possível carregar os kits inativos.'); })
+      .finally(() => { if (atual) setCarregandoKits(false); });
+    return () => { atual = false; };
+  }, [activeTab, kits, verKitsInativos]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusProduto, setStatusProduto] = useState<'ativos' | 'inativos'>('ativos');
+  const [produtosInativos, setProdutosInativos] = useState<Produto[]>([]);
+  const [carregandoProdutosInativos, setCarregandoProdutosInativos] = useState(false);
+  const [erroProdutosInativos, setErroProdutosInativos] = useState('');
+  const [reativandoProduto, setReativandoProduto] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'produtos') return;
+    let atual = true;
+    setCarregandoProdutosInativos(true);
+    setErroProdutosInativos('');
+    Api.getProdutos('inativos').then(dados => { if (atual) setProdutosInativos(dados); })
+      .catch(() => { if (atual) setErroProdutosInativos('Não foi possível carregar os produtos inativos.'); })
+      .finally(() => { if (atual) setCarregandoProdutosInativos(false); });
+    return () => { atual = false; };
+  }, [activeTab, produtos, statusProduto]);
+
+  const reativarProduto = async (produto: Produto) => {
+    setReativandoProduto(produto.id);
+    try {
+      if (await onSaveProduto({ ...produto, ativo: true })) {
+        setProdutosInativos(anteriores => anteriores.filter(p => p.id !== produto.id));
+      }
+    } finally { setReativandoProduto(null); }
+  };
+
+  const [statusFornecedor, setStatusFornecedor] = useState<'ativos' | 'inativos'>('ativos');
+  const [inativos, setInativos] = useState<Fornecedor[]>([]);
+  const [carregandoInativos, setCarregandoInativos] = useState(false);
+  const [erroInativos, setErroInativos] = useState('');
+  useEffect(() => {
+    if (activeTab !== 'fornecedores') return;
+    let ativo = true;
+    setCarregandoInativos(true);
+    setErroInativos('');
+    Api.getFornecedores('inativos').then(dados => { if (ativo) setInativos(dados); })
+      .catch(() => { if (ativo) setErroInativos('Não foi possível carregar os fornecedores inativos.'); })
+      .finally(() => { if (ativo) setCarregandoInativos(false); });
+    return () => { ativo = false; };
+  }, [activeTab, fornecedores, statusFornecedor]);
 
   useEffect(() => {
     if (mode) {
@@ -60,8 +115,8 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   // tem o valor digitado na própria proposta.
   const [nomeProd, setNomeProd] = useState('');
   const [tipoProd, setTipoProd] = useState<TipoProdutoSlug>('modulo');
-  const [fornecedorIdProd, setFornecedorIdProd] = useState(fornecedores[0]?.id || 'f1');
-  const [potenciaProd, setPotenciaProd] = useState('710 Wp');
+  const [fornecedorIdProd, setFornecedorIdProd] = useState(fornecedores[0]?.id || '');
+  const [potenciaProd, setPotenciaProd] = useState('710');
   const [estoqueProd, setEstoqueProd] = useState(10);
 
   // Form kit state
@@ -77,6 +132,13 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
   const [contatoForn, setContatoForn] = useState('');
   const [telefoneForn, setTelefoneForn] = useState('');
   const [siteForn, setSiteForn] = useState('');
+  const [emailForn, setEmailForn] = useState('');
+  const { loading: cnpjLoading, erro: cnpjErro } = useCnpjLookup(cnpjForn, isNewSupplierOpen, dados => {
+    setNomeForn(dados.nome_fantasia || dados.razao_social || '');
+    setCidadeForn([dados.municipio, dados.uf].filter(Boolean).join('/'));
+    setTelefoneForn(maskPhone(dados.ddd_telefone_1 || ''));
+    setEmailForn(dados.email || '');
+  });
 
   /* ---------------------------------------------------- fechar modais -- */
   /*
@@ -126,18 +188,18 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     'focus:outline-none focus:bg-white focus:border-[#004276] focus:ring-4 focus:ring-[#004276]/10';
   const campoSelect = `${campo} appearance-none pr-10 cursor-pointer`;
 
-  const filteredProducts = produtos.filter(p =>
+  const filteredProducts = (statusProduto === 'ativos' ? produtos : produtosInativos).filter(p =>
     p.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.fornecedorNome.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredSuppliers = fornecedores.filter(f =>
+  const filteredSuppliers = (statusFornecedor === 'ativos' ? fornecedores : inativos).filter(f =>
     f.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
     f.cnpj.includes(searchQuery)
   );
 
-  const filteredKits = kits.filter(k =>
+  const filteredKits = (verKitsInativos ? kitsInativos : kits).filter(k =>
     k.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
     k.codigo.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -164,25 +226,32 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     // trabalha com slug — sem converter, o campo abria em branco ao editar.
     setTipoProd(slugDoTipoProduto(p.tipo));
     setFornecedorIdProd(p.fornecedorId);
-    setPotenciaProd(p.potencia || '');
+    setPotenciaProd(p.potenciaWp != null ? String(p.potenciaWp) : (p.potencia || '').replace(/\D/g, ''));
     setEstoqueProd(p.estoque);
     setIsNewProductOpen(true);
   };
 
-  const handleProductSubmit = (e: React.FormEvent) => {
+  const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeProd) return;
 
+    const textoPotencia = potenciaProd.trim();
+    const potenciaWp = textoPotencia ? Number(textoPotencia) : undefined;
+    if (potenciaWp !== undefined && (!Number.isInteger(potenciaWp) || potenciaWp <= 0)) {
+      showToast('Potência inválida', 'error', 'Informe um número inteiro positivo em Wp, como 710.');
+      return;
+    }
     const fornObj = fornecedores.find(f => f.id === fornecedorIdProd);
 
     const prodObj: Produto = {
       id: editingProduct ? editingProduct.id : `novo-${Date.now()}`,
-      codigo: editingProduct ? editingProduct.codigo : `PRD-00${produtos.length + 42}`,
+      codigo: editingProduct ? editingProduct.codigo : '',
       nome: nomeProd,
       tipo: tipoProd,
       fornecedorId: fornecedorIdProd,
       fornecedorNome: fornObj ? fornObj.nome : 'Aldo Solar',
-      potencia: potenciaProd,
+      potencia: potenciaWp ? `${potenciaWp} Wp` : undefined,
+      potenciaWp,
       estoque: Number(estoqueProd),
       // Preço continua existindo na API (custo interno), mas o cadastro não o
       // pede mais: produto novo entra zerado e produto editado preserva o que
@@ -190,7 +259,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       preco: editingProduct?.preco ?? 0
     };
 
-    onSaveProduto(prodObj);
+    if (!await onSaveProduto(prodObj)) return;
     setIsNewProductOpen(false);
     setEditingProduct(null);
   };
@@ -250,15 +319,26 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
     e.preventDefault();
     if (!nomeForn) return;
 
+    const documento = cnpjForn.replace(/\D/g, '');
+    const existente = [...fornecedores, ...inativos].find(f => documento && f.cnpj.replace(/\D/g, '') === documento);
+    if (existente) {
+      if (existente.ativo === false) {
+        setStatusFornecedor('inativos');
+        setSearchQuery(cnpjForn);
+        setIsNewSupplierOpen(false);
+        showToast('Fornecedor inativo', 'info', 'Este CNPJ já está cadastrado. Localize o fornecedor na aba Inativos e clique em Reativar.');
+      } else showToast('CNPJ já cadastrado', 'error', 'Este fornecedor já consta na aba Ativos.');
+      return;
+    }
     const fornObj: Fornecedor = {
       id: `novo-${Date.now()}`,
       nome: nomeForn,
-      cnpj: cnpjForn || '00.000.000/0001-00',
-      cidade: cidadeForn || 'Belo Horizonte/MG',
-      contato: contatoForn || 'Comercial',
-      telefone: telefoneForn || '(31) 3000-0000',
-      email: `${nomeForn.toLowerCase().replace(/\s+/g, '')}@fornecedor.com.br`,
-      site: siteForn || 'www.fornecedor.com.br',
+      cnpj: cnpjForn,
+      cidade: cidadeForn,
+      contato: contatoForn,
+      telefone: telefoneForn,
+      email: emailForn,
+      site: siteForn,
       produtosCount: 0
     };
 
@@ -370,7 +450,11 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
           {(mode === 'fornecedores' || !mode) && (
             <button
-              onClick={() => setIsNewSupplierOpen(true)}
+              onClick={() => {
+                setNomeForn(''); setCnpjForn(''); setCidadeForn(''); setContatoForn('');
+                setTelefoneForn(''); setEmailForn(''); setSiteForn('');
+                setIsNewSupplierOpen(true);
+              }}
               className="px-4 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-xs shadow transition flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" /> Novo fornecedor
@@ -452,6 +536,16 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
             </div>
           </div>
 
+          <div role="tablist" aria-label="Status dos produtos" className="flex gap-2">
+            {(['ativos', 'inativos'] as const).map(status => (
+              <button key={status} role="tab" aria-selected={statusProduto === status} onClick={() => setStatusProduto(status)} className={statusProduto === status ? 'px-4 py-2 rounded-xl bg-[#004276] text-white text-sm font-bold' : 'px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-bold'}>
+                {status === 'ativos' ? 'Ativos' : 'Inativos'} ({status === 'ativos' ? produtos.length : produtosInativos.length})
+              </button>
+            ))}
+          </div>
+          {statusProduto === 'inativos' && carregandoProdutosInativos && <p role="status">Carregando produtos inativos…</p>}
+          {statusProduto === 'inativos' && erroProdutosInativos && <p role="alert" className="text-rose-600">{erroProdutosInativos}</p>}
+
           {/* Banner de reposição */}
           {alertas.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
@@ -483,6 +577,9 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
+                {filteredProducts.length === 0 && !(statusProduto === 'inativos' && (carregandoProdutosInativos || erroProdutosInativos)) && (
+                  <tr><td colSpan={7} className="p-6 text-center text-slate-500">Nenhum produto encontrado nesta aba.</td></tr>
+                )}
                 {filteredProducts.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td data-label="CÓDIGO" className="p-3 font-mono font-bold text-slate-600">{p.codigo}</td>
@@ -514,12 +611,13 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                       </button>
                       <button
                         onClick={() => {
-                          onDeleteProduto(p.id);
-                          showToast('Produto excluído', 'info', `${p.nome} removido.`);
+                          if (statusProduto === 'inativos') void reativarProduto(p);
+                          else onDeleteProduto(p.id);
                         }}
-                        className="text-rose-600 hover:underline"
+                        disabled={reativandoProduto !== null}
+                        className="text-rose-600 hover:underline disabled:opacity-50"
                       >
-                        Excluir
+                        {statusProduto === 'inativos' ? (reativandoProduto === p.id ? 'Reativando…' : 'Reativar') : 'Excluir'}
                       </button>
                     </td>
                   </tr>
@@ -534,10 +632,13 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       {/* KITS TAB */}
       {activeTab === 'kits' && (
         <div className="space-y-4">
-          {kits.length === 0 ? (
+          <AbasAtividade inativos={verKitsInativos} onChange={setVerKitsInativos} />
+          {verKitsInativos && carregandoKits && <p role="status">Carregando kits inativos…</p>}
+          {verKitsInativos && erroKits && <p role="alert" className="text-rose-600">{erroKits}</p>}
+          {filteredKits.length === 0 && !(verKitsInativos && (carregandoKits || erroKits)) ? (
             <div className="bg-white p-10 rounded-2xl border border-slate-200 shadow-sm text-center">
               <Boxes className="w-10 h-10 text-slate-300 mx-auto" />
-              <p className="font-bold text-slate-700 text-sm mt-3">Nenhum kit cadastrado</p>
+              <p className="font-bold text-slate-700 text-sm mt-3">Nenhum kit encontrado nesta aba</p>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
                 O kit é o que tem preço de venda: um nome, um valor fechado e os produtos que o compõem.
               </p>
@@ -590,15 +691,15 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                     <button onClick={() => handleOpenEditKit(k)} className="text-blue-600 hover:underline flex items-center gap-1">
                       <Edit2 className="w-3.5 h-3.5" /> Editar
                     </button>
-                    <button
+                    {!verKitsInativos && <button
                       onClick={() => {
                         onDeleteKit(k.id);
                         showToast('Kit excluído', 'info', `${k.nome} removido do catálogo.`);
                       }}
                       className="text-rose-600 hover:underline flex items-center gap-1"
                     >
-                      <Trash2 className="w-3.5 h-3.5" /> Excluir
-                    </button>
+                      <Trash2 className="w-3.5 h-3.5" /> Inativar
+                    </button>}
                   </div>
                 </div>
               ))}
@@ -609,6 +710,17 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
       {/* FORNECEDORES TAB */}
       {activeTab === 'fornecedores' && (
+        <div className="space-y-4">
+          <div role="tablist" aria-label="Status dos fornecedores" className="flex gap-2">
+            {(['ativos', 'inativos'] as const).map(status => (
+              <button key={status} role="tab" aria-selected={statusFornecedor === status} onClick={() => setStatusFornecedor(status)} className={statusFornecedor === status ? 'px-4 py-2 rounded-xl bg-[#004276] text-white text-sm font-bold' : 'px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-bold'}>
+                {status === 'ativos' ? 'Ativos' : 'Inativos'} ({status === 'ativos' ? fornecedores.length : inativos.length})
+              </button>
+            ))}
+          </div>
+          {statusFornecedor === 'inativos' && carregandoInativos && <p role="status">Carregando inativos…</p>}
+          {statusFornecedor === 'inativos' && erroInativos && <p role="alert" className="text-rose-600">{erroInativos}</p>}
+          {!carregandoInativos && filteredSuppliers.length === 0 && <p className="text-sm text-slate-500">Nenhum fornecedor encontrado nesta aba.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredSuppliers.map((f) => (
             <div key={f.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 hover:border-blue-300 transition">
@@ -646,16 +758,17 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
                 <button
                   onClick={() => {
-                    onDeleteFornecedor(f.id);
-                    showToast('Fornecedor removido', 'info', `${f.nome} excluído.`);
+                    if (statusFornecedor === 'inativos') onSaveFornecedor({ ...f, ativo: true });
+                    else onDeleteFornecedor(f.id);
                   }}
                   className="text-xs text-rose-600 font-bold hover:underline"
                 >
-                  Excluir
+                  {statusFornecedor === 'inativos' ? 'Reativar' : 'Excluir'}
                 </button>
               </div>
             </div>
           ))}
+        </div>
         </div>
       )}
 
@@ -715,6 +828,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                         onChange={(e) => setFornecedorIdProd(e.target.value)}
                         className={campoSelect}
                       >
+                        <option value="">Sem fornecedor</option>
                         {fornecedores.map(f => (
                           <option key={f.id} value={f.id}>{f.nome}</option>
                         ))}
@@ -726,12 +840,14 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className={rotulo}>Potência</label>
+                    <label className={rotulo}>Potência (Wp)</label>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={potenciaProd}
-                      onChange={(e) => setPotenciaProd(e.target.value)}
-                      placeholder="710 Wp"
+                      onChange={(e) => setPotenciaProd(e.target.value.replace(/\D/g, ''))}
+                      placeholder="710"
                       className={campo}
                     />
                   </div>
@@ -787,6 +903,19 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
             <form onSubmit={handleSupplierSubmit} className="campos-modal flex-1 min-h-0 flex flex-col">
               <div className="modal-corpo campos-modal flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+                  <div>
+                    <label className={rotulo}>CNPJ</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={cnpjForn}
+                      onChange={(e) => setCnpjForn(maskCNPJ(e.target.value))}
+                      placeholder="00.000.000/0001-00"
+                      className={`${campo} font-mono`}
+                    />
+                    <p role="status" className="mt-1 text-xs text-slate-500">{cnpjLoading ? 'Consultando CNPJ…' : 'Preenchimento automático pela BrasilAPI ao informar o CNPJ completo.'}</p>
+                    {cnpjErro && <p role="alert" className="mt-1 text-xs text-amber-700">{cnpjErro}</p>}
+                  </div>
                 <div>
                   <label className={rotulo}>
                     Nome da empresa / fornecedor <span className="text-rose-500">*</span>
@@ -802,17 +931,6 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={rotulo}>CNPJ</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={cnpjForn}
-                      onChange={(e) => setCnpjForn(maskCNPJ(e.target.value))}
-                      placeholder="00.000.000/0001-00"
-                      className={`${campo} font-mono`}
-                    />
-                  </div>
                   <div>
                     <label className={rotulo}>Cidade / UF</label>
                     <input
@@ -850,6 +968,10 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 </div>
 
                 <div>
+                  <label className={rotulo}>E-mail</label>
+                  <input type="email" value={emailForn} onChange={e => setEmailForn(e.target.value)} className={campo} />
+                </div>
+                <div>
                   <label className={rotulo}>Website</label>
                   <input
                     type="text"
@@ -863,8 +985,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                 <div className="flex gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <Info className="w-4 h-4 shrink-0 mt-px text-slate-400" />
                   <p className="text-[11px] leading-relaxed text-slate-600">
-                    Só o nome é obrigatório — os demais campos entram com um valor padrão
-                    e podem ser completados depois.
+                    Só o nome é obrigatório. Revise os dados da consulta e complete os demais campos manualmente.
                   </p>
                 </div>
               </div>

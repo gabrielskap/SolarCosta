@@ -91,6 +91,10 @@ export const Api = {
     return Api.getUsuarios();
   },
 
+  redefinirSenha: async (id: string, senhaNova: string): Promise<void> => {
+    await http.patch(`/api/usuarios/${id}/senha`, { senha_nova: senhaNova });
+  },
+
   deleteUsuario: async (id: string): Promise<User[]> => {
     await http.delete(`/api/usuarios/${id}`);
     return Api.getUsuarios();
@@ -167,8 +171,8 @@ export const Api = {
 
   /* ---------------------------------------------------- fornecedores -- */
 
-  getFornecedores: async (): Promise<Fornecedor[]> => {
-    const r = await http.get<any>('/api/catalogo/fornecedores');
+  getFornecedores: async (status: 'ativos' | 'inativos' = 'ativos'): Promise<Fornecedor[]> => {
+    const r = await http.get<any>(`/api/catalogo/fornecedores?status=${status}`);
     return (r.fornecedores ?? []).map(paraFornecedor);
   },
 
@@ -189,8 +193,8 @@ export const Api = {
 
   /* -------------------------------------------------------- produtos -- */
 
-  getProdutos: async (): Promise<Produto[]> => {
-    const r = await http.get<any>('/api/catalogo/produtos');
+  getProdutos: async (status: 'ativos' | 'inativos' = 'ativos'): Promise<Produto[]> => {
+    const r = await http.get<any>(`/api/catalogo/produtos?status=${status}`);
     return (r.produtos ?? []).map(paraProduto);
   },
 
@@ -201,6 +205,7 @@ export const Api = {
       delete (corpo as Record<string, unknown>).estoque;
       await http.patch(`/api/catalogo/produtos/${p.id}`, corpo);
     } else {
+      delete (corpo as Record<string, unknown>).codigo;
       await http.post('/api/catalogo/produtos', corpo);
     }
     return Api.getProdutos();
@@ -229,8 +234,8 @@ export const Api = {
 
   /* ------------------------------------------------------------ kits -- */
 
-  getKits: async (): Promise<Kit[]> => {
-    const r = await http.get<any>('/api/catalogo/kits');
+  getKits: async (status: 'ativos' | 'inativos' = 'ativos'): Promise<Kit[]> => {
+    const r = await http.get<any>(`/api/catalogo/kits?status=${status}`);
     return (r.kits ?? []).map(paraKit);
   },
 

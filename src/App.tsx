@@ -11,6 +11,7 @@ import {
 type TipoDocumentoPDF = 'proposta' | 'contrato' | 'procuracao' | 'boleto';
 import { Sidebar } from './components/Sidebar';
 import { PlacasView } from './components/PlacasView';
+import { TrocaSenhaObrigatoria } from './components/TrocaSenhaObrigatoria';
 import { LoginView } from './components/LoginView';
 import { NotificationCenter } from './components/NotificationCenter';
 import { ToastContainer, ToastMessage } from './components/Toast';
@@ -315,9 +316,9 @@ export default function App() {
   }, [recarregarNotificacoes]);
 
   useEffect(() => {
-    if (currentUser) void carregarDados();
+    if (currentUser && !currentUser.trocarSenha) void carregarDados();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.trocarSenha]);
 
   /** Recarrega a trilha depois de cada escrita — quem audita agora é o banco. */
   const atualizarAuditoria = useCallback(async () => {
@@ -575,14 +576,17 @@ export default function App() {
       setProdutos(await Api.saveProduto(produto));
       showToast(novo ? 'Produto cadastrado' : 'Produto atualizado', 'success', `${produto.nome} gravado no catálogo.`);
       void atualizarAuditoria();
+      return true;
     } catch (erro) {
       tratarErro(erro, 'Não foi possível salvar o produto');
+      return false;
     }
   };
 
   const handleDeleteProduto = async (id: string) => {
     try {
       setProdutos(await Api.deleteProduto(id));
+      showToast('Produto excluído', 'success');
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível excluir o produto');
@@ -603,6 +607,7 @@ export default function App() {
   const handleDeleteFornecedor = async (id: string) => {
     try {
       setFornecedores(await Api.deleteFornecedor(id));
+      showToast('Fornecedor removido', 'success');
       void atualizarAuditoria();
     } catch (erro) {
       tratarErro(erro, 'Não foi possível excluir o fornecedor');
@@ -767,6 +772,10 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  if (currentUser?.trocarSenha) {
+    return <TrocaSenhaObrigatoria onSair={() => void handleLogout()} />;
   }
 
   if (!currentUser) {

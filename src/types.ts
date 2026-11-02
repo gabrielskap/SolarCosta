@@ -20,6 +20,7 @@ export interface User {
   nome: string;
   email: string;
   senha?: string;
+  trocarSenha?: boolean;
   telefone?: string;
   perfil?: UserRole;
   cargo: UserRole;
@@ -98,6 +99,7 @@ export interface Lead {
 }
 
 export interface Fornecedor {
+  ativo?: boolean;
   id: string;
   nome: string;
   cnpj: string;
@@ -142,6 +144,7 @@ export type TipoProduto =
   | 'Outro';
 
 export interface Produto {
+  ativo?: boolean;
   id: string;
   codigo: string;
   nome: string;

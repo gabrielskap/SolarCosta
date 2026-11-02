@@ -42,12 +42,12 @@ BEGIN
         -- emitidos precisam continuar no mesmo formato ('#187', '2026-0184',
         -- 'OBRA 0184', 'KIT-0001').
         SELECT * FROM (VALUES
-            ('lead',     'SolarCosta_Leads',     '#',     false, 3),
-            ('proposta', 'SolarCosta_Propostas', '',      true,  4),
-            ('contrato', 'SolarCosta_Contratos', '',      true,  4),
-            ('obra',     'SolarCosta_Obras',     'OBRA ', false, 4),
-            ('kit',      'SolarCosta_Kits',      'KIT-',  false, 4)
-        ) AS v(chave, tabela, prefixo, usa_ano, largura)
+            ('lead',     'SolarCosta_Leads',     'numero', '#',     false, 3),
+            ('proposta', 'SolarCosta_Propostas', 'numero', '',      true,  4),
+            ('contrato', 'SolarCosta_Contratos', 'numero', '',      true,  4),
+            ('obra',     'SolarCosta_Obras',     'numero', 'OBRA ', false, 4),
+            ('kit',      'SolarCosta_Kits',      'codigo', 'KIT-',  false, 4)
+        ) AS v(chave, tabela, coluna, prefixo, usa_ano, largura)
     LOOP
         -- Maior número já gravado. O LIKE restringe ao formato da chave — e,
         -- quando ela usa ano, ao ano corrente, que é o único contador que a
@@ -55,10 +55,10 @@ BEGIN
         -- deixar o cast estourar; o grupo pega a última corrida de dígitos,
         -- que é o contador tanto em '#187' quanto em '2026-0184'.
         EXECUTE format(
-            'SELECT COALESCE(max(regexp_replace(numero, ''^.*?(\d+)$'', ''\1'')::integer), 0)'
-            '  FROM (SELECT %I AS numero FROM %I) AS origem'
-            ' WHERE numero LIKE %L AND numero ~ ''\d$''',
-            CASE WHEN s.chave = 'kit' THEN 'codigo' ELSE 'numero' END,
+            'SELECT COALESCE(max(regexp_replace(%1$I, ''^.*?(\d+)$'', ''\1'')::integer), 0)'
+            '  FROM %2$I'
+            ' WHERE %1$I LIKE %3$L AND %1$I ~ ''\d$''',
+            s.coluna,
             s.tabela,
             s.prefixo || CASE WHEN s.usa_ano THEN v_ano::text ELSE '' END || '%'
         ) INTO v_max;

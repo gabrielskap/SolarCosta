@@ -6,7 +6,7 @@
 
 import type { NextFunction, Request, Response } from 'express';
 import { consultarUm } from '../db.js';
-import { naoAutorizado, semPermissao } from '../errors.js';
+import { AppError, naoAutorizado, semPermissao } from '../errors.js';
 import { verificarTokenAcesso } from './tokens.js';
 
 export type Permissao =
@@ -26,6 +26,7 @@ export interface UsuarioAutenticado {
   nome: string;
   email: string;
   cargo: string;
+  trocar_senha: boolean;
   permissoes: Record<Permissao, boolean>;
 }
 
@@ -38,6 +39,7 @@ interface LinhaUsuario {
   nome: string;
   email: string;
   cargo: string;
+  trocar_senha: boolean;
   status: string;
   criar_editar_leads: boolean | null;
   emitir_propostas: boolean | null;
@@ -59,7 +61,7 @@ function extrairToken(req: Request): string | null {
 
 export async function carregarUsuario(id: string): Promise<UsuarioAutenticado | null> {
   const linha = await consultarUm<LinhaUsuario>(
-    `SELECT u.id, u.nome, u.email::text AS email, u.cargo::text AS cargo, u.status::text AS status,
+    `SELECT u.id, u.nome, u.email::text AS email, u.cargo::text AS cargo, u.status::text AS status, u.trocar_senha,
             p.criar_editar_leads, p.emitir_propostas, p.anexar_documentos, p.emitir_contratos,
             p.ver_lancamentos_financeiro, p.gerenciar_usuarios, p.gerenciar_obras, p.ver_auditoria, p.gerenciar_site, p.usar_whatsapp
        FROM "SolarCosta_Usuarios" u
@@ -79,6 +81,7 @@ export async function carregarUsuario(id: string): Promise<UsuarioAutenticado | 
     nome: linha.nome,
     email: linha.email,
     cargo: linha.cargo,
+    trocar_senha: linha.trocar_senha,
     permissoes: {
       criar_editar_leads: ou(linha.criar_editar_leads),
       emitir_propostas: ou(linha.emitir_propostas),
@@ -113,6 +116,14 @@ export function exigirLogin(req: Request, _res: Response, next: NextFunction): v
     .then((usuario) => {
       if (!usuario) {
         next(naoAutorizado('Usuário inativo ou removido.'));
+        return;
+      }
+      const caminho = req.originalUrl.split('?')[0];
+      const permitido = (req.method === 'PATCH' && caminho === '/api/usuarios/me/senha')
+        || (req.method === 'GET' && caminho === '/api/auth/me')
+        || (req.method === 'POST' && caminho === '/api/auth/logout');
+      if (usuario.trocar_senha && !permitido) {
+        next(new AppError(403, 'Troque sua senha para continuar.', 'troca_senha_obrigatoria'));
         return;
       }
       (req as RequestAutenticado).usuario = usuario;

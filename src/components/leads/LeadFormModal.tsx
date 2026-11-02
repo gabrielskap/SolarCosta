@@ -1,3 +1,4 @@
+import { useCnpjLookup } from '../../services/useCnpjLookup';
 import React, { useState } from 'react';
 import { Loader2, MapPinned, UserPlus } from 'lucide-react';
 import { ModalCabecalho } from '../comuns/ModalCabecalho';
@@ -35,6 +36,14 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
   const [responsavel, setResponsavel] = useState(lead?.responsavel ?? currentUser.nome);
   const [cep, setCep] = useState(lead?.cep ?? '');
   const [cepLoading, setCepLoading] = useState(false);
+  const { loading: cnpjLoading, erro: cnpjErro } = useCnpjLookup(cpfCnpj, !lead || cpfCnpj !== lead.cpfCnpj, dados => {
+    setNome(dados.razao_social || dados.nome_fantasia || '');
+    setTelefone(maskPhone(dados.ddd_telefone_1 || ''));
+    setEmail(dados.email || '');
+    setCidade([dados.municipio, dados.uf].filter(Boolean).join('/'));
+    setCep(maskCEP(dados.cep || ''));
+    setEndereco([dados.logradouro, dados.numero, dados.complemento, dados.bairro].filter(Boolean).join(', '));
+  });
 
   // Integração CEP -> endereço (ViaCEP). Preenche endereço e cidade/UF.
   const handleCepLookup = async (cepValue: string) => {
@@ -119,6 +128,23 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="col-span-1 sm:col-span-2">
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                {docLabel(cpfCnpj)}
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={cpfCnpj}
+                onChange={(e) => setCpfCnpj(maskCPFCNPJ(e.target.value))}
+                placeholder="CPF ou CNPJ"
+                className={`${fieldBase} ${cpfInvalido ? errBorder : okBorder}`}
+              />
+              {cpfInvalido && <p className="text-[11px] text-rose-600 font-semibold mt-1">{docLabel(cpfCnpj)} inválido</p>}
+              <p role="status" className="text-xs text-slate-500 mt-1">{cnpjLoading ? 'Consultando CNPJ…' : 'Para CNPJ, os dados disponíveis são preenchidos pela BrasilAPI.'}</p>
+              {cnpjErro && <p role="alert" className="text-xs text-amber-700 mt-1">{cnpjErro}</p>}
+            </div>
+
+            <div className="col-span-1 sm:col-span-2">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Nome Completo / Razão Social *
               </label>
               <input
@@ -130,21 +156,6 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
                 placeholder="Ex: João da Silva / Padaria Sol"
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#004276]"
               />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                {docLabel(cpfCnpj)}
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={cpfCnpj}
-                onChange={(e) => setCpfCnpj(maskCPFCNPJ(e.target.value))}
-                placeholder="000.000.000-00"
-                className={`${fieldBase} ${cpfInvalido ? errBorder : okBorder}`}
-              />
-              {cpfInvalido && <p className="text-[11px] text-rose-600 font-semibold mt-1">{docLabel(cpfCnpj)} inválido</p>}
             </div>
 
             <div>

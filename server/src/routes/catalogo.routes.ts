@@ -31,9 +31,10 @@ const fornecedorSchema = z.object({
 
 catalogoRouter.get(
   '/fornecedores',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const inativos = req.query.status === 'inativos';
     const fornecedores = await consultar(
-      `SELECT * FROM "SolarCosta_vw_Fornecedores" ORDER BY nome`,
+      `SELECT * FROM "SolarCosta_vw_Fornecedores" WHERE ativo = $1 ORDER BY nome`, [!inativos],
     );
     res.json({ fornecedores });
   }),
@@ -124,7 +125,7 @@ catalogoRouter.delete(
 /* ============================================================== PRODUTOS == */
 
 const produtoSchema = z.object({
-  codigo: z.string().min(1, 'Informe o código.').max(40),
+  codigo: z.string().min(1, 'Informe o código.').max(40).optional(),
   nome: z.string().min(1, 'Informe o nome.').max(200),
   tipo_codigo: z.enum(['modulo', 'inversor', 'estrutura', 'cabo', 'protecao', 'acessorio', 'outro']),
   fornecedor_id: z.string().uuid().nullish(),
@@ -141,6 +142,7 @@ catalogoRouter.get(
   asyncHandler(async (req, res) => {
     const f = z
       .object({
+        status: z.enum(['ativos', 'inativos']).default('ativos'),
         tipo: z.string().optional(),
         fornecedor_id: z.string().uuid().optional(),
         busca: z.string().trim().min(1).optional(),
@@ -148,7 +150,7 @@ catalogoRouter.get(
       })
       .parse(req.query);
 
-    const cond: string[] = ['ativo'];
+    const cond: string[] = [f.status === 'inativos' ? 'NOT ativo' : 'ativo'];
     const params: unknown[] = [];
 
     if (f.tipo) { params.push(f.tipo); cond.push(`tipo_codigo = $${params.length}`); }
@@ -175,12 +177,19 @@ catalogoRouter.post(
     const estoqueInicial = z.coerce.number().min(0).default(0).parse(req.body?.estoque ?? 0);
 
     const produto = await emTransacao(async (cliente) => {
+      // Inclui os inativos e serializa a geração entre cadastros simultâneos.
+      await cliente.query("SELECT pg_advisory_xact_lock(hashtext('SolarCosta_Produtos_codigo'))");
+      const { rows: sequencia } = await cliente.query<{ ultimo: string }>(
+        `SELECT COALESCE(MAX(substring(codigo FROM '^PRD-([0-9]+)$')::numeric), 0)::text AS ultimo
+           FROM "SolarCosta_Produtos"`,
+      );
+      const codigo = 'PRD-' + (BigInt(sequencia[0]!.ultimo) + 1n).toString().padStart(4, '0');
       const { rows } = await cliente.query(
         `INSERT INTO "SolarCosta_Produtos"
             (codigo, nome, tipo_codigo, fornecedor_id, preco, estoque, estoque_minimo, unidade, potencia_wp, ncm, ativo)
          VALUES ($1,$2,$3,$4,$5,0,$6,$7,$8,$9,$10)
          RETURNING id`,
-        [d.codigo, d.nome, d.tipo_codigo, d.fornecedor_id ?? null, d.preco,
+        [codigo, d.nome, d.tipo_codigo, d.fornecedor_id ?? null, d.preco,
          d.estoque_minimo, d.unidade, d.potencia_wp ?? null, d.ncm ?? null, d.ativo],
       );
       const id = rows[0]!.id as string;
@@ -223,14 +232,14 @@ catalogoRouter.patch(
             preco          = COALESCE($6, preco),
             estoque_minimo = COALESCE($7, estoque_minimo),
             unidade        = COALESCE($8, unidade),
-            potencia_wp    = COALESCE($9::int, potencia_wp),
+            potencia_wp    = CASE WHEN $12::boolean THEN $9::int ELSE potencia_wp END,
             ncm            = COALESCE($10, ncm),
             ativo          = COALESCE($11, ativo)
           WHERE id = $1
           RETURNING nome`,
         [id, d.codigo ?? null, d.nome ?? null, d.tipo_codigo ?? null, d.fornecedor_id ?? null,
          d.preco ?? null, d.estoque_minimo ?? null, d.unidade ?? null, d.potencia_wp ?? null,
-         d.ncm ?? null, d.ativo ?? null],
+         d.ncm ?? null, d.ativo ?? null, Object.prototype.hasOwnProperty.call(d, 'potencia_wp')],
       );
       if (rows.length === 0) throw naoEncontrado('Produto');
       await cliente.query(`SELECT "SolarCosta_fn_auditar"('editar','Produto',$1,$2,NULL)`, [rows[0]!.nome, id]);
@@ -370,9 +379,9 @@ async function gravarItensKit(
 catalogoRouter.get(
   '/kits',
   asyncHandler(async (req, res) => {
-    const f = z.object({ busca: z.string().trim().min(1).optional() }).parse(req.query);
+    const f = z.object({ busca: z.string().trim().min(1).optional(), status: z.enum(['ativos', 'inativos']).default('ativos') }).parse(req.query);
 
-    const cond: string[] = ['ativo'];
+    const cond: string[] = [f.status === 'inativos' ? 'NOT ativo' : 'ativo'];
     const params: unknown[] = [];
 
     if (f.busca) {
