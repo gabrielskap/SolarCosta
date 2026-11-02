@@ -20,6 +20,7 @@ export interface User {
   nome: string;
   email: string;
   senha?: string;
+  trocarSenha?: boolean;
   telefone?: string;
   perfil?: UserRole;
   cargo: UserRole;

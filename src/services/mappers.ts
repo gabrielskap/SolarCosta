@@ -85,6 +85,7 @@ export function paraUser(linha: any): User {
     email: linha.email,
     telefone: linha.telefone ?? undefined,
     perfil: linha.cargo,
+    trocarSenha: !!linha.trocar_senha,
     cargo: linha.cargo,
     status: linha.status,
     situacao: linha.status === 'ativo' ? 'Ativo' : 'Inativo',

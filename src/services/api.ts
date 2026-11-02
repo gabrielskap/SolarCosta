@@ -91,6 +91,10 @@ export const Api = {
     return Api.getUsuarios();
   },
 
+  redefinirSenha: async (id: string, senhaNova: string): Promise<void> => {
+    await http.patch(`/api/usuarios/${id}/senha`, { senha_nova: senhaNova });
+  },
+
   deleteUsuario: async (id: string): Promise<User[]> => {
     await http.delete(`/api/usuarios/${id}`);
     return Api.getUsuarios();

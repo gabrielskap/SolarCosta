@@ -8,6 +8,7 @@ import {
 } from './types';
 import { Sidebar } from './components/Sidebar';
 import { PlacasView } from './components/PlacasView';
+import { TrocaSenhaObrigatoria } from './components/TrocaSenhaObrigatoria';
 import { LoginView } from './components/LoginView';
 import { NotificationCenter } from './components/NotificationCenter';
 import { ToastContainer, ToastMessage } from './components/Toast';
@@ -310,9 +311,9 @@ export default function App() {
   }, [recarregarNotificacoes]);
 
   useEffect(() => {
-    if (currentUser) void carregarDados();
+    if (currentUser && !currentUser.trocarSenha) void carregarDados();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.trocarSenha]);
 
   /** Recarrega a trilha depois de cada escrita — quem audita agora é o banco. */
   const atualizarAuditoria = useCallback(async () => {
@@ -722,6 +723,10 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  if (currentUser?.trocarSenha) {
+    return <TrocaSenhaObrigatoria onSair={() => void handleLogout()} />;
   }
 
   if (!currentUser) {

@@ -152,6 +152,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onLogin, s
                 <button
                   type="button"
                   onClick={() => setShowSenha(!showSenha)}
+                  aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                  aria-pressed={showSenha}
                   className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
                 >
                   {showSenha ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}

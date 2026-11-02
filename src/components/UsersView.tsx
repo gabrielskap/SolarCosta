@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import { Users, UserPlus, Shield, CheckCircle2, XCircle, Edit2, Trash2, UserCog } from 'lucide-react';
+import { Users, UserPlus, Shield, CheckCircle2, XCircle, Edit2, Trash2, UserCog, KeyRound } from 'lucide-react';
+import { CampoSenha } from './comuns/CampoSenha';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { User, UserPermissions, UserRole } from '../types';
+import { Api } from '../services/api';
+import { ErroApi } from '../services/http';
 import { isValidEmail } from '../utils/format';
 
 /**
@@ -76,6 +79,39 @@ export const UsersView: React.FC<UsersViewProps> = ({
   currentUser,
   showToast
 }) => {
+  const [resetUser, setResetUser] = useState<User | null>(null);
+  const [novaSenha, setNovaSenha] = useState('');
+  const [redefinindo, setRedefinindo] = useState(false);
+  const [redefinida, setRedefinida] = useState(false);
+  const [copiada, setCopiada] = useState(false);
+  const podeGerenciar = currentUser.cargo === 'Administrador' || !!currentUser.permissoes?.gerenciarUsuarios;
+  function gerarSenha() {
+    const grupos = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnopqrstuvwxyz', '23456789', '!@#$%&*?'];
+    function indice(limite: number) {
+      const valor = new Uint32Array(1);
+      const teto = Math.floor(0x100000000 / limite) * limite;
+      do { crypto.getRandomValues(valor); } while (valor[0] >= teto);
+      return valor[0] % limite;
+    }
+    const todos = grupos.join('');
+    const caracteres = grupos.map(g => g[indice(g.length)]);
+    while (caracteres.length < 20) caracteres.push(todos[indice(todos.length)]);
+    for (let i = caracteres.length - 1; i > 0; i--) {
+      const j = indice(i + 1); [caracteres[i], caracteres[j]] = [caracteres[j], caracteres[i]];
+    }
+    setNovaSenha(caracteres.join('')); setCopiada(false);
+  }
+  async function redefinir() {
+    if (!resetUser || !novaSenha || redefinindo) return;
+    setRedefinindo(true);
+    try {
+      await Api.redefinirSenha(resetUser.id, novaSenha);
+      setRedefinida(true);
+      showToast('Senha redefinida', 'success', 'O usuário deverá trocar a senha no próximo login.');
+    } catch (e) {
+      showToast('Não foi possível redefinir a senha', 'error', e instanceof ErroApi ? e.mensagemCompleta : 'Tente novamente.');
+    } finally { setRedefinindo(false); }
+  }
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
@@ -108,7 +144,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
     setEditingUser(u);
     setNome(u.nome);
     setEmail(u.email);
-    setSenha(u.senha);
+    setSenha('');
     setCargo(u.cargo);
     setStatus(u.status);
     setPermissoes(u.permissoes ?? padraoPorCargo(u.cargo));
@@ -127,7 +163,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
       id: editingUser ? editingUser.id : `novo-${Date.now()}`,
       nome,
       email,
-      senha: senha || '123456',
+      senha: editingUser ? undefined : senha,
       cargo,
       dataCriacao: editingUser ? editingUser.dataCriacao : new Date().toLocaleDateString('pt-BR'),
       ultimoAcesso: editingUser ? editingUser.ultimoAcesso : 'Agora mesmo',
@@ -224,12 +260,15 @@ export const UsersView: React.FC<UsersViewProps> = ({
                       {u.status === 'ativo' ? 'Ativo' : 'Inativo'}
                     </button>
                   </td>
-                  <td data-label="AÇÕES" className="p-3 text-right font-bold space-x-2">
+                  <td data-label="AÇÕES" className="p-3 text-right font-bold">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    {podeGerenciar && <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors" onClick={() => { setResetUser(u); setNovaSenha(''); setRedefinida(false); setCopiada(false); }}><KeyRound size={14} />Redefinir senha</button>}
                     <button
                       onClick={() => handleOpenEdit(u)}
-                      className="text-blue-600 hover:underline"
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-colors"
                     >
-                      Editar
+                      <Edit2 size={14} /> Editar
                     </button>
                     {u.id !== currentUser.id && (
                       <button
@@ -237,11 +276,13 @@ export const UsersView: React.FC<UsersViewProps> = ({
                           onDeleteUser(u.id);
                           showToast('Usuário removido', 'info', `${u.nome} excluído.`);
                         }}
-                        className="text-rose-600 hover:underline"
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors"
                       >
-                        Excluir
+                        <Trash2 size={14} /> Excluir
                       </button>
                     )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -250,6 +291,23 @@ export const UsersView: React.FC<UsersViewProps> = ({
         </div>
       </div>
 
+      {resetUser && <div className="modal-overlay fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-label="Redefinir senha" className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+          <ModalCabecalho icone={Shield} titulo="Redefinir senha" subtitulo={resetUser.nome + ' · ' + resetUser.email} onFechar={() => { if (!redefinindo) { setResetUser(null); setNovaSenha(''); } }} />
+          <div className="p-5 space-y-4 text-sm">
+            <p>{redefinida ? 'Senha redefinida. Copie a senha temporária para entregar ao usuário.' : 'Gere uma senha temporária forte. Ao confirmar, o usuário deverá trocar a senha no próximo login.'}</p>
+            <label className="block">Nova senha temporária<CampoSenha readOnly value={novaSenha} className="w-full border rounded-xl p-3 mt-1 font-mono" placeholder="Clique em Gerar senha forte" /></label>
+            <div className="flex gap-3 flex-wrap">
+              {!redefinida && <button disabled={redefinindo} className="btn-modal-cancelar" onClick={gerarSenha}>Gerar senha forte</button>}
+              <button disabled={!novaSenha} className="btn-modal-cancelar" onClick={async () => { try { await navigator.clipboard.writeText(novaSenha); setCopiada(true); } catch { showToast('Não foi possível copiar', 'error', 'Selecione a senha e copie manualmente.'); } }}>{copiada ? 'Senha copiada' : 'Copiar nova senha'}</button>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button disabled={redefinindo} className="btn-modal-cancelar" onClick={() => { setResetUser(null); setNovaSenha(''); }}>{redefinida ? 'Fechar' : 'Cancelar'}</button>
+              {!redefinida && <button disabled={!novaSenha || redefinindo} className="btn-modal-salvar" onClick={() => void redefinir()}>{redefinindo ? 'Redefinindo...' : 'Confirmar redefinição'}</button>}
+            </div>
+          </div>
+        </div>
+      </div>}
       {/* Modal Novo/Editar Usuário */}
       {isModalOpen && (
         <div className="modal-overlay modal-entrada-fundo fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -286,17 +344,18 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 />
               </div>
 
-              <div>
+              {!editingUser && <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Senha de acesso</label>
                 <input
                   type="password"
                   required={!editingUser}
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
-                  placeholder="******"
+                  minLength={8}
+                  placeholder="Mínimo de 8 caracteres"
                   className="w-full p-2.5 bg-slate-50 border rounded-xl font-medium"
                 />
-              </div>
+              </div>}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

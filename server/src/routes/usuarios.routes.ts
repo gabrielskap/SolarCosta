@@ -167,11 +167,14 @@ usuariosRouter.patch(
       throw naoAutorizado('Senha atual incorreta.');
     }
 
+    if (await bcrypt.compare(senha_nova, atual.senha_hash)) {
+      throw new AppError(400, 'Escolha uma senha diferente da senha atual.', 'senha_repetida');
+    }
     const hash = await bcrypt.hash(senha_nova, CUSTO_BCRYPT);
 
     await emTransacao(async (cliente) => {
       await cliente.query(
-        `UPDATE "SolarCosta_Usuarios" SET senha_hash = $2 WHERE id = $1`,
+        `UPDATE "SolarCosta_Usuarios" SET senha_hash = $2, trocar_senha = false WHERE id = $1`,
         [req.usuario.id, hash],
       );
       // Trocar a senha derruba as outras sessões.
@@ -204,7 +207,7 @@ usuariosRouter.patch(
 
     await emTransacao(async (cliente) => {
       const { rows } = await cliente.query(
-        `UPDATE "SolarCosta_Usuarios" SET senha_hash = $2
+        `UPDATE "SolarCosta_Usuarios" SET senha_hash = $2, trocar_senha = true
           WHERE id = $1 AND excluido_em IS NULL RETURNING nome`,
         [id, hash],
       );
