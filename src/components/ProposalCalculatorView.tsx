@@ -725,10 +725,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     if (salvando.current || !validarProposta(!gerarPDF, automatico)) return;
     salvando.current = true;
     setSalvamentoEmCurso(true);
+    const proposta = montarProposta(
+      gerarPDF ? 'enviada' : propostaSalva.current?.status ?? 'rascunho',
+    );
     try {
-      const salva = await onSaveProposal(montarProposta(
-        gerarPDF ? 'enviada' : propostaSalva.current?.status ?? 'rascunho',
-      ));
+      const salva = await onSaveProposal(proposta);
       if (!salva) return false;
       propostaSalva.current = salva;
 
@@ -736,6 +737,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       if (gerarPDF) onOpenPDF('proposta', salva);
       return true;
     } finally {
+      // A criação pode ter funcionado mesmo se a mudança de status falhou.
+      // A API preserva o ID recebido para que a próxima tentativa seja PUT.
+      if (!propostaSalva.current && !proposta.id.startsWith('prop-')) {
+        propostaSalva.current = { ...proposta, status: 'rascunho' };
+      }
       salvando.current = false;
       setSalvamentoEmCurso(false);
     }
@@ -1148,10 +1154,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">MÓDULOS</span>
                 <p className="text-base sm:text-lg font-black text-slate-800">{modulosQtdCalculada} un</p>
-                {!preservarLegado && calculoSolar.quantidadeCalculada > 0 && Number.isFinite(calculoSolar.quantidadeCalculada) && (
+                {calculoSolar.quantidadeCalculada > 0 && Number.isFinite(calculoSolar.quantidadeCalculada) && (
                   <p
                     className="mt-0.5 text-[10px] font-normal text-slate-500"
-                    title="Quantidade necessária antes do arredondamento para cima. Quando há levantamento do telhado, o total instalado segue os módulos do layout."
+                    title="Quantidade calculada com os parâmetros atuais, antes do arredondamento para cima. Quando há levantamento do telhado, o total instalado segue os módulos do layout."
                   >
                     Calculado: {calculoSolar.quantidadeCalculada.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} un
                   </p>

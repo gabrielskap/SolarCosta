@@ -126,6 +126,11 @@ const NovaPropostaRoute: React.FC<NovaPropostaRouteProps> = (props) => {
     <ProposalCalculatorView
       {...props}
       currentLeadId={searchParams.get('leadId') || undefined}
+      onSaveProposal={async (proposta) => {
+        const salva = await props.onSaveProposal(proposta);
+        if (salva) navigate(`/sistema/propostas/${salva.id}/editar`, { replace: true });
+        return salva;
+      }}
       onBack={() => navigate('/sistema/propostas')}
     />
   );

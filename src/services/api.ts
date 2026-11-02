@@ -271,19 +271,20 @@ export const Api = {
   },
 
   persistProposta: async (p: Proposta): Promise<Proposta> => {
-    let id = p.id;
     const corpo = deProposta(p);
+    let resposta: any;
     if (p.id && !p.id.startsWith('prop-') && !p.id.startsWith('novo-')) {
-      await http.put(`/api/propostas/${p.id}`, corpo);
-      if (p.status) await http.patch(`/api/propostas/${p.id}/status`, { status: p.status });
+      resposta = await http.put<any>(`/api/propostas/${p.id}`, corpo);
     } else {
-      const criada = await http.post<any>('/api/propostas', corpo);
-      id = criada.proposta.id;
-      if (p.status && p.status !== 'rascunho') {
-        await http.patch(`/api/propostas/${criada.proposta.id}/status`, { status: p.status });
-      }
+      resposta = await http.post<any>('/api/propostas', corpo);
     }
-    return Api.getProposta(id);
+    // Preserve o ID assim que a gravação terminar. Uma falha na emissão não
+    // pode fazer a próxima tentativa criar outra proposta.
+    p.id = resposta.proposta.id;
+    if (p.status && p.status !== resposta.proposta.status) {
+      resposta = await http.patch<any>(`/api/propostas/${p.id}/status`, { status: p.status });
+    }
+    return paraProposta(resposta.proposta);
   },
 
   deleteProposta: async (id: string): Promise<void> => {
