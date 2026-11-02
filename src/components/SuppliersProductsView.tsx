@@ -2,7 +2,7 @@ import { AbasAtividade } from './comuns/AbasAtividade';
 import { Api } from '../services/api';
 import { useCnpjLookup } from '../services/useCnpjLookup';
 import React, { useEffect, useState } from 'react';
-import { Package, Truck, Search, Plus, Edit2, Trash2, ExternalLink, AlertTriangle, Boxes, PackageX, ChevronDown, Info } from 'lucide-react';
+import { Package, Truck, Search, Plus, Edit2, Trash2, ExternalLink, AlertTriangle, Boxes, PackageX, ChevronDown, Info, Zap, DollarSign } from 'lucide-react';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { Produto, Fornecedor, Kit, KitItem, TipoProdutoSlug, User } from '../types';
 import { slugDoTipoProduto } from '../services/mappers';
@@ -57,6 +57,24 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       .finally(() => { if (atual) setCarregandoKits(false); });
     return () => { atual = false; };
   }, [activeTab, kits, verKitsInativos]);
+  const [reativandoKit, setReativandoKit] = useState<string | null>(null);
+
+  const reativarKit = async (kit: Kit) => {
+    setReativandoKit(kit.id);
+    try {
+      await onSaveKit({ ...kit, ativo: true });
+      setKitsInativos(anteriores => anteriores.filter(k => k.id !== kit.id));
+      showToast('Kit reativado', 'success', `${kit.nome} reativado com sucesso.`);
+    } catch {
+      showToast('Erro ao reativar', 'error', 'Não foi possível reativar o kit.');
+    } finally {
+      setReativandoKit(null);
+    }
+  };
+
+  const mediaPrecoKits = kits.length ? kits.reduce((acc, k) => acc + (k.preco || 0), 0) / kits.length : 0;
+  const maiorPotenciaKit = kits.reduce((max, k) => ((k.potenciaWpTotal || 0) > max ? (k.potenciaWpTotal || 0) : max), 0);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusProduto, setStatusProduto] = useState<'ativos' | 'inativos'>('ativos');
   const [produtosInativos, setProdutosInativos] = useState<Produto[]>([]);
@@ -637,82 +655,161 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       {/* KITS TAB */}
       {activeTab === 'kits' && (
         <div className="space-y-4">
-          <AbasAtividade inativos={verKitsInativos} onChange={setVerKitsInativos} />
-          {verKitsInativos && carregandoKits && <p role="status">Carregando kits inativos…</p>}
-          {verKitsInativos && erroKits && <p role="alert" className="text-rose-600">{erroKits}</p>}
-          {filteredKits.length === 0 && !(verKitsInativos && (carregandoKits || erroKits)) ? (
-            <div className="bg-white p-10 rounded-2xl border border-slate-200 shadow-sm text-center">
-              <Boxes className="w-10 h-10 text-slate-300 mx-auto" />
-              <p className="font-bold text-slate-700 text-sm mt-3">Nenhum kit encontrado nesta aba</p>
-              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                O kit é o que tem preço de venda: um nome, um valor fechado e os produtos que o compõem.
-              </p>
+          {/* KPIs de kits */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Kits no catálogo</span>
+                <Boxes className="w-4 h-4 text-[#004276]" />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 mt-1">{kits.length}</h3>
+              <p className="text-[10px] text-slate-500 font-medium">com preço de venda</p>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Preço médio</span>
+                <DollarSign className="w-4 h-4 text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 mt-1">
+                {mediaPrecoKits > 0 ? `R$ ${mediaPrecoKits.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '–'}
+              </h3>
+              <p className="text-[10px] text-slate-500 font-medium">valor médio unitário</p>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Maior potência</span>
+                <Zap className="w-4 h-4 text-amber-500" />
+              </div>
+              <h3 className="text-xl font-black text-[#004276] mt-1">
+                {maiorPotenciaKit > 0 ? `${(maiorPotenciaKit / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kWp` : '–'}
+              </h3>
+              <p className="text-[10px] text-slate-500 font-medium">maior kit cadastrado</p>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Inativos</span>
+                <PackageX className="w-4 h-4 text-slate-400" />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 mt-1">{kitsInativos.length}</h3>
+              <p className="text-[10px] text-slate-500 font-medium">fora de circulação</p>
+            </div>
+          </div>
+
+          <div role="tablist" aria-label="Status dos kits" className="flex gap-2">
+            {[false, true].map((inativo) => (
               <button
-                onClick={handleOpenNewKit}
-                className="mt-4 px-4 py-2 bg-[#004276] hover:bg-[#003159] text-white font-bold rounded-xl text-xs shadow transition"
+                key={String(inativo)}
+                role="tab"
+                aria-selected={verKitsInativos === inativo}
+                onClick={() => setVerKitsInativos(inativo)}
+                className={verKitsInativos === inativo ? 'px-4 py-2 rounded-xl bg-[#004276] text-white text-sm font-bold' : 'px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-bold'}
               >
-                + Novo kit de instalação
+                {inativo ? 'Inativos' : 'Ativos'} ({inativo ? kitsInativos.length : kits.length})
               </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredKits.map((k) => (
-                <div key={k.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-mono text-[10px] font-bold text-slate-400">{k.codigo}</p>
-                      <h3 className="font-extrabold text-slate-900 text-sm truncate">{k.nome}</h3>
-                      {k.descricao && (
-                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{k.descricao}</p>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-lg font-black text-[#004276]">
-                        R$ {k.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </p>
-                      {!!k.potenciaWpTotal && (
-                        <p className="text-[10px] font-bold text-slate-400">
-                          {(k.potenciaWpTotal / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kWp
-                        </p>
-                      )}
-                    </div>
-                  </div>
+            ))}
+          </div>
 
-                  <div className="border-t border-slate-100 pt-3 space-y-1.5">
-                    {k.itens.map((i) => (
-                      <div key={i.id} className="flex items-center justify-between text-xs">
-                        <span className={`truncate ${i.produtoAtivo === false ? 'text-rose-600 font-semibold' : 'text-slate-600'}`}>
-                          {i.produtoNome}
-                          {i.produtoAtivo === false && ' (excluído do catálogo)'}
-                        </span>
-                        <span className="font-bold text-slate-800 shrink-0 ml-2">
-                          {i.qtd.toLocaleString('pt-BR')} un
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+          {verKitsInativos && carregandoKits && <p role="status" className="text-xs text-slate-500">Carregando kits inativos…</p>}
+          {verKitsInativos && erroKits && <p role="alert" className="text-xs text-rose-600 font-medium">{erroKits}</p>}
 
-                  <div className="flex justify-end gap-3 text-xs font-bold pt-1">
-                    <button onClick={() => handleOpenEditKit(k)} className="text-blue-600 hover:underline flex items-center gap-1">
-                      <Edit2 className="w-3.5 h-3.5" /> Editar
-                    </button>
-                    {!verKitsInativos && <button
-                      onClick={() => {
-                        onDeleteKit(k.id);
-                        showToast('Kit excluído', 'info', `${k.nome} removido do catálogo.`);
-                      }}
-                      className="text-rose-600 hover:underline flex items-center gap-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Inativar
-                    </button>}
-                  </div>
-                </div>
-              ))}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="tabela-mobile w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-500 font-bold uppercase text-[10px] border-b">
+                    <th className="p-3">CÓDIGO</th>
+                    <th className="p-3">KIT</th>
+                    <th className="p-3">POTÊNCIA</th>
+                    <th className="p-3">COMPOSIÇÃO / PRODUTOS</th>
+                    <th className="p-3">VALOR</th>
+                    <th className="p-3 text-right">AÇÕES</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredKits.length === 0 && !(verKitsInativos && (carregandoKits || erroKits)) && (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-slate-500">
+                        Nenhum kit encontrado nesta aba.
+                      </td>
+                    </tr>
+                  )}
+                  {filteredKits.map((k) => (
+                    <tr key={k.id} className="hover:bg-slate-50 transition-colors">
+                      <td data-label="CÓDIGO" className="p-3 font-mono font-bold text-slate-600">{k.codigo}</td>
+                      <td data-label="KIT" className="p-3">
+                        <div className="font-bold text-slate-900">{k.nome}</div>
+                        {k.descricao && (
+                          <div className="text-[11px] text-slate-500 font-normal line-clamp-1 mt-0.5">{k.descricao}</div>
+                        )}
+                      </td>
+                      <td data-label="POTÊNCIA" className="p-3">
+                        {k.potenciaWpTotal ? (
+                          <span className="bg-blue-50 text-[#004276] font-bold px-2 py-0.5 rounded text-[10px]">
+                            {(k.potenciaWpTotal / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kWp
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">–</span>
+                        )}
+                      </td>
+                      <td data-label="COMPOSIÇÃO" className="p-3">
+                        <div className="flex flex-wrap gap-1 max-w-md">
+                          {k.itens.map((i) => (
+                            <span
+                              key={i.id}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] ${
+                                i.produtoAtivo === false
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200 font-bold'
+                                  : 'bg-slate-100 text-slate-700 font-medium'
+                              }`}
+                              title={i.produtoNome}
+                            >
+                              <strong className="text-slate-900">{i.qtd}×</strong>
+                              <span className="truncate max-w-[130px]">{i.produtoNome}</span>
+                              {i.produtoAtivo === false && ' (inativo)'}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td data-label="VALOR" className="p-3 whitespace-nowrap">
+                        <span className="font-black text-[#004276] text-sm">
+                          R$ {k.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </td>
+                      <td data-label="AÇÕES" className="p-3 text-right font-bold space-x-2 whitespace-nowrap">
+                        <button
+                          onClick={() => handleOpenEditKit(k)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Editar
+                        </button>
+                        {!verKitsInativos ? (
+                          <button
+                            onClick={() => {
+                              onDeleteKit(k.id);
+                              showToast('Kit inativado', 'info', `${k.nome} movido para os inativos.`);
+                            }}
+                            className="text-rose-600 hover:underline"
+                          >
+                            Inativar
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => void reativarKit(k)}
+                            disabled={reativandoKit === k.id}
+                            className="text-emerald-600 hover:underline disabled:opacity-50"
+                          >
+                            {reativandoKit === k.id ? 'Reativando…' : 'Reativar'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
+          </div>
         </div>
       )}
-
       {/* FORNECEDORES TAB */}
       {activeTab === 'fornecedores' && (
         <div className="space-y-4">

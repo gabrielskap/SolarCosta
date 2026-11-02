@@ -362,6 +362,7 @@ export function deKit(k: Partial<Kit>): Record<string, unknown> {
     descricao: k.descricao || null,
     preco: k.preco ?? 0,
     itens: (k.itens ?? []).map((i) => ({ produto_id: i.produtoId, qtd: i.qtd })),
+    ...(k.ativo !== undefined ? { ativo: k.ativo } : {}),
   };
 }
 

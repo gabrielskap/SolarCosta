@@ -188,6 +188,7 @@ export interface Kit {
   itens: KitItem[];
   /** Soma de `potenciaWp * qtd` dos componentes, calculada pela view. */
   potenciaWpTotal?: number;
+  ativo?: boolean;
 }
 
 export interface PropostaItem {

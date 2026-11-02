@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BatteryCharging,
   Sun,
   Zap,
-  Cpu,
   Plus,
   Trash2,
   Save,
@@ -15,15 +14,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileSpreadsheet,
-  Building,
-  User,
-  Phone,
-  Mail,
   PieChart as PieChartIcon,
   ExternalLink,
-  Sliders,
   ShieldCheck,
   Info,
+  Layers,
+  ChevronDown,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { listarAparelhos, type Aparelho } from '../services/aparelhos';
@@ -35,13 +33,12 @@ import {
   type ResumoOffGrid,
 } from '../services/offGrid';
 import { ErroApi } from '../services/http';
-import { LeadAutocomplete } from './LeadAutocomplete';
+import { LeadAutocomplete, type LeadOpcao } from './LeadAutocomplete';
 import {
   cargasOffGridPadrao,
   configOffGridPadrao,
   dimensionarSistema,
   type CargaOffGrid,
-  type ConfigOffGrid,
 } from '../utils/offGrid';
 
 const novo = (): DadosOffGrid => ({
@@ -69,14 +66,178 @@ const CARGAS_RAPIDAS = [
 
 const CORES_GRAFICO = ['#004276', '#0284c7', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#64748b'];
 
+/** Componente de Autocomplete do Catálogo de Aparelhos */
+function CatalogoAutocomplete({
+  catalogo,
+  carregando,
+  catalogoErro,
+  onAdicionar,
+}: {
+  catalogo: Aparelho[];
+  carregando: boolean;
+  catalogoErro: string;
+  onAdicionar: (aparelho: Aparelho) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState('');
+  const [ativo, setAtivo] = useState(-1);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const filtrados = useMemo(() => {
+    if (!busca.trim()) return catalogo.slice(0, 30);
+    const termo = busca.toLowerCase();
+    return catalogo.filter((a) => `${a.ambiente} ${a.nome}`.toLowerCase().includes(termo)).slice(0, 40);
+  }, [catalogo, busca]);
+
+  const selecionar = (aparelho: Aparelho) => {
+    onAdicionar(aparelho);
+    setBusca('');
+    setAberto(false);
+    setAtivo(-1);
+  };
+
+  return (
+    <div
+      ref={dropdownRef}
+      className="relative w-full"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setAberto(false);
+        }
+      }}
+    >
+      <div className="relative">
+        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <input
+          type="search"
+          role="combobox"
+          aria-expanded={aberto}
+          autoComplete="off"
+          className="w-full text-xs border border-slate-200 rounded-lg pl-8 pr-16 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#004276] focus:border-[#004276] placeholder:text-slate-400"
+          placeholder="Buscar no catálogo e adicionar aparelho..."
+          value={busca}
+          onFocus={() => setAberto(true)}
+          onClick={() => setAberto(true)}
+          onChange={(e) => {
+            setBusca(e.target.value);
+            setAberto(true);
+            setAtivo(-1);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setAberto(true);
+              setAtivo((i) => Math.min(i + 1, filtrados.length - 1));
+            }
+            if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setAtivo((i) => Math.max(i - 1, 0));
+            }
+            if (e.key === 'Enter' && aberto && filtrados[ativo]) {
+              e.preventDefault();
+              selecionar(filtrados[ativo]);
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setAberto(false);
+            }
+          }}
+        />
+
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          {busca && (
+            <button
+              type="button"
+              className="text-slate-400 hover:text-slate-600 p-0.5"
+              onClick={() => {
+                setBusca('');
+                setAberto(false);
+              }}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            className="text-slate-400 hover:text-slate-600 p-0.5"
+            onClick={() => setAberto((prev) => !prev)}
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {aberto && (
+        <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-60 overflow-y-auto">
+          {carregando ? (
+            <div className="p-3 text-xs text-slate-500 flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#004276]" />
+              <span>Carregando catálogo de aparelhos...</span>
+            </div>
+          ) : catalogoErro ? (
+            <div className="p-3 text-xs text-red-600">{catalogoErro}</div>
+          ) : !filtrados.length ? (
+            <div className="p-3 text-xs text-slate-500 text-center space-y-1">
+              <p>Nenhum aparelho encontrado para "{busca}".</p>
+              <p className="text-[10px] text-slate-400">
+                Cadastre em{' '}
+                <Link className="underline text-sky-700" to="/sistema/parametros/aparelhos">
+                  Parâmetros → Aparelhos
+                </Link>
+                .
+              </p>
+            </div>
+          ) : (
+            <ul role="listbox" className="divide-y divide-slate-100">
+              <li className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50">
+                {busca.trim() ? `Resultados da busca (${filtrados.length})` : `Aparelhos disponíveis (${catalogo.length})`}
+              </li>
+              {filtrados.map((item, i) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={ativo === i}
+                    className={`w-full text-left px-2.5 py-1.5 flex items-center justify-between text-xs hover:bg-sky-50 transition ${
+                      ativo === i ? 'bg-sky-50' : ''
+                    }`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setAtivo(i)}
+                    onClick={() => selecionar(item)}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      {item.ambiente && (
+                        <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                          {item.ambiente}
+                        </span>
+                      )}
+                      <span className="font-medium text-slate-800 truncate">{item.nome}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <span className="font-mono font-semibold text-[#004276] text-xs">
+                        {item.potenciaW} W
+                      </span>
+                      <span className="text-[10px] text-sky-700 font-semibold bg-sky-50 hover:bg-sky-100 px-1.5 py-0.5 rounded border border-sky-200">
+                        + Incluir
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
   const [dados, setDados] = useState<DadosOffGrid>(novo);
   const [id, setId] = useState<string>();
   const [catalogo, setCatalogo] = useState<Aparelho[]>([]);
   const [catalogoErro, setCatalogoErro] = useState('');
   const [carregandoCatalogo, setCarregandoCatalogo] = useState(true);
-  const [selecionado, setSelecionado] = useState('');
-  const [buscaAparelho, setBuscaAparelho] = useState('');
   const [simulacoes, setSimulacoes] = useState<ResumoOffGrid[]>([]);
   const [editando, setEditando] = useState(false);
   const [carregandoLista, setCarregandoLista] = useState(true);
@@ -130,6 +291,22 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
           tensaoV: carga.tensaoV,
           quantidade: carga.quantidade,
           horasDia: carga.horasDia,
+        },
+      ],
+    });
+  };
+
+  const adicionarCargaCatalogo = (a: Aparelho) => {
+    atualizar({
+      equipamentos: [
+        ...dados.equipamentos,
+        {
+          id: crypto.randomUUID(),
+          nome: a.nome,
+          potenciaW: a.potenciaW,
+          quantidade: 1,
+          horasDia: 2,
+          tensaoV: 220,
         },
       ],
     });
@@ -484,7 +661,7 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-3.5">
         {/* ================= COLUNA DA ESQUERDA: ENTRADA DE DADOS ================= */}
         <div className="xl:col-span-7 space-y-3.5">
-          {/* Card 1: Título e Cliente */}
+          {/* Card 1: Identificação & Cliente */}
           <section className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
@@ -496,61 +673,56 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
             </div>
 
             <div className="space-y-2.5">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Título da simulação <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  maxLength={200}
-                  placeholder="Ex: Sítio São José - Sistema Isolado 48V"
-                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-1 focus:ring-[#004276] focus:border-[#004276] focus:outline-none"
-                  value={dados.titulo}
-                  onChange={(e) => atualizar({ titulo: e.target.value })}
-                />
-              </div>
-
+              {/* Grid 2 colunas: Título e Nome do Cliente / Lead juntos */}
               <div className="grid sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vincular a um Lead (Opcional)</label>
-                  <LeadAutocomplete
-                    leadId={dados.leadId}
-                    nome={dados.cliente.nome}
-                    onChange={(lead) => {
-                      atualizar({
-                        leadId: lead?.id ?? null,
-                        ...(lead
-                          ? {
-                              cliente: {
-                                ...dados.cliente,
-                                nome: lead.nome,
-                                cnpj: lead.cpf_cnpj ?? '',
-                                telefone: lead.telefone ?? '',
-                                email: lead.email ?? '',
-                              },
-                            }
-                          : {}),
-                      });
-                    }}
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Título da simulação <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    maxLength={200}
+                    placeholder="Ex: Sítio São José - Sistema Isolado 48V"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-1 focus:ring-[#004276] focus:border-[#004276] focus:outline-none"
+                    value={dados.titulo}
+                    onChange={(e) => atualizar({ titulo: e.target.value })}
                   />
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Nome do Cliente <span className="text-red-500">*</span>
+                    Cliente / Lead <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    required
-                    maxLength={200}
-                    placeholder="Nome completo"
-                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-1 focus:ring-[#004276] focus:border-[#004276] focus:outline-none"
-                    value={dados.cliente.nome}
-                    onChange={(e) => atualizar({ cliente: { ...dados.cliente, nome: e.target.value } })}
+                  <LeadAutocomplete
+                    leadId={dados.leadId}
+                    nome={dados.cliente.nome}
+                    placeholder="Nome do cliente ou buscar lead..."
+                    onNomeChange={(novoNome) => {
+                      atualizar({
+                        cliente: { ...dados.cliente, nome: novoNome },
+                      });
+                    }}
+                    onChange={(lead: LeadOpcao | null) => {
+                      atualizar({
+                        leadId: lead?.id ?? null,
+                        cliente: lead
+                          ? {
+                              ...dados.cliente,
+                              nome: lead.nome,
+                              cnpj: lead.cpf_cnpj ?? dados.cliente.cnpj,
+                              telefone: lead.telefone ?? dados.cliente.telefone,
+                              email: lead.email ?? dados.cliente.email,
+                              empresa: lead.empresa ?? dados.cliente.empresa,
+                            }
+                          : dados.cliente,
+                      });
+                    }}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              {/* Linha com 4 campos secundários do cliente */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
                 <div>
                   <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Empresa</label>
                   <input
@@ -638,70 +810,25 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
               </div>
             </div>
 
-            {/* Inclusão a partir do catálogo cadastrado */}
+            {/* Inclusão a partir do Catálogo: Autocomplete Unificado */}
             <div className="bg-slate-50/70 p-2.5 rounded-lg border border-slate-100 space-y-1.5">
-              <div className="grid sm:grid-cols-[1fr_1.5fr_auto] gap-2 items-center">
-                <input
-                  type="search"
-                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#004276]"
-                  placeholder="Buscar no catálogo..."
-                  value={buscaAparelho}
-                  onChange={(e) => {
-                    setBuscaAparelho(e.target.value);
-                    setSelecionado('');
-                  }}
-                />
-                <select
-                  aria-label="Equipamento cadastrado"
-                  className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#004276]"
-                  value={selecionado}
-                  onChange={(e) => setSelecionado(e.target.value)}
-                >
-                  <option value="">{carregandoCatalogo ? 'Carregando aparelhos...' : 'Selecione do catálogo'}</option>
-                  {catalogo
-                    .filter((a) => `${a.ambiente} ${a.nome}`.toLowerCase().includes(buscaAparelho.toLowerCase()))
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.ambiente} · {a.nome} ({a.potenciaW} W)
-                      </option>
-                    ))}
-                </select>
-                <button
-                  type="button"
-                  disabled={!selecionado || dados.equipamentos.length >= 500}
-                  onClick={() => {
-                    const a = catalogo.find((item) => item.id === selecionado);
-                    if (a) {
-                      atualizar({
-                        equipamentos: [
-                          ...dados.equipamentos,
-                          {
-                            id: crypto.randomUUID(),
-                            nome: a.nome,
-                            potenciaW: a.potenciaW,
-                            quantidade: 1,
-                            horasDia: 2,
-                            tensaoV: 220,
-                          },
-                        ],
-                      });
-                      setSelecionado('');
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-[#004276] hover:bg-[#003159] text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition"
-                >
-                  Incluir
-                </button>
-              </div>
-              {!carregandoCatalogo && !catalogo.length && !catalogoErro && (
-                <p className="text-[10px] text-slate-500">
-                  Cadastre aparelhos em{' '}
-                  <Link className="underline text-sky-700" to="/sistema/parametros/aparelhos">
-                    Parâmetros → Aparelhos
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                  <Layers className="w-3 h-3 text-sky-700" />
+                  Buscar no catálogo de aparelhos
+                </span>
+                {!carregandoCatalogo && !catalogo.length && !catalogoErro && (
+                  <Link className="text-[10px] underline text-sky-700" to="/sistema/parametros/aparelhos">
+                    Cadastrar aparelhos
                   </Link>
-                  .
-                </p>
-              )}
+                )}
+              </div>
+              <CatalogoAutocomplete
+                catalogo={catalogo}
+                carregando={carregandoCatalogo}
+                catalogoErro={catalogoErro}
+                onAdicionar={adicionarCargaCatalogo}
+              />
             </div>
 
             {/* Tabela Compacta de Cargas */}
@@ -796,7 +923,7 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
                   {!dados.equipamentos.length && (
                     <tr>
                       <td colSpan={8} className="py-6 text-center text-slate-400 text-xs">
-                        Nenhuma carga adicionada. Utilize os atalhos rápidos acima ou inclua manualmente.
+                        Nenhuma carga adicionada. Utilize os atalhos rápidos acima ou o catálogo de busca.
                       </td>
                     </tr>
                   )}
@@ -821,7 +948,7 @@ export function OffGridView({ podeSalvar = true }: { podeSalvar?: boolean }) {
             </div>
           </section>
 
-          {/* Card 3: Parâmetros Técnicos (Baterias & Módulos) em Abas/Segmentos compactos */}
+          {/* Card 3: Parâmetros Técnicos (Baterias & Módulos) */}
           <section className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
