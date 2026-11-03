@@ -16,6 +16,7 @@ import {
 } from '../services/cep';
 import { Api, paramNum, type ConfigApp } from '../services/api';
 import { slugDoTipoProduto } from '../services/mappers';
+import { listarPlacas, type PlacaSolar } from '../services/placas';
 import { parcelaFinanciamento } from '../utils/solar';
 import { calcularProposta, entradaSolarZerada, type EntradaSolar } from '../../server/src/domain/propostaSolar';
 import { PropostaPremissas } from './PropostaPremissas';
@@ -81,6 +82,17 @@ function telhadoDaProposta(p?: Proposta): DadosTelhadoProposta | null {
     layoutAjusteManual: p.layoutAjusteManual ?? false,
     layoutModulo: p.layoutModulo,
   };
+}
+
+/**
+ * Achata a lista da proposta até o que de fato vai para o telhado.
+ *
+ * Linha de kit não é equipamento: o equipamento são os `componentes` dela. Por
+ * isso o kit é substituído pelos filhos, e não somado a eles — contar os dois
+ * dobraria a potência do inversor e do painel na hora de dimensionar.
+ */
+function itensInstalados(itens: PropostaItem[]): PropostaItem[] {
+  return itens.flatMap(item => (item.componentes?.length ? itensInstalados(item.componentes) : [item]));
 }
 
 export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
@@ -435,10 +447,55 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     parcelas: parcelasFinanciamento,
   });
 
+  /*
+   * Parâmetros técnicos que o catálogo já responde.
+   *
+   * Potência do inversor e dimensões do módulo só existiam dentro de
+   * "Premissas e Parâmetros Avançados", que nasce fechado. O efeito prático
+   * era montar um kit com micro inversor e painel cadastrados, preencher a
+   * potência do módulo e mesmo assim esbarrar em "Informe potência do módulo,
+   * inversor e tarifa maiores que zero" na hora de gerar o PDF — o formulário
+   * pedia à mão um número que os próprios itens da proposta já carregam.
+   *
+   * Agora a ordem é: levantamento do telhado, depois o que o consultor digitou
+   * à mão, depois o catálogo. Nada disso sobrescreve valor digitado.
+   */
+  const itensDoKit = itensInstalados(kitItens);
+  // Catálogo de placas: é onde moram as dimensões do módulo. Indisponível, os
+  // campos manuais continuam valendo e a proposta só não ganha a área automática.
+  const [placas, setPlacas] = useState<PlacaSolar[]>([]);
+  useEffect(() => {
+    let ativo = true;
+    listarPlacas().then(lista => { if (ativo) setPlacas(lista); }).catch(() => undefined);
+    return () => { ativo = false; };
+  }, []);
+  const produtoDoItem = (item: PropostaItem) => produtos.find(p => p.id === item.produtoId);
+
+  // Micro inversor entra várias vezes no mesmo kit: o que limita o sistema é a
+  // soma das unidades instaladas, e não a potência de uma delas.
+  const inversorKwDoKit = itensDoKit.reduce((soma, item) => (
+    slugDoTipoProduto(produtoDoItem(item)?.tipo) === 'inversor'
+      ? soma + ((produtoDoItem(item)?.potenciaWp ?? 0) * item.qtd) / 1000
+      : soma
+  ), 0);
+
+  // Largura e altura não ficam no produto, e sim na placa cadastrada — é por
+  // ela que a área estimada deixa de imprimir 0 m² sem ninguém digitar nada.
+  const placaDoKit = itensDoKit.reduce<PlacaSolar | undefined>((achada, item) => (
+    achada ?? (slugDoTipoProduto(produtoDoItem(item)?.tipo) === 'modulo'
+      ? placas.find(p => p.ativo && p.produtoId === item.produtoId)
+      : undefined)
+  ), undefined);
+
+  const inversorKwEfetivo = entradaSolar.inversorKw || inversorKwDoKit;
+  const larguraEfetivaM = levantamentoTelhado?.modulo.larguraM || entradaSolar.larguraM || placaDoKit?.larguraM || 0;
+  const alturaEfetivaM = levantamentoTelhado?.modulo.alturaM || entradaSolar.alturaM || placaDoKit?.alturaM || 0;
+
   const calculoSolar = calcularProposta({
     ...entradaSolar, moduloWp, perdasPct, tarifa: tarifaKwh,
-    larguraM: levantamentoTelhado?.modulo.larguraM ?? entradaSolar.larguraM,
-    alturaM: levantamentoTelhado?.modulo.alturaM ?? entradaSolar.alturaM,
+    inversorKw: inversorKwEfetivo,
+    larguraM: larguraEfetivaM,
+    alturaM: alturaEfetivaM,
     taxaSem: iluminacaoPublicaSemSfcr, disponibilidadeReais: custoDisponibilidade, taxaCom: iluminacaoPublicaComSfcr,
     investimento: valorTotalInvestimento, parcela: formaPagamento === 'financiamento' ? pmtParcelaFinanciamento : 0,
     parcelas: formaPagamento === 'financiamento' ? parcelasFinanciamento : 0,
@@ -1210,7 +1267,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
             {/* Premissas & Configurações Avançadas */}
             <PropostaPremissas
-              entrada={{ ...entradaSolar, moduloWp, perdasPct }}
+              entrada={{ ...entradaSolar, moduloWp, perdasPct, inversorKw: inversorKwEfetivo, larguraM: larguraEfetivaM, alturaM: alturaEfetivaM }}
               onChange={atualizarEntradaSolar}
               resultado={calculoSolar}
               legado={legado}

@@ -21,6 +21,12 @@ perto(multi.consumoMedio,1500);perto(multi.compensacao,1490);
 assert.equal(entradaSolarSchema.safeParse({...base(),hspMensal:[5]}).success,false);
 assert.equal(entradaSolarSchema.safeParse({...base(),ucs:[{...base().ucs[0],meses:[1,2]}]}).success,false);
 assert.equal(calcularProposta({...base(),inversorKw:1}).completo,false);
+assert.ok(calcularProposta({...base(),inversorKw:1}).erros.some(e=>e==='Potência instalada (8,52 kWp) excede a capacidade do inversor (1 kW com 30% de oversizing).'));
+// Sem inversor informado, o único erro é o campo que falta: a capacidade 0 não
+// vira um segundo erro de "excesso" que ninguém sabe onde corrigir.
+const semInversor=calcularProposta({...base(),inversorKw:0});
+assert.ok(semInversor.erros.includes('Informe potência do módulo, inversor e tarifa maiores que zero.'));
+assert.ok(!semInversor.erros.some(e=>e.includes('excede a capacidade')));
 const excesso=calcularProposta({...base(),quantidadeInstalada:24});assert.ok(excesso.valorGeracaoMensal>excesso.consumoMedio*1.19);perto(excesso.economiaOperacional,1091.73);
 const parcial=calcularProposta({...base(),quantidadeInstalada:1});assert.ok(parcial.contaComSolar>132);
 const degradacao=calcularProposta({...base(),modo:'excel',geracaoAnualExcel:12000,degradacaoInicialPct:1,degradacaoAnualPct:0.7,reajustePct:6});

@@ -63,7 +63,14 @@ export function calcularProposta(e: EntradaSolar) {
   const potenciaKwp = modulosQtd*e.moduloWp/1000;
   const potenciaNecessariaKwp = hspMedia>0?compensacao/30/hspMedia:0;
   const capacidadeInversor = e.inversorKw*(1+e.oversizingPct/100);
-  if(potenciaKwp>capacidadeInversor) erros.push('Potência instalada excede a capacidade do inversor com oversizing.');
+  // Sem inversor informado a capacidade é 0 e QUALQUER sistema "excede" — um
+  // segundo erro que só repete, em outras palavras, o campo que falta logo
+  // acima. A comparação só diz algo quando há um inversor para comparar.
+  // Os números entram na mensagem porque o erro é resolvido em um de três
+  // campos diferentes (inversor, oversizing, quantidade de módulos) e, sem
+  // eles, não dá para saber qual está fora do lugar.
+  const kw = (v:number) => v.toLocaleString('pt-BR',{maximumFractionDigits:2});
+  if(e.inversorKw>0 && potenciaKwp>capacidadeInversor) erros.push(`Potência instalada (${kw(potenciaKwp)} kWp) excede a capacidade do inversor (${kw(e.inversorKw)} kW com ${kw(e.oversizingPct)}% de oversizing).`);
   const areaEstimadaM2 = areaManualM2>0?areaManualM2:e.modo==='excel'?quantidadeCalculada*2.2:modulosQtd*e.larguraM*e.alturaM;
   const geracaoMensal = e.hspMensal.map((h,m)=>e.modo==='excel'?potenciaNecessariaKwp*h*30:modulosQtd*(producaoModulo[m]??0));
   const geracaoMediaKwh = media(geracaoMensal);
