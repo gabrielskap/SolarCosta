@@ -3,6 +3,12 @@ export interface UnidadeSolar { nome: string; meses: number[]; adicionalKwh: num
 export interface EntradaSolar {
   modo: 'tecnico' | 'excel'; anoInicial: number; ucs: UnidadeSolar[]; hspMensal: number[];
   moduloWp: number; perdasPct: number; larguraM: number; alturaM: number;
+  /**
+   * Área de telhado informada à mão, em m². 0 (ou ausente) = calcular pelas
+   * dimensões do módulo. Opcional porque proposta salva antes deste campo
+   * existir não o tem no JSON de `calculo_solar.entradas`.
+   */
+  areaManualM2?: number;
   inversorKw: number; oversizingPct: number; quantidadeInstalada: number | null;
   tarifa: number; taxaSem: number; disponibilidadeReais: number; taxaCom: number;
   investimento: number; parcela: number; parcelas: number;
@@ -14,7 +20,7 @@ export interface EntradaSolar {
 export function entradaSolarZerada(): EntradaSolar {
   return { modo: 'tecnico', anoInicial: Number(new Intl.DateTimeFormat('en', {timeZone:'America/Sao_Paulo',year:'numeric'}).format(new Date())),
     ucs: [{nome:'UC 1',meses:Array(12).fill(0),adicionalKwh:0,disponibilidadeKwh:0}], hspMensal:Array(12).fill(0),
-    moduloWp:0,perdasPct:0,larguraM:0,alturaM:0,inversorKw:0,oversizingPct:0,quantidadeInstalada:null,
+    moduloWp:0,perdasPct:0,larguraM:0,alturaM:0,areaManualM2:0,inversorKw:0,oversizingPct:0,quantidadeInstalada:null,
     tarifa:0,taxaSem:0,disponibilidadeReais:0,taxaCom:0,investimento:0,parcela:0,parcelas:0,
     reajustePct:0,degradacaoInicialPct:0,degradacaoAnualPct:0,manutencaoAnual:0,reajusteManutencaoPct:0,
     trocaInversorAno:0,trocaInversorValor:0,poupancaMesPct:0,geracaoAnualExcel:0 };
@@ -28,7 +34,9 @@ export function calcularParcela(valor:number,jurosPct:number,parcelas:number):nu
 }
 export function calcularProposta(e: EntradaSolar) {
   const erros: string[] = [];
-  const numeros = [e.anoInicial,e.moduloWp,e.perdasPct,e.larguraM,e.alturaM,e.inversorKw,e.oversizingPct,e.tarifa,e.taxaSem,e.disponibilidadeReais,e.taxaCom,e.investimento,e.parcela,e.parcelas,e.reajustePct,e.degradacaoInicialPct,e.degradacaoAnualPct,e.manutencaoAnual,e.reajusteManutencaoPct,e.trocaInversorAno,e.trocaInversorValor,e.poupancaMesPct,e.geracaoAnualExcel,...e.hspMensal,...e.ucs.flatMap(u=>[...u.meses,u.adicionalKwh,u.disponibilidadeKwh])];
+  // Área informada à mão vence o cálculo por dimensões do módulo. 0 = automático.
+  const areaManualM2 = e.areaManualM2 ?? 0;
+  const numeros = [e.anoInicial,e.moduloWp,e.perdasPct,e.larguraM,e.alturaM,areaManualM2,e.inversorKw,e.oversizingPct,e.tarifa,e.taxaSem,e.disponibilidadeReais,e.taxaCom,e.investimento,e.parcela,e.parcelas,e.reajustePct,e.degradacaoInicialPct,e.degradacaoAnualPct,e.manutencaoAnual,e.reajusteManutencaoPct,e.trocaInversorAno,e.trocaInversorValor,e.poupancaMesPct,e.geracaoAnualExcel,...e.hspMensal,...e.ucs.flatMap(u=>[...u.meses,u.adicionalKwh,u.disponibilidadeKwh])];
   if(numeros.some(n=>!Number.isFinite(n)||n<0)) erros.push('Informe números finitos e não negativos.');
   if(e.ucs.length===0 || e.ucs.some(u=>u.meses.length!==12)) erros.push('Informe os 12 meses de cada UC.');
   if(e.hspMensal.length!==12 || e.hspMensal.some(h=>h<=0)) erros.push('Informe HSP positivo nos 12 meses.');
@@ -41,7 +49,10 @@ export function calcularProposta(e: EntradaSolar) {
   const compensacao = soma(e.ucs.map(u=>Math.max(0,media(u.meses)+u.adicionalKwh-u.disponibilidadeKwh)));
   if(consumoMedio<=0 || compensacao<=0) erros.push('Informe consumo compensável maior que zero.');
   if(e.moduloWp<=0 || e.tarifa<=0 || e.inversorKw<=0) erros.push('Informe potência do módulo, inversor e tarifa maiores que zero.');
-  if(e.modo==='tecnico' && (e.larguraM<=0||e.alturaM<=0)) erros.push('Informe as dimensões do módulo.');
+  // As dimensões do módulo só servem para estimar a área. Com a área informada
+  // à mão elas deixam de ser obrigatórias — exigi-las ali seria pedir um dado
+  // que não entra em conta nenhuma.
+  if(e.modo==='tecnico' && areaManualM2<=0 && (e.larguraM<=0||e.alturaM<=0)) erros.push('Informe as dimensões do módulo ou a área estimada.');
   if(e.modo==='excel' && e.geracaoAnualExcel<=0) erros.push('Informe a geração anual de referência.');
   const hspMedia = media(e.hspMensal);
   const dias = (ano:number,m:number)=>e.modo==='excel'?30:new Date(Date.UTC(ano,m+1,0)).getUTCDate();
@@ -53,7 +64,7 @@ export function calcularProposta(e: EntradaSolar) {
   const potenciaNecessariaKwp = hspMedia>0?compensacao/30/hspMedia:0;
   const capacidadeInversor = e.inversorKw*(1+e.oversizingPct/100);
   if(potenciaKwp>capacidadeInversor) erros.push('Potência instalada excede a capacidade do inversor com oversizing.');
-  const areaEstimadaM2 = e.modo==='excel'?quantidadeCalculada*2.2:modulosQtd*e.larguraM*e.alturaM;
+  const areaEstimadaM2 = areaManualM2>0?areaManualM2:e.modo==='excel'?quantidadeCalculada*2.2:modulosQtd*e.larguraM*e.alturaM;
   const geracaoMensal = e.hspMensal.map((h,m)=>e.modo==='excel'?potenciaNecessariaKwp*h*30:modulosQtd*(producaoModulo[m]??0));
   const geracaoMediaKwh = media(geracaoMensal);
   const contaSemSolar = consumoMedio*e.tarifa+e.taxaSem;

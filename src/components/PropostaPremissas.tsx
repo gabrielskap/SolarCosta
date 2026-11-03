@@ -343,6 +343,10 @@ export function PropostaPremissas({
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {numero('Largura do módulo', 'larguraM', 'm', '0.01')}
                 {numero('Altura do módulo', 'alturaM', 'm', '0.01')}
+                {/* 0 = área calculada pelas dimensões acima. Mesmo campo do topo
+                    do dimensionamento; fica aqui por ser o que substitui as duas
+                    linhas anteriores. */}
+                {numero('Área estimada (0 = auto)', 'areaManualM2', 'm²', '0.01')}
                 {numero('Potência nominal inversor', 'inversorKw', 'kW', '0.1')}
                 {numero('Oversizing', 'oversizingPct', '%', '0.5')}
                 {numero('Reajuste tarifa', 'reajustePct', '% a.a.', '0.1')}

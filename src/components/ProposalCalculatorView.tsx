@@ -1066,7 +1066,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             </div>
 
             {/* Inputs Principais de Dimensionamento */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                   CONSUMO MÉDIO <span className="text-slate-400 font-normal">(KWH)</span>
@@ -1142,6 +1142,31 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#004276] transition disabled:opacity-60"
                 />
               </div>
+
+              {/*
+                Área de telhado informada à mão. Em branco, a área continua
+                saindo de módulos × dimensões do módulo — que é o que ela sempre
+                foi. O campo existe porque nem toda proposta tem as dimensões do
+                módulo cadastradas, e sem elas a área imprimia 0 m² no PDF.
+              */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  ÁREA ESTIMADA <span className="text-slate-400 font-normal">(M²)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={entradaSolar.areaManualM2 || ''}
+                  placeholder="Automático"
+                  title="Em branco, a área é calculada pela quantidade de módulos e pelas dimensões do módulo."
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setEntradaSolar(prev => ({ ...prev, areaManualM2: Number.isFinite(v) && v > 0 ? v : 0 }));
+                  }}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#004276] transition"
+                />
+              </div>
             </div>
 
             {/* Calculated sizing banner - Compact KPI Strip */}
@@ -1167,6 +1192,9 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ÁREA ESTIMADA</span>
                 <p className="text-base sm:text-lg font-black text-slate-800">{areaEstimadaM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</p>
+                {!preservarLegado && (entradaSolar.areaManualM2 ?? 0) > 0 && (
+                  <p className="mt-0.5 text-[10px] font-normal text-slate-500">Informada manualmente</p>
+                )}
               </div>
 
               <div>
