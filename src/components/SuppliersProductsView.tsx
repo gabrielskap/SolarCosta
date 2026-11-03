@@ -261,7 +261,20 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       return;
     }
     if (potenciaWp !== undefined && (!Number.isInteger(potenciaWp) || potenciaWp <= 0)) {
-      showToast('Potência inválida', 'error', 'Informe um número inteiro positivo em Wp, como 710.');
+      showToast('Potência inválida', 'error', 'Informe um número inteiro positivo em watts, como 710.');
+      return;
+    }
+    /*
+     * Watts, não quilowatts.
+     *
+     * É a proposta que paga o engano: a potência do inversor é somada dos itens
+     * do kit para checar o oversizing, e um micro cadastrado como "2" vira 0,002
+     * kW — o dimensionamento passa a acusar excesso de potência em todo sistema,
+     * longe daqui e sem pista da origem. Não existe módulo nem inversor de
+     * catálogo abaixo de 50 W, então o número pequeno é sempre a unidade errada.
+     */
+    if (potenciaWp !== undefined && potenciaWp < 50) {
+      showToast('Potência em watts', 'error', `${potenciaWp} W é baixo demais para ${tipoProd === 'inversor' ? 'um inversor' : 'um módulo'}. Informe em watts: um micro de 2 kW é 2000.`);
       return;
     }
     const fornObj = fornecedores.find(f => f.id === fornecedorIdProd);
@@ -273,7 +286,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
       tipo: tipoProd,
       fornecedorId: fornecedorIdProd,
       fornecedorNome: fornObj ? fornObj.nome : 'Aldo Solar',
-      potencia: potenciaWp ? `${potenciaWp} Wp` : undefined,
+      potencia: potenciaWp ? `${potenciaWp} ${tipoProd === 'inversor' ? 'W' : 'Wp'}` : undefined,
       potenciaWp,
       estoque: Number(estoqueProd),
       // Preço continua existindo na API (custo interno), mas o cadastro não o
@@ -942,7 +955,11 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className={rotulo}>Potência (Wp) {exigePotencia ? '*' : '(opcional)'}</label>
+                    {/* Inversor é medido em W, não em Wp — e o exemplo precisa
+                        ser o do tipo escolhido, senão "2 kW" vira "2". */}
+                    <label className={rotulo}>
+                      Potência ({tipoProd === 'inversor' ? 'W' : 'Wp'}) {exigePotencia ? '*' : '(opcional)'}
+                    </label>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -950,7 +967,7 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
                       required={exigePotencia}
                       value={potenciaProd}
                       onChange={(e) => setPotenciaProd(e.target.value.replace(/\D/g, ''))}
-                      placeholder="710"
+                      placeholder={tipoProd === 'inversor' ? '2000' : '710'}
                       className={campo}
                     />
                   </div>

@@ -1231,6 +1231,21 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">POTÊNCIA</span>
                 <p className="text-base sm:text-lg font-black text-[#004276]">{potenciaKwpCalculada} kWp</p>
+                {/*
+                  A capacidade do inversor vem somada dos itens do kit e é o que
+                  decide se a proposta pode ser emitida. Impressa aqui ao lado da
+                  potência instalada, um cadastro em kW onde se esperava W salta
+                  à vista — antes só aparecia como um erro de oversizing sem
+                  origem visível, já na hora de gerar o PDF.
+                */}
+                <p
+                  className={`mt-0.5 text-[10px] font-normal ${inversorKwEfetivo > 0 && potenciaKwpCalculada > inversorKwEfetivo * (1 + entradaSolar.oversizingPct / 100) ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}
+                  title="Soma da potência dos inversores do kit, mais o oversizing das premissas. Preencher o campo 'Potência nominal inversor' em Premissas substitui esta soma."
+                >
+                  Inversor: {inversorKwEfetivo > 0
+                    ? `${inversorKwEfetivo.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kW${entradaSolar.oversizingPct > 0 ? ` +${entradaSolar.oversizingPct}%` : ''}`
+                    : 'não informado'}
+                </p>
               </div>
 
               <div>
