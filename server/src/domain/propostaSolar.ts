@@ -27,11 +27,7 @@ export function entradaSolarZerada(): EntradaSolar {
 }
 const soma = (v: number[]) => v.reduce((a,b)=>a+b,0);
 const media = (v: number[]) => soma(v)/12;
-export function calcularParcela(valor:number,jurosPct:number,parcelas:number):number {
-  if(!(valor>0)||!(parcelas>0)) return 0;
-  const i=jurosPct/100, fator=Math.pow(1+i,parcelas);
-  return Number((i>0?valor*i*fator/(fator-1):valor/parcelas).toFixed(2));
-}
+export { calcularParcela } from './financiamento.js';
 export function calcularProposta(e: EntradaSolar) {
   /*
    * Dois canais, porque são duas perguntas diferentes.

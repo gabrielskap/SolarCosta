@@ -159,19 +159,8 @@ export interface EntradaParcela {
   parcelas: number;
 }
 
-/**
- * Prestação mensal pela Tabela Price.
- *
- * Mora aqui, e não na calculadora, porque a folha de despesas mensais da
- * proposta precisa da MESMA parcela que o consultor viu na tela ao fechar o
- * negócio. Com a fórmula escrita duas vezes, bastava um arredondamento
- * diferente para o PDF enviado ao cliente divergir do que foi combinado — e
- * ninguém descobriria antes dele apontar.
- *
- * O PDF não pode simplesmente ler a parcela do banco: ela nunca foi
- * persistida. O que a proposta guarda são as ENTRADAS (valor financiado via
- * entrada_financiamento_valor, parcelas_financiamento, juros_financiamento_mes_pct),
- * e delas a parcela se reconstrói exatamente.
+/** Compatibilidade com consumidores que já possuem o principal, sem a entrada.
+ * A fórmula Price é compartilhada com o motor de financiamento da proposta.
  */
 export function parcelaFinanciamento({
   valorFinanciado,

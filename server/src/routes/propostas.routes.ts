@@ -6,7 +6,8 @@
 // depois. O motor compartilhado calcula a prévia e a API recalcula o snapshot.
 
 import { entradaSolarSchema, resultadosProposta } from '../schemas/propostaSolar.js';
-import { calcularParcela, type CalculoSolar, type EntradaSolar } from '../domain/propostaSolar.js';
+import { type CalculoSolar, type EntradaSolar } from '../domain/propostaSolar.js';
+import { calcularFinanciamento, temPrecisao } from '../domain/financiamento.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { levantamentoTelhadoSchema } from '../schemas/levantamentoTelhado.js';
@@ -36,6 +37,8 @@ const itemSchema = z.object({
   componentes: z.array(componenteSchema).default([]),
 });
 
+const valorAjuste = z.number().finite().min(0).max(999999999999.99)
+  .refine(v => temPrecisao(v, 2), 'O valor ajustado aceita até duas casas decimais.');
 const propostaSchema = z.object({
   calculo_solar: z.object({entradas:entradaSolarSchema}).nullish(),
   levantamento_telhado: levantamentoTelhadoSchema.nullish(),
@@ -86,10 +89,18 @@ const propostaSchema = z.object({
   desconto_avista_pct: z.coerce.number().min(0).max(100).nullish(),
   parcelas_cartao: z.coerce.number().int().min(0).nullish(),
   taxa_cartao_pct: z.coerce.number().min(0).nullish(),
-  entrada_financiamento_valor: z.coerce.number().min(0).nullish(),
-  entrada_financiamento_pct: z.coerce.number().min(0).max(100).nullish(),
-  parcelas_financiamento: z.coerce.number().int().min(0).nullish(),
-  juros_financiamento_mes_pct: z.coerce.number().min(0).nullish(),
+  entrada_financiamento_valor: z.coerce.number().finite().min(0)
+    .refine(v => temPrecisao(v, 2), 'A entrada em reais aceita até duas casas decimais.').nullish(),
+  entrada_financiamento_pct: z.coerce.number().finite().min(0).max(100)
+    .refine(v => temPrecisao(v, 2), 'A entrada aceita até duas casas decimais.').nullish(),
+  parcelas_financiamento: z.preprocess(v => v === '' ? undefined : v, z.coerce.number().int().min(0).max(1200).nullish()),
+  juros_financiamento_mes_pct: z.preprocess(v => v === '' ? undefined : v, z.coerce.number().finite().min(0).max(999.999)
+    .refine(v => temPrecisao(v, 3), 'Os juros mensais aceitam até três casas decimais.').nullish()),
+  financiamento_ajustes: z.object({
+    entradaValor: valorAjuste, valorFinanciado: valorAjuste.refine(v => v > 0),
+    parcela: valorAjuste.refine(v => v > 0), totalPrestacoes: valorAjuste,
+    jurosTotais: valorAjuste, totalPago: valorAjuste,
+  }).partial().strict().nullish(),
   banco_financiamento_id: z.coerce.number().int().nullish(),
 
   observacoes: z.string().nullish(),
@@ -161,19 +172,35 @@ const propostaSchema = z.object({
 });
 
 type DadosProposta = z.infer<typeof propostaSchema>;
+function financiamento(d: DadosProposta) {
+  return calcularFinanciamento({
+    investimento: d.valor_total_ajustado ?? d.itens.reduce((s,i)=>s+i.qtd*i.valor_unit,0),
+    entradaPct: d.entrada_financiamento_pct, entradaValor: d.entrada_financiamento_valor,
+    parcelas: d.parcelas_financiamento, jurosMesPct: d.juros_financiamento_mes_pct,
+    ajustes: d.financiamento_ajustes,
+  });
+}
+function exigirFinanciamentoCompleto(f: ReturnType<typeof calcularFinanciamento>) {
+  if (!f.completo) throw new AppError(422, Object.values(f.erros).join(' '), 'financiamento_incompleto');
+}
 function recalcular(d:DadosProposta): CalculoSolar | undefined {
+  const f = financiamento(d);
+  // A entrada em reais também é derivada para propostas legadas sem snapshot solar.
+  d.entrada_financiamento_valor = f.entradaValor;
   if(!d.calculo_solar) return;
   const investimento = d.valor_total_ajustado ?? d.itens.reduce((s,i)=>s+i.qtd*i.valor_unit,0);
-  const entrada=investimento*(d.entrada_financiamento_pct??0)/100;
-  d.entrada_financiamento_valor=entrada;
-  const parcelas=d.forma_pagamento==='financiamento'?(d.parcelas_financiamento??0):0;
+  const parcelas=d.forma_pagamento==='financiamento' && f.completo ? d.parcelas_financiamento! : 0;
   const e={...(d.calculo_solar.entradas as EntradaSolar),moduloWp:d.modulo_wp,perdasPct:d.perdas_pct,tarifa:d.tarifa_kwh,
     larguraM:d.levantamento_telhado?.modulo.larguraM ?? d.calculo_solar.entradas.larguraM,
     alturaM:d.levantamento_telhado?.modulo.alturaM ?? d.calculo_solar.entradas.alturaM,
     taxaSem:d.iluminacao_publica_sem_sfcr??0,disponibilidadeReais:d.custo_disponibilidade??0,taxaCom:d.iluminacao_publica_com_sfcr??0,
-    investimento,parcelas,parcela:calcularParcela(investimento-entrada,d.juros_financiamento_mes_pct??0,parcelas),
+    investimento,parcelas,parcela:parcelas>0?f.parcela:0,
     quantidadeInstalada:d.levantamento_telhado?d.levantamento_telhado.placas.length:null};
   const {calculo,campos}=resultadosProposta(e);
+  if (d.forma_pagamento === 'financiamento' && !f.completo) {
+    calculo.erros.push(...Object.values(f.erros));
+    calculo.completo = false;
+  }
   if(!Number.isFinite(calculo.economia25Anos)||!Number.isFinite(calculo.geracaoMediaKwh)) throw new AppError(422,'Os valores excedem os limites de cálculo.','calculo_invalido');
   Object.assign(d,campos);
   return calculo;
@@ -414,7 +441,7 @@ propostasRouter.post(
       await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb WHERE id = $1`, [novoId, paraJsonb(d.levantamento_telhado)]);
 
       await inserirItens(cliente, novoId, d.itens);
-      await cliente.query(`UPDATE "SolarCosta_Propostas" SET responsavel_tecnico_id = $2, conselho_profissional = $3 WHERE id = $1`, [novoId, d.responsavel_tecnico_id ?? null, d.conselho_profissional ?? null]);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET responsavel_tecnico_id = $2, conselho_profissional = $3, financiamento_ajustes = $4::jsonb WHERE id = $1`, [novoId, d.responsavel_tecnico_id ?? null, d.conselho_profissional ?? null, paraJsonb(d.financiamento_ajustes)]);
       await guardarCalculo(cliente, novoId, calculo);
       await propagarCoordenadaAoLead(cliente, d.lead_id, d);
       await propagarDadosAoLead(cliente, d.lead_id, novoId);
@@ -454,12 +481,18 @@ propostasRouter.put(
 
     await emTransacao(async (cliente) => {
       const { rows: atual } = await cliente.query(
-        `SELECT numero, status::text AS status, calculo_solar FROM "SolarCosta_Propostas"
+        `SELECT numero, status::text AS status, calculo_solar, economia_anual FROM "SolarCosta_Propostas"
           WHERE id = $1 AND excluido_em IS NULL`, [id]);
       if (atual.length === 0) throw naoEncontrado('Proposta');
 
       if(atual[0]!.calculo_solar && !calculo) throw new AppError(422,'A proposta exige as premissas do cálculo salvo.','calculo_obrigatorio');
+      if (atual[0]!.status !== 'rascunho' && d.forma_pagamento === 'financiamento') exigirFinanciamentoCompleto(financiamento(d));
       if(atual[0]!.status!=='rascunho' && calculo && !calculo.completo) throw new AppError(422,'Revise os dados antes de atualizar uma proposta emitida.','calculo_incompleto');
+      // Sem snapshot técnico, preservar a economia operacional já salva e atualizar
+      // apenas o efeito do financiamento, sem confiar na economia enviada pelo cliente.
+      if (!calculo && d.forma_pagamento === 'financiamento') {
+        d.economia_mensal = Number(atual[0]!.economia_anual ?? 0) / 12 - financiamento(d).parcela;
+      }
       // Proposta aceita virou base de contrato: não se reescreve.
       if (atual[0]!.status === 'aceita') {
         throw new AppError(409, 'Proposta já aceita não pode ser alterada.', 'proposta_fechada');
@@ -535,7 +568,7 @@ propostasRouter.put(
       await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb WHERE id = $1`, [id, paraJsonb(d.levantamento_telhado)]);
       await cliente.query(`DELETE FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1`, [id]);
       await inserirItens(cliente, id, d.itens);
-      await cliente.query(`UPDATE "SolarCosta_Propostas" SET responsavel_tecnico_id = $2, conselho_profissional = $3 WHERE id = $1`, [id, d.responsavel_tecnico_id ?? null, d.conselho_profissional ?? null]);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET responsavel_tecnico_id = $2, conselho_profissional = $3, financiamento_ajustes = $4::jsonb WHERE id = $1`, [id, d.responsavel_tecnico_id ?? null, d.conselho_profissional ?? null, paraJsonb(d.financiamento_ajustes)]);
       await guardarCalculo(cliente, id, calculo);
       await propagarCoordenadaAoLead(cliente, d.lead_id, d);
       await propagarDadosAoLead(cliente, d.lead_id, id);
@@ -562,9 +595,14 @@ propostasRouter.patch(
 
     await emTransacao(async (cliente) => {
       if(status==='enviada'||status==='aceita') {
-        const {rows:validar}=await cliente.query('SELECT calculo_solar, consumo_kwh, tarifa_kwh, hsp, modulo_wp, forma_pagamento, parcelas_financiamento, parcelas_cartao FROM "SolarCosta_Propostas" WHERE id=$1 AND excluido_em IS NULL FOR UPDATE',[id]);
+        const {rows:validar}=await cliente.query('SELECT calculo_solar, consumo_kwh, tarifa_kwh, hsp, modulo_wp, forma_pagamento, parcelas_financiamento, parcelas_cartao, valor_total, entrada_financiamento_pct, entrada_financiamento_valor, juros_financiamento_mes_pct, financiamento_ajustes FROM "SolarCosta_Propostas" WHERE id=$1 AND excluido_em IS NULL FOR UPDATE',[id]);
         const p=validar[0];
         if(!p) throw naoEncontrado('Proposta');
+        if (p.forma_pagamento === 'financiamento') exigirFinanciamentoCompleto(calcularFinanciamento({
+          investimento: p.valor_total, entradaPct: p.entrada_financiamento_pct, entradaValor: p.entrada_financiamento_valor,
+          parcelas: p.parcelas_financiamento, jurosMesPct: p.juros_financiamento_mes_pct,
+          ajustes: p.financiamento_ajustes,
+        }));
         if(p.calculo_solar && !p.calculo_solar.completo || !(Number(p.consumo_kwh)>0 && Number(p.tarifa_kwh)>0 && Number(p.hsp)>0 && Number(p.modulo_wp)>0) || p.forma_pagamento==='financiamento' && !(Number(p.parcelas_financiamento)>0) || p.forma_pagamento==='cartao' && !(Number(p.parcelas_cartao)>0)) throw new AppError(422,'Pendente de preenchimento: revise a proposta antes de emitir.','calculo_incompleto');
       }
       const { rows } = await cliente.query(

@@ -313,6 +313,7 @@ export interface Proposta {
   entradaFinanciamentoPct?: number;
   parcelasFinanciamento?: number;
   jurosFinanciamentoMesPct?: number;
+  financiamentoAjustes?: import('../server/src/domain/financiamento').AjustesFinanciamento;
   bancoFinanciamento?: string;
   dataCriacao: string;
   status: 'rascunho' | 'enviada' | 'aceita';

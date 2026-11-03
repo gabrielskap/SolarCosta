@@ -1,5 +1,6 @@
 // Executar em server: npx tsx ../scripts/test-proposta-solar-api.ts
-// Usa transação externa e savepoints: reverte propostas e auditoria ao terminar.
+// Usa tabelas temporárias e savepoints: testa a V033 e reverte tudo ao terminar.
+// TEST_PROPOSTA_ISOLADA=0 permite testar um banco de homologação já migrado.
 import assert from 'node:assert/strict';
 import {pool} from '../server/src/db';
 import {emitirTokenAcesso} from '../server/src/auth/tokens';
@@ -7,6 +8,8 @@ import {criarApp} from '../server/src/app';
 import {entradaSolarZerada,calcularProposta} from '../server/src/domain/propostaSolar';
 import {paraProposta,deProposta} from '../src/services/mappers';
 import {obterOuCriarLink} from '../server/src/services/linksPublicos';
+import {financiamentoDaProposta} from '../server/src/domain/financiamento';
+import {prepararBancoTemporario} from './proposta-api-banco-temporario';
 
 const c=await pool.connect(), query=c.query.bind(c),release=c.release.bind(c);
 await query('BEGIN');
@@ -19,6 +22,7 @@ const server=criarApp().listen(0,'127.0.0.1');
 await new Promise<void>(r=>server.on('listening',r));
 const base=`http://127.0.0.1:${(server.address() as any).port}`;
 try {
+  if (process.env.TEST_PROPOSTA_ISOLADA !== '0') await prepararBancoTemporario(c);
   const u=(await query(`SELECT id,nome,cargo FROM "SolarCosta_Usuarios" WHERE cargo='Administrador' AND status='ativo' AND excluido_em IS NULL LIMIT 1`)).rows[0];
   assert(u,'Teste exige administrador ativo.');
   const headers={Authorization:`Bearer ${emitirTokenAcesso({sub:u.id,nome:u.nome,cargo:u.cargo})}`,'Content-Type':'application/json'};
@@ -46,6 +50,61 @@ try {
   const token=await obterOuCriarLink(c as any,'proposta',id,u.id);
   const publico=await fetch(`${base}/api/publico/documento/${encodeURIComponent(token)}`).then(r=>r.json());
   assert.deepEqual(paraProposta(publico.documento).calculoSolar,reaberta.calculoSolar,'PDF público usa o mesmo snapshot do CRM.');
+  // Condições financeiras são recalculadas, persistidas e iguais no CRM e PDF público.
+  await query('UPDATE "SolarCosta_Propostas" SET status=\'rascunho\' WHERE id=$1',[id]);
+  const financiada={...completo,forma_pagamento:'financiamento',valor_total_ajustado:15990,
+    entrada_financiamento_pct:20,entrada_financiamento_valor:9999,parcelas_financiamento:36,juros_financiamento_mes_pct:2.2,
+    economia_mensal:999999,calculo_solar:{entradas:{...e,parcela:999999,parcelas:999}}};
+  const fs=await api('PUT',`/api/propostas/${id}`,financiada);
+  assert.equal(fs.status,200,JSON.stringify(fs.data));
+  assert.equal(fs.data.proposta.entrada_financiamento_valor,3198);
+  assert.equal(fs.data.proposta.calculo_solar.entradas.parcela,518.13);
+  assert.equal(fs.data.proposta.calculo_solar.entradas.parcelas,36);
+  assert.equal(fs.data.proposta.economia_mensal,Number((esperado.economiaOperacional-518.13).toFixed(2)));
+  const fr=paraProposta((await api('GET',`/api/propostas/${id}`)).data.proposta);
+  assert.deepEqual(financiamentoDaProposta(fr),financiamentoDaProposta(paraProposta(fs.data.proposta)));
+  const fp=await fetch(`${base}/api/publico/documento/${encodeURIComponent(token)}`).then(r=>r.json());
+  assert.deepEqual(financiamentoDaProposta(paraProposta(fp.documento)),financiamentoDaProposta(fr));
+  const ajustes={entradaValor:1000,valorFinanciado:14000,parcela:600,totalPrestacoes:21000,jurosTotais:6500,totalPago:23000};
+  const ajustada=await api('PUT',`/api/propostas/${id}`,{...financiada,financiamento_ajustes:ajustes});
+  assert.equal(ajustada.status,200,JSON.stringify(ajustada.data));
+  assert.deepEqual(ajustada.data.proposta.financiamento_ajustes,ajustes);
+  assert.equal(ajustada.data.proposta.calculo_solar.entradas.parcela,600);
+  assert.equal(ajustada.data.proposta.economia_mensal,Number((esperado.economiaOperacional-600).toFixed(2)));
+  const ajusteReaberto=paraProposta((await api('GET',`/api/propostas/${id}`)).data.proposta);
+  assert.deepEqual(ajusteReaberto.financiamentoAjustes,ajustes);
+  assert.deepEqual(deProposta(ajusteReaberto).financiamento_ajustes,ajustes);
+  const ajustePublico=await fetch(`${base}/api/publico/documento/${encodeURIComponent(token)}`).then(r=>r.json());
+  assert.deepEqual(paraProposta(ajustePublico.documento).financiamentoAjustes,ajustes);
+  assert.equal(financiamentoDaProposta(paraProposta(ajustePublico.documento)).totalPago,23000);
+  for (const invalido of [{parcela:-1},{jurosTotais:1.001},{valorFinanciado:0},{totalPago:null},{campoIndevido:1}])
+    assert.equal((await api('PUT',`/api/propostas/${id}`,{...financiada,financiamento_ajustes:invalido})).status,422);
+  const restaurada=await api('PUT',`/api/propostas/${id}`,{...financiada,financiamento_ajustes:null});
+  assert.equal(restaurada.status,200,JSON.stringify(restaurada.data));
+  assert.equal(restaurada.data.proposta.financiamento_ajustes,null);
+  assert.equal(restaurada.data.proposta.calculo_solar.entradas.parcela,518.13);
+  assert.equal((await api('PATCH',`/api/propostas/${id}/status`,{status:'enviada'})).status,200);
+  assert.equal((await api('PUT',`/api/propostas/${id}`,{...financiada,juros_financiamento_mes_pct:null})).status,422,'não incompletar proposta emitida');
+  await query('UPDATE "SolarCosta_Propostas" SET status=\'rascunho\' WHERE id=$1',[id]);
+  for (const faltando of [null,undefined,'']) {
+    const pendente=await api('PUT',`/api/propostas/${id}`,{...financiada,juros_financiamento_mes_pct:faltando});
+    assert.equal(pendente.status,200,JSON.stringify(pendente.data));
+    assert.equal(pendente.data.proposta.juros_financiamento_mes_pct,null);
+    assert.equal(pendente.data.proposta.calculo_solar.completo,false);
+    for (const status of ['enviada','aceita']) assert.equal((await api('PATCH',`/api/propostas/${id}/status`,{status})).status,422);
+  }
+  for (const invalido of [{entrada_financiamento_pct:20.001},{juros_financiamento_mes_pct:2.2001},
+    {juros_financiamento_mes_pct:-1},{parcelas_financiamento:1.5},{parcelas_financiamento:1201}])
+    assert.equal((await api('PUT',`/api/propostas/${id}`,{...financiada,...invalido})).status,422,JSON.stringify(invalido));
+  for (const pendente of [{parcelas_financiamento:null},{parcelas_financiamento:0},{entrada_financiamento_pct:100}]) {
+    assert.equal((await api('PUT',`/api/propostas/${id}`,{...financiada,...pendente})).status,200);
+    assert.equal((await api('PATCH',`/api/propostas/${id}/status`,{status:'enviada'})).status,422);
+  }
+  const taxaZero=await api('PUT',`/api/propostas/${id}`,{...financiada,entrada_financiamento_pct:0,juros_financiamento_mes_pct:0,parcelas_financiamento:13});
+  assert.equal(taxaZero.status,200,JSON.stringify(taxaZero.data));
+  assert.equal(taxaZero.data.proposta.juros_financiamento_mes_pct,0);
+  assert.equal(taxaZero.data.proposta.calculo_solar.entradas.parcela,1230);
+  assert.equal((await api('PATCH',`/api/propostas/${id}/status`,{status:'enviada'})).status,200);
   // Uma proposta antiga permanece sem snapshot se o usuário não revisar.
   await query('UPDATE "SolarCosta_Propostas" SET calculo_solar=NULL,status=\'rascunho\' WHERE id=$1',[id]);
   const {calculo_solar,...legada}=completo;
@@ -53,7 +112,16 @@ try {
   assert.equal(preservada.status,200,JSON.stringify(preservada.data));
   assert.equal(preservada.data.proposta.calculo_solar,null);
   assert.equal(Number(preservada.data.proposta.economia_mensal),1234);
-  console.log('Propostas API: rascunho zero, bloqueio de emissão, recálculo autoritativo, snapshot, mapeamento e preservação legada passaram.');
+  // Legada: sem snapshot, ainda recalcular entrada e efeito da parcela na economia salva.
+  const {calculo_solar:ignorado,...finLegada}=financiada;
+  const fl=await api('PUT',`/api/propostas/${id}`,finLegada);
+  assert.equal(fl.status,200,JSON.stringify(fl.data));
+  assert.equal(fl.data.proposta.calculo_solar,null);
+  assert.equal(fl.data.proposta.entrada_financiamento_valor,3198);
+  assert.equal(fl.data.proposta.economia_mensal,Number((fl.data.proposta.economia_anual/12-518.13).toFixed(2)));
+  await api('PUT',`/api/propostas/${id}`,{...finLegada,juros_financiamento_mes_pct:null});
+  assert.equal((await api('PATCH',`/api/propostas/${id}/status`,{status:'enviada'})).status,422,'legada sem taxa exige revisão');
+  console.log('Propostas API: cálculo, ajustes individuais, restauração, PDF público, validação, snapshot e preservação legada passaram.');
 } finally {
   server.close();await query('ROLLBACK');
   (pool as any).connect=connect;(pool as any).query=poolQuery;(c as any).release=release;release();await pool.end();

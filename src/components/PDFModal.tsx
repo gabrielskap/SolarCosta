@@ -20,7 +20,7 @@ import { areaSuperficie } from '../utils/levantamentoTelhado';
 import { imagemTelhado } from '../services/solar';
 import { enquadrar, rosaDosVentos } from '../utils/layoutModulos';
 import { formatarLinhaDigitavel, formatCurrencyBRL } from '../utils/format';
-import { parcelaFinanciamento } from '../utils/solar';
+import { financiamentoDaProposta } from '../../server/src/domain/financiamento';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 
@@ -304,6 +304,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
 
   const handlePrint = () => {
     if(prop?.calculoSolar && !prop.calculoSolar.completo) return;
+    if (prop?.formaPagamento === 'financiamento' && !financiamentoDaProposta(prop).completo) return;
     window.print();
   };
 
@@ -536,16 +537,12 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               const parcelaCartaoValor = parcelasCartaoQtd>0 ? Number((valorTotalCartao / parcelasCartaoQtd).toFixed(2)) : 0;
 
               // 3. Financiamento Bancário
-              const entradaFinancValor = prop?.entradaFinanciamentoValor ?? 0;
-              const parcelasFinancQtd = prop?.parcelasFinanciamento ?? 60;
-              const jurosFinancMesPct = prop?.jurosFinanciamentoMesPct ?? 1.45;
-              const valorFinanciadoTotal = Math.max(0, valorInvestimento - entradaFinancValor);
-              const parcelaFinancValor = parcelaFinanciamento({
-                valorFinanciado: valorFinanciadoTotal,
-                jurosMesPct: jurosFinancMesPct,
-                parcelas: parcelasFinancQtd,
-              });
+              const financiamento = financiamentoDaProposta({ ...prop, valorTotal: valorInvestimento });
+              const parcelasFinancQtd = prop?.parcelasFinanciamento;
+              const jurosFinancMesPct = prop?.jurosFinanciamentoMesPct;
               const bancoFinancNome = prop?.bancoFinanciamento;
+              if (formaPagamentoSelecionada === 'financiamento' && !financiamento.completo)
+                return <p className="p-6" role="alert">Financiamento não simulado. Revise as condições antes de emitir: {Object.values(financiamento.erros).join(' ')}</p>;
 
               /*
                * Folha de despesas mensais: o que o cliente paga hoje contra o
@@ -578,15 +575,8 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                * em vez de desaparecer: a tabela precisa fechar a soma à vista
                * de quem lê.
                */
-              const prestacao =
-                snapshot ? (snapshot.entradas.parcelas>0?snapshot.entradas.parcela:0) : prop?.formaPagamento === 'financiamento'
-                  ? parcelaFinanciamento({
-                      valorFinanciado: valorInvestimento - (prop.entradaFinanciamentoValor ?? 0),
-                      jurosMesPct: prop.jurosFinanciamentoMesPct ?? 0,
-                      parcelas: prop.parcelasFinanciamento ?? 0,
-                    })
-                  : 0;
-              const totalComSfcr = snapshot ? snapshot.contaComSolar + (snapshot.entradas.parcelas>0?snapshot.entradas.parcela:0) : custoDisp + cipCom + prestacao;
+              const prestacao = formaPagamentoSelecionada === 'financiamento' ? financiamento.parcela : 0;
+              const totalComSfcr = (snapshot?.contaComSolar ?? custoDisp + cipCom) + prestacao;
 
               // Perfil mensal de geração.
               //
@@ -693,7 +683,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                           </div>
                           <div>
                             <span className="text-[10px] font-bold text-slate-500 uppercase block">Área Estimada</span>
-                            <span className="text-xl font-extrabold text-slate-900">{prop?.areaEstimadaM2 || 70} m²</span>
+                            <span className="text-xl font-extrabold text-slate-900">{(prop?.areaEstimadaM2 ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</span>
                           </div>
                           <div>
                             <span className="text-[10px] font-bold text-slate-500 uppercase block">Módulos</span>
@@ -804,22 +794,35 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                                 </h5>
                               </div>
                               <p className={`text-[10px] font-bold ${formaPagamentoSelecionada === 'financiamento' ? 'text-blue-100' : 'text-slate-500'}`}>
-                                Plano em {parcelasFinancQtd} meses
+                                {financiamento.completo ? `Plano em ${parcelasFinancQtd} meses` : 'Financiamento não simulado'}
                               </p>
-                              <div className="my-1.5">
+                              {financiamento.completo && <div className="my-1.5">
                                 <span className={`text-lg font-black block ${formaPagamentoSelecionada === 'financiamento' ? 'text-[#FFD100]' : 'text-[#004276]'}`}>
-                                  {parcelasFinancQtd}x R$ {parcelaFinancValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {parcelasFinancQtd}x {formatCurrencyBRL(financiamento.parcela)}
                                 </span>
-                              </div>
+                                <dl className="text-[10px] space-y-0.5 mt-1">
+                                  {[
+                                    ['Entrada', financiamento.entradaValor],
+                                    ['Valor financiado', financiamento.valorFinanciado],
+                                    ['Total das prestações', financiamento.totalPrestacoes],
+                                    ['Juros totais', financiamento.jurosTotais],
+                                    ['Total com entrada', financiamento.totalPago],
+                                  ].map(([rotulo, valor]) => <div key={rotulo} className="flex justify-between gap-1">
+                                    <dt>{rotulo}</dt><dd className="font-bold">{formatCurrencyBRL(Number(valor))}</dd>
+                                  </div>)}
+                                </dl>
+                              </div>}
                             </div>
+                            {financiamento.completo && <>
                             <p className={`text-[10px] font-medium border-t pt-1.5 mt-1 ${
                               formaPagamentoSelecionada === 'financiamento'
                                 ? 'text-blue-200 border-blue-800'
                                 : 'text-slate-500 border-slate-200'
                             }`}>
-                              {entradaFinancValor > 0 ? `Entrada R$ ${entradaFinancValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • ` : 'Sem entrada • '}
-                              {jurosFinancMesPct}% a.m.{bancoFinancNome ? ` (${bancoFinancNome})` : ''}
+                              {jurosFinancMesPct?.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}% a.m.{bancoFinancNome ? ` (${bancoFinancNome})` : ''}
                             </p>
+                            <p className="text-[9px] mt-1">{financiamento.ajusteManual ? 'Valores ajustados manualmente. Referência inicial: BCB.' : 'Prestações fixas (BCB), primeira parcela em um mês.'} Sem IOF, seguros ou tarifas adicionais.</p>
+                            </>}
                           </div>
                         </div>
                       </div>
@@ -889,7 +892,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                           <div className="w-12 h-12 rounded-full bg-blue-900/80 border border-amber-400 flex items-center justify-center text-amber-400">
                             <Calendar className="w-7 h-7" />
                           </div>
-                          <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">RETORNO DO INVESTIMENTO</h3>
+                          <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">RETORNO OPERACIONAL DO INVESTIMENTO</h3>
                           <p className="text-2xl font-black text-white">
                             {prop?.paybackAnos == null ? 'SEM RETORNO NO PERÍODO' : `EM ATÉ ${prop.paybackAnos.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ANOS`}
                           </p>

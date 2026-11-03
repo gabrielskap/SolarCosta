@@ -17,7 +17,7 @@ import {
 import { Api, paramNum, type ConfigApp } from '../services/api';
 import { slugDoTipoProduto } from '../services/mappers';
 import { listarPlacas, type PlacaSolar } from '../services/placas';
-import { parcelaFinanciamento } from '../utils/solar';
+import { calcularFinanciamento, moeda, type AjustesFinanciamento, type CampoFinanciamento } from '../../server/src/domain/financiamento';
 import { calcularProposta, entradaSolarZerada, type EntradaSolar } from '../../server/src/domain/propostaSolar';
 import { PropostaPremissas } from './PropostaPremissas';
 import { LevantamentoManual } from './mapa/LevantamentoManual';
@@ -298,9 +298,18 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [parcelasCartao, setParcelasCartao] = useState(() => propostaExistente?.parcelasCartao ?? 0);
   const [taxaCartaoPct, setTaxaCartaoPct] = useState(() => propostaExistente?.taxaCartaoPct ?? 0);
 
-  const [entradaFinanciamentoPct, setEntradaFinanciamentoPct] = useState(() => propostaExistente?.entradaFinanciamentoPct ?? 0);
-  const [parcelasFinanciamento, setParcelasFinanciamento] = useState(() => propostaExistente?.parcelasFinanciamento ?? 0);
-  const [jurosFinanciamentoMesPct, setJurosFinanciamentoMesPct] = useState(() => propostaExistente?.jurosFinanciamentoMesPct ?? 0);
+  const [entradaFinanciamentoPct, setEntradaFinanciamentoPct] = useState(() => propostaExistente?.entradaFinanciamentoPct ??
+    (propostaExistente?.valorTotal ? moeda((propostaExistente.entradaFinanciamentoValor ?? 0) / propostaExistente.valorTotal * 100) : 0));
+  const [entradaFinanciamentoEditada, setEntradaFinanciamentoEditada] = useState(false);
+  const manterEntradaLegada = !entradaFinanciamentoEditada && propostaExistente?.entradaFinanciamentoPct == null && propostaExistente?.entradaFinanciamentoValor != null;
+  const [parcelasFinanciamento, setParcelasFinanciamento] = useState<number | ''>(() => propostaExistente?.parcelasFinanciamento || '');
+  const [jurosFinanciamentoMesPct, setJurosFinanciamentoMesPct] = useState<number | ''>(() => propostaExistente?.jurosFinanciamentoMesPct ?? '');
+  const [financiamentoAjustes, setFinanciamentoAjustes] = useState<AjustesFinanciamento>(propostaExistente?.financiamentoAjustes ?? {});
+  const ajustarFinanciamento = (campo: CampoFinanciamento, valor: string) => setFinanciamentoAjustes(atual => {
+    const proximo = { ...atual };
+    if (valor === '') delete proximo[campo]; else proximo[campo] = Number(valor);
+    return proximo;
+  });
   const [bancoFinanciamento, setBancoFinanciamento] = useState(propostaExistente?.bancoFinanciamento ?? '');
 
   // Observações da proposta: em branco. Os textos prontos ficam em
@@ -432,20 +441,17 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // manter o nome é o que faz o ajuste se propagar sem mais nenhuma mudança.
   const valorTotalInvestimento = valorNegociado ?? somaDosItens;
 
-  // PMT Price Formula for Financiamento:
-  // PV = Total - Entrada
-  //
-  // A fórmula mora em utils/solar.ts porque a folha de despesas mensais do PDF
-  // reconstrói esta mesma parcela a partir dos campos persistidos — a parcela
-  // em si nunca foi gravada. Duas cópias da conta divergiriam, e a divergência
-  // apareceria no documento que vai para o cliente.
-  const entradaValor = (valorTotalInvestimento * entradaFinanciamentoPct) / 100;
-  const valorFinanciado = valorTotalInvestimento - entradaValor;
-  const pmtParcelaFinanciamento = parcelaFinanciamento({
-    valorFinanciado,
-    jurosMesPct: jurosFinanciamentoMesPct,
-    parcelas: parcelasFinanciamento,
+  const financiamento = calcularFinanciamento({
+    investimento: valorTotalInvestimento,
+    entradaPct: manterEntradaLegada ? undefined : entradaFinanciamentoPct,
+    entradaValor: manterEntradaLegada ? propostaExistente.entradaFinanciamentoValor : undefined,
+    jurosMesPct: jurosFinanciamentoMesPct === '' ? undefined : jurosFinanciamentoMesPct,
+    parcelas: parcelasFinanciamento === '' ? undefined : parcelasFinanciamento,
+    ajustes: financiamentoAjustes,
   });
+  const entradaValor = financiamento.entradaValor;
+  const pmtParcelaFinanciamento = financiamento.parcela;
+  const financiamentoPendente = formaPagamento === 'financiamento' && !financiamento.completo;
 
   /*
    * Parâmetros técnicos que o catálogo já responde.
@@ -498,16 +504,22 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     alturaM: alturaEfetivaM,
     taxaSem: iluminacaoPublicaSemSfcr, disponibilidadeReais: custoDisponibilidade, taxaCom: iluminacaoPublicaComSfcr,
     investimento: valorTotalInvestimento, parcela: formaPagamento === 'financiamento' ? pmtParcelaFinanciamento : 0,
-    parcelas: formaPagamento === 'financiamento' ? parcelasFinanciamento : 0,
+    parcelas: formaPagamento === 'financiamento' && financiamento.completo ? Number(parcelasFinanciamento) : 0,
     quantidadeInstalada: levantamentoTelhado ? levantamentoTelhado.placas.length : null
   });
+  if (financiamentoPendente) {
+    calculoSolar.erros.push(...Object.values(financiamento.erros));
+    calculoSolar.completo = false;
+  }
   const preservarLegado = legado && !revisaoConfirmada;
   const potenciaKwpCalculada = preservarLegado ? propostaExistente.potenciaKwp : calculoSolar.potenciaKwp;
   const modulosQtdCalculada = preservarLegado ? propostaExistente.modulosQtd : calculoSolar.modulosQtd;
   const geracaoMediaKwh = preservarLegado ? propostaExistente.geracaoMediaKwh : calculoSolar.geracaoMediaKwh;
   const areaEstimadaM2 = preservarLegado ? propostaExistente.areaEstimadaM2 : calculoSolar.areaEstimadaM2;
   const coberturaPct = preservarLegado ? propostaExistente.coberturaPct : calculoSolar.coberturaPct;
-  const economiaMensal = preservarLegado ? propostaExistente.economiaMensal : calculoSolar.economiaMensal;
+  const economiaMensal = preservarLegado
+    ? (formaPagamento === 'financiamento' ? propostaExistente.economiaAnual / 12 - pmtParcelaFinanciamento : propostaExistente.economiaMensal)
+    : calculoSolar.economiaMensal;
   const economiaAnual = preservarLegado ? propostaExistente.economiaAnual : calculoSolar.economiaAnual;
   const economia25Anos = preservarLegado ? propostaExistente.economia25Anos : calculoSolar.economia25Anos;
   const paybackAnos = preservarLegado ? propostaExistente.paybackAnos : calculoSolar.paybackAnos;
@@ -668,10 +680,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
       return false;
     }
     if (rascunho) return true;
+    if (financiamentoPendente) {
+      showToast('Financiamento incompleto', 'error', Object.values(financiamento.erros).join(' ')); return false;
+    }
     if (!preservarLegado && !calculoSolar.completo) {
       showToast('Pendente de preenchimento', 'error', calculoSolar.erros.join(' ')); return false;
     }
-    if ((formaPagamento === 'financiamento' && parcelasFinanciamento <= 0) || (formaPagamento === 'cartao' && parcelasCartao <= 0)) {
+    if (formaPagamento === 'cartao' && parcelasCartao <= 0) {
       showToast('Prazo inválido', 'error', 'Informe o número de parcelas do financiamento.'); return false;
     }
     if (consumoKwh <= 0) {
@@ -749,9 +764,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     parcelasCartao,
     taxaCartaoPct,
     entradaFinanciamentoValor: entradaValor,
-    entradaFinanciamentoPct,
-    parcelasFinanciamento,
-    jurosFinanciamentoMesPct,
+    entradaFinanciamentoPct: manterEntradaLegada ? undefined : entradaFinanciamentoPct,
+    parcelasFinanciamento: parcelasFinanciamento === '' ? undefined : parcelasFinanciamento,
+    jurosFinanciamentoMesPct: jurosFinanciamentoMesPct === '' ? undefined : jurosFinanciamentoMesPct,
+    financiamentoAjustes: Object.keys(financiamentoAjustes).length ? financiamentoAjustes : undefined,
     bancoFinanciamento,
     // A data de criação é do banco; aqui ela só não pode ser reinventada a
     // cada edição do rascunho.
@@ -1665,36 +1681,44 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">ENTRADA (%)</label>
                     <input
                       type="number"
+                      min="0" max="100" step="0.01"
+                      aria-label="Entrada (%)"
+                      aria-invalid={!!financiamento.erros.entradaPct}
+                      aria-describedby={financiamento.erros.entradaPct ? 'erro-entrada-financiamento' : undefined}
                       value={entradaFinanciamentoPct}
-                      onChange={(e) => setEntradaFinanciamentoPct(Number(e.target.value))}
+                      onChange={(e) => { setEntradaFinanciamentoEditada(true); setEntradaFinanciamentoPct(Number(e.target.value)); }}
                       className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#004276]"
                     />
+                    {financiamento.erros.entradaPct && <p id="erro-entrada-financiamento" className="text-red-600 mt-1">{financiamento.erros.entradaPct}</p>}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">PARCELAS</label>
-                    <select
+                    <input
+                      type="number" min="1" max="1200" step="1"
+                      aria-label="Prazo do financiamento (meses)"
+                      aria-invalid={!!financiamento.erros.parcelas}
+                      aria-describedby={financiamento.erros.parcelas ? 'erro-prazo-financiamento' : undefined}
+                      placeholder="Informe os meses"
                       value={parcelasFinanciamento}
-                      onChange={(e) => setParcelasFinanciamento(Number(e.target.value))}
+                      onChange={(e) => setParcelasFinanciamento(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#004276]"
-                    >
-                      <option value="12">12x</option>
-                      <option value="24">24x</option>
-                      <option value="36">36x</option>
-                      <option value="48">48x</option>
-                      <option value="60">60x</option>
-                      <option value="72">72x</option>
-                      <option value="120">120x</option>
-                    </select>
+                    />
+                    {financiamento.erros.parcelas && <p id="erro-prazo-financiamento" className="text-red-600 mt-1">{financiamento.erros.parcelas}</p>}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">JUROS MÊS (%)</label>
                     <input
                       type="number"
-                      step="0.05"
+                      min="0" max="999.999" step="0.001"
+                      aria-label="Juros mensais (%)"
+                      aria-invalid={!!financiamento.erros.jurosMesPct}
+                      aria-describedby={financiamento.erros.jurosMesPct ? 'erro-juros-financiamento' : undefined}
+                      placeholder="Informe a taxa mensal"
                       value={jurosFinanciamentoMesPct}
-                      onChange={(e) => setJurosFinanciamentoMesPct(Number(e.target.value))}
+                      onChange={(e) => setJurosFinanciamentoMesPct(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#004276]"
                     />
+                    {financiamento.erros.jurosMesPct && <p id="erro-juros-financiamento" className="text-red-600 mt-1">{financiamento.erros.jurosMesPct}</p>}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">AGENTE / BANCO</label>
@@ -1708,20 +1732,34 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   </div>
                 </div>
 
-                <div className="p-2.5 bg-white rounded-lg border border-slate-200 grid grid-cols-3 gap-2 text-center font-bold">
-                  <div>
-                    <span className="text-[9px] text-slate-400 block uppercase">VALOR DA ENTRADA</span>
-                    <span className="text-slate-800 text-xs sm:text-sm">R$ {entradaValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-slate-400 block uppercase">PARCELA ({parcelasFinanciamento}X)</span>
-                    <span className="text-[#004276] text-xs sm:text-sm font-black">R$ {pmtParcelaFinanciamento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-slate-400 block uppercase">TOTAL DO FINANCIAMENTO</span>
-                    <span className="text-slate-800 text-xs sm:text-sm">R$ {(entradaValor + pmtParcelaFinanciamento * parcelasFinanciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
+                {financiamento.erros.investimento && <p className="text-red-600" role="status">{financiamento.erros.investimento}</p>}
+                <div className="p-2.5 bg-white rounded-lg border border-slate-200 grid grid-cols-2 sm:grid-cols-3 gap-3 font-bold">
+                  {([
+                    ['entradaValor', 'Valor da entrada'], ['valorFinanciado', 'Valor financiado'],
+                    ['parcela', 'Valor da parcela'], ['totalPrestacoes', 'Total das prestações'],
+                    ['jurosTotais', 'Juros totais'], ['totalPago', 'Total com entrada'],
+                  ] as const).map(([campo, rotulo]) => <div key={campo} className="min-w-0">
+                    <label className="text-[9px] text-slate-500 block uppercase mb-1" htmlFor={`financiamento-${campo}`}>{rotulo} (R$)</label>
+                    <input id={`financiamento-${campo}`} type="number" min={campo === 'parcela' || campo === 'valorFinanciado' ? '0.01' : '0'} step="0.01"
+                      aria-label={rotulo} aria-invalid={!!financiamento.erros[campo]}
+                      aria-describedby={financiamento.erros[campo] ? `erro-ajuste-${campo}` : undefined}
+                      placeholder="Aguardando cálculo"
+                      value={financiamentoAjustes[campo] ?? (financiamento.completo ? financiamento[campo] : '')}
+                      onChange={e => ajustarFinanciamento(campo, e.target.value)}
+                      className={`w-full min-w-0 px-2 py-1.5 border rounded-lg text-[#004276] text-xs sm:text-sm ${financiamentoAjustes[campo] != null ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white'}`}
+                    />
+                    {financiamentoAjustes[campo] != null && <div className="text-[10px] text-amber-800 mt-1 font-normal">
+                      <span>Ajustado manualmente</span>
+                      <button type="button" aria-label={`Restaurar ${rotulo.toLowerCase()}`} onClick={() => ajustarFinanciamento(campo, '')}
+                        className="block underline">Usar calculado: {financiamento.calculados[campo].toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</button>
+                    </div>}
+                    {financiamento.erros[campo] && <p id={`erro-ajuste-${campo}`} className="text-red-600 mt-1 font-normal">{financiamento.erros[campo]}</p>}
+                  </div>)}
                 </div>
+                {financiamento.ajusteManual && <button type="button" className="text-xs text-[#004276] underline"
+                  onClick={() => setFinanciamentoAjustes({})}>Restaurar todos os valores calculados</button>}
+                {!financiamento.completo && <p role="status" className="text-slate-500">Financiamento não simulado. Revise as condições acima.</p>}
+                <p className="text-[10px] text-slate-500">A calculadora do BCB é a referência inicial. Todos os valores em reais podem ser ajustados individualmente; os ajustes são mantidos ao recalcular. Prestações mensais fixas e juros compostos, primeira parcela em um mês. Valores sem IOF, seguros ou tarifas adicionais.</p>
               </div>
             )}
 
@@ -1941,7 +1979,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-medium">Após parcelas / mês</span>
                 <span className="font-extrabold text-emerald-600 text-sm">
-                  R$ {economiaMensal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {financiamentoPendente ? 'Aguardando simulação' : economiaMensal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </span>
               </div>
 
@@ -1960,7 +1998,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-emerald-900 font-bold text-xs mt-2 flex justify-between items-center">
-                <span className="text-[11px]">Payback estimado</span>
+                <span className="text-[11px]">Payback operacional estimado</span>
                 <span className="bg-emerald-600 text-white px-2.5 py-0.5 rounded-full text-xs font-black">
                   {paybackAnos == null ? 'Sem retorno no período' : `${paybackAnos.toFixed(1)} anos`}
                 </span>

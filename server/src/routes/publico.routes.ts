@@ -364,7 +364,7 @@ publicoRouter.get(
                 p.valor_total, p.forma_pagamento::text AS forma_pagamento,
                 p.desconto_avista_pct, p.parcelas_cartao, p.taxa_cartao_pct,
                 p.entrada_financiamento_valor, p.entrada_financiamento_pct,
-                p.parcelas_financiamento, p.juros_financiamento_mes_pct,
+                p.parcelas_financiamento, p.juros_financiamento_mes_pct, p.financiamento_ajustes,
                 p.observacoes, p.logo_customizada_url, p.validade_dias, p.criado_em,
                 -- V017: responsável técnico escolhido NA proposta. Sem ele
                 -- aqui, o link do cliente e o PDF do WhatsApp cairiam no

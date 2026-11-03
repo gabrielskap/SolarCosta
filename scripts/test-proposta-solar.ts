@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {calcularProposta,entradaSolarZerada,calcularParcela,type EntradaSolar} from '../server/src/domain/propostaSolar';
 import {entradaSolarSchema,resultadosProposta} from '../server/src/schemas/propostaSolar';
+import {calcularFinanciamento,financiamentoDaProposta} from '../server/src/domain/financiamento';
 const perto=(a:number,b:number)=>assert.ok(Math.abs(a-b)<0.00001,`${a} != ${b}`);
 const base=():EntradaSolar=>({...entradaSolarZerada(),anoInicial:2026,ucs:[{nome:'UC 1',meses:Array(12).fill(1000),adicionalKwh:0,disponibilidadeKwh:0}],hspMensal:Array(12).fill(5.20667),moduloWp:710,perdasPct:24,larguraM:2.2,alturaM:1.1,inversorKw:14,oversizingPct:30,tarifa:1.19,taxaSem:33.73,disponibilidadeReais:99,taxaCom:33,investimento:22490});
 const zero=entradaSolarZerada();
@@ -48,5 +49,46 @@ const poupExcel=calcularProposta({...base(),modo:'excel',geracaoAnualExcel:12000
 const poupZero=calcularProposta({...base(),poupancaMesPct:0});perto(poupZero.projecao[24].saldoComPoupanca,poupZero.projecao[24].saldoAcumulado);
 const negativo=calcularProposta({...base(),investimento:1e9,poupancaMesPct:1});perto(negativo.projecao[0].saldoComPoupanca,negativo.projecao[0].saldoAcumulado);
 perto(calcularParcela(1200,0,12),100);perto(calcularParcela(1200,1,0),0);
+// Valores de referência: imagem da proposta e exemplo oficial da Calculadora do Cidadão.
+const condicoes={investimento:15990,entradaPct:0,parcelas:36,jurosMesPct:2.2};
+const f=calcularFinanciamento(condicoes);
+assert.equal(f.completo,true);assert.equal(f.parcela,647.66);assert.equal(f.valorFinanciado,15990);
+assert.equal(f.totalPrestacoes,23315.76);assert.equal(f.jurosTotais,7325.76);assert.equal(f.totalPago,23315.76);
+assert.equal(calcularFinanciamento({investimento:1290,parcelas:4,jurosMesPct:1.99}).parcela,338.70);
+const comEntrada=calcularFinanciamento({...condicoes,entradaPct:20});
+assert.equal(comEntrada.entradaValor,3198);assert.equal(comEntrada.valorFinanciado,12792);
+assert.equal(comEntrada.parcela,518.13);assert.equal(comEntrada.totalPrestacoes,18652.68);
+assert.equal(comEntrada.totalPago,21850.68);assert.equal(comEntrada.jurosTotais,5860.68);
+const semJuros=calcularFinanciamento({investimento:1200,parcelas:12,jurosMesPct:0});
+assert.equal(semJuros.completo,true);assert.equal(semJuros.parcela,100);assert.equal(semJuros.jurosTotais,0);
+assert.equal(calcularFinanciamento({...condicoes,parcelas:1}).parcela,16341.78);
+for(const invalido of [
+  {jurosMesPct:undefined},{jurosMesPct:null},{jurosMesPct:-1},{jurosMesPct:Infinity},{jurosMesPct:NaN},
+  {jurosMesPct:0.0001},{jurosMesPct:1000},{parcelas:undefined},{parcelas:0},{parcelas:-1},{parcelas:1.5},{parcelas:1201},
+  {entradaPct:-1},{entradaPct:100},{entradaPct:101},{entradaPct:0.001},{entradaPct:NaN},{investimento:0},{investimento:Infinity},
+]) {
+  const r=calcularFinanciamento({...condicoes,...invalido});
+  assert.equal(r.completo,false,JSON.stringify(invalido));assert.equal(r.parcela,0);assert.equal(r.totalPago,0);
+}
+assert.equal(calcularFinanciamento({...condicoes,parcelas:1200,jurosMesPct:999.999}).completo,true);
+assert.equal(calcularParcela(15990,0.00000001,36),444.17,'taxas pequenas não perdem precisão');
+assert.equal(calcularFinanciamento({...condicoes,investimento:15990.01,entradaPct:33.33}).entradaValor,5329.47);
+const propostaFin={valorTotal:15990,entradaFinanciamentoPct:20,parcelasFinanciamento:36,jurosFinanciamentoMesPct:2.2};
+assert.deepEqual(financiamentoDaProposta(propostaFin),comEntrada,'PDF e tela usam o mesmo resultado');
+assert.equal(financiamentoDaProposta({...propostaFin,entradaFinanciamentoPct:undefined,entradaFinanciamentoValor:1000.01}).entradaValor,1000.01);
+assert.equal(financiamentoDaProposta({...propostaFin,jurosFinanciamentoMesPct:undefined}).completo,false);
+assert.equal(financiamentoDaProposta({...propostaFin,entradaFinanciamentoValor:9999}).entradaValor,3198,'entrada em reais é derivada do percentual');
+const negociada=calcularFinanciamento({...condicoes,ajustes:{entradaValor:1000,valorFinanciado:14000,parcela:600,totalPrestacoes:21000,jurosTotais:6500,totalPago:23000}});
+assert.equal(negociada.completo,true);
+assert.equal(negociada.ajusteManual,true);
+for(const [campo,valor] of Object.entries({entradaValor:1000,valorFinanciado:14000,parcela:600,totalPrestacoes:21000,jurosTotais:6500,totalPago:23000}))
+  assert.equal(negociada[campo as keyof typeof negociada],valor,`${campo} respeita ajuste individual`);
+const outraTaxa=calcularFinanciamento({...condicoes,jurosMesPct:3,ajustes:{parcela:600,totalPago:23000}});
+assert.equal(outraTaxa.parcela,600);assert.equal(outraTaxa.totalPago,23000,'recálculo não apaga ajustes');
+assert.equal(outraTaxa.totalPrestacoes,21600,'campos sem ajuste acompanham a parcela manual');
+assert.deepEqual(calcularFinanciamento({...condicoes,ajustes:{}}),f,'limpar ajustes restaura a simulação');
+for(const ajustes of [{parcela:0},{parcela:-1},{parcela:1.001},{jurosTotais:-1},{totalPago:Infinity},{entradaValor:16000},{valorFinanciado:0}])
+  assert.equal(calcularFinanciamento({...condicoes,ajustes}).completo,false);
+assert.equal(calcularFinanciamento({...condicoes,ajustes:{jurosTotais:0,totalPago:0}}).completo,true,'zero explícito nos totais é preservado');
 const snapshot=JSON.parse(JSON.stringify(tecnico));perto(resultadosProposta(snapshot.entradas).calculo.economia25Anos,tecnico.economia25Anos);
 console.log('Propostas: zeros iniciais, UCs, modos, calendário, economia, financiamento, custos, payback, poupança e snapshot passaram.');
