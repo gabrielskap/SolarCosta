@@ -20,13 +20,19 @@ const multi=calcularProposta({...base(),ucs:[...base().ucs,{nome:'UC 2',meses:Ar
 perto(multi.consumoMedio,1500);perto(multi.compensacao,1490);
 assert.equal(entradaSolarSchema.safeParse({...base(),hspMensal:[5]}).success,false);
 assert.equal(entradaSolarSchema.safeParse({...base(),ucs:[{...base().ucs[0],meses:[1,2]}]}).success,false);
-assert.equal(calcularProposta({...base(),inversorKw:1}).completo,false);
-assert.ok(calcularProposta({...base(),inversorKw:1}).erros.some(e=>e==='Potência instalada (8,52 kWp) excede a capacidade do inversor (1 kW com 30% de oversizing).'));
-// Sem inversor informado, o único erro é o campo que falta: a capacidade 0 não
-// vira um segundo erro de "excesso" que ninguém sabe onde corrigir.
+// DC/AC acima do declarado é AVISO: a conta fecha e a proposta sai. Travar a
+// emissão aqui barrava todo sistema com micro inversor, que oversiza por projeto.
+const apertado=calcularProposta({...base(),inversorKw:1});
+assert.equal(apertado.completo,true);
+assert.deepEqual(apertado.erros,[]);
+assert.ok(apertado.avisos.some(a=>a.includes('(8,52 kWp)')&&a.includes('(1 kW com 30% de oversizing)')&&a.includes('DC/AC de 8,52')));
+assert.deepEqual(calcularProposta(base()).avisos,[]);
+// Sem inversor informado não há o que comparar: o campo que falta é o único
+// erro, e nenhum aviso de excesso aparece contra uma capacidade de 0.
 const semInversor=calcularProposta({...base(),inversorKw:0});
+assert.equal(semInversor.completo,false);
 assert.ok(semInversor.erros.includes('Informe potência do módulo, inversor e tarifa maiores que zero.'));
-assert.ok(!semInversor.erros.some(e=>e.includes('excede a capacidade')));
+assert.deepEqual(semInversor.avisos,[]);
 const excesso=calcularProposta({...base(),quantidadeInstalada:24});assert.ok(excesso.valorGeracaoMensal>excesso.consumoMedio*1.19);perto(excesso.economiaOperacional,1091.73);
 const parcial=calcularProposta({...base(),quantidadeInstalada:1});assert.ok(parcial.contaComSolar>132);
 const degradacao=calcularProposta({...base(),modo:'excel',geracaoAnualExcel:12000,degradacaoInicialPct:1,degradacaoAnualPct:0.7,reajustePct:6});

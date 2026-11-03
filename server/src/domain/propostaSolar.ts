@@ -33,7 +33,18 @@ export function calcularParcela(valor:number,jurosPct:number,parcelas:number):nu
   return Number((i>0?valor*i*fator/(fator-1):valor/parcelas).toFixed(2));
 }
 export function calcularProposta(e: EntradaSolar) {
+  /*
+   * Dois canais, porque são duas perguntas diferentes.
+   *
+   * `erros` é "falta dado": sem eles não há conta, e a proposta não pode ser
+   * emitida. `avisos` é "confira o projeto": a conta fecha, os números do PDF
+   * são reais, mas há uma escolha de engenharia que merece um segundo olhar.
+   * Misturar os dois travava a emissão por coisas que não eram ausência de
+   * dado nenhuma — e, pior, sob o rótulo "Pendente de preenchimento", que
+   * mandava o consultor procurar um campo vazio que não existia.
+   */
   const erros: string[] = [];
+  const avisos: string[] = [];
   // Área informada à mão vence o cálculo por dimensões do módulo. 0 = automático.
   const areaManualM2 = e.areaManualM2 ?? 0;
   const numeros = [e.anoInicial,e.moduloWp,e.perdasPct,e.larguraM,e.alturaM,areaManualM2,e.inversorKw,e.oversizingPct,e.tarifa,e.taxaSem,e.disponibilidadeReais,e.taxaCom,e.investimento,e.parcela,e.parcelas,e.reajustePct,e.degradacaoInicialPct,e.degradacaoAnualPct,e.manutencaoAnual,e.reajusteManutencaoPct,e.trocaInversorAno,e.trocaInversorValor,e.poupancaMesPct,e.geracaoAnualExcel,...e.hspMensal,...e.ucs.flatMap(u=>[...u.meses,u.adicionalKwh,u.disponibilidadeKwh])];
@@ -63,14 +74,21 @@ export function calcularProposta(e: EntradaSolar) {
   const potenciaKwp = modulosQtd*e.moduloWp/1000;
   const potenciaNecessariaKwp = hspMedia>0?compensacao/30/hspMedia:0;
   const capacidadeInversor = e.inversorKw*(1+e.oversizingPct/100);
-  // Sem inversor informado a capacidade é 0 e QUALQUER sistema "excede" — um
-  // segundo erro que só repete, em outras palavras, o campo que falta logo
-  // acima. A comparação só diz algo quando há um inversor para comparar.
-  // Os números entram na mensagem porque o erro é resolvido em um de três
-  // campos diferentes (inversor, oversizing, quantidade de módulos) e, sem
-  // eles, não dá para saber qual está fora do lugar.
-  const kw = (v:number) => v.toLocaleString('pt-BR',{maximumFractionDigits:2});
-  if(e.inversorKw>0 && potenciaKwp>capacidadeInversor) erros.push(`Potência instalada (${kw(potenciaKwp)} kWp) excede a capacidade do inversor (${kw(e.inversorKw)} kW com ${kw(e.oversizingPct)}% de oversizing).`);
+  /*
+   * Oversizing é AVISO, não erro.
+   *
+   * Relação DC/AC acima de 1 é o projeto normal de qualquer sistema — e com
+   * micro inversor passa de 1,4 sem nada de errado. Como `oversizingPct` nasce
+   * em 0, tratar o excesso como erro barrava a emissão de praticamente toda
+   * proposta honesta, por conta de um limite que ninguém tinha declarado.
+   * Quem decide se 1,42 cabe no micro é o datasheet, não este arquivo: aqui a
+   * relação é calculada e mostrada, e a chamada fica com o projetista.
+   *
+   * Sem inversor informado não há o que comparar — a capacidade seria 0 e todo
+   * sistema "excederia". Esse caso já é erro na checagem de campos acima.
+   */
+  const num = (v:number) => v.toLocaleString('pt-BR',{maximumFractionDigits:2});
+  if(e.inversorKw>0 && potenciaKwp>capacidadeInversor) avisos.push(`Potência instalada (${num(potenciaKwp)} kWp) acima da capacidade declarada do inversor (${num(e.inversorKw)} kW com ${num(e.oversizingPct)}% de oversizing) — relação DC/AC de ${num(potenciaKwp/e.inversorKw)}. Confira o limite do datasheet.`);
   const areaEstimadaM2 = areaManualM2>0?areaManualM2:e.modo==='excel'?quantidadeCalculada*2.2:modulosQtd*e.larguraM*e.alturaM;
   const geracaoMensal = e.hspMensal.map((h,m)=>e.modo==='excel'?potenciaNecessariaKwp*h*30:modulosQtd*(producaoModulo[m]??0));
   const geracaoMediaKwh = media(geracaoMensal);
@@ -102,7 +120,7 @@ export function calcularProposta(e: EntradaSolar) {
     acumuladoSem+=despesaAnual;
     projecao.push({ano,tarifa,despesaAnual,despesaAcumulada:acumuladoSem,geracaoAnual:soma(geracoes),receitaAnual,custos,resultadoAnual,parcelasAno,resultadoAposParcelas:resultadoAnual-parcelasAno,saldoAcumulado:saldo,saldoComPoupanca:e.modo==='excel'?saldo*(1+e.poupancaMesPct/100):saldoPoupanca});
   }
-  const resultado={versao:1 as const,entradas:e,completo:erros.length===0,erros,consumoMedio,compensacao,hspMedia,quantidadeCalculada,modulosQtd,potenciaKwp,potenciaNecessariaKwp,capacidadeInversor,areaEstimadaM2,geracaoMensal,geracaoMediaKwh,coberturaPct:consumoMedio>0?geracaoMediaKwh/consumoMedio*100:0,contaSemSolar,contaComSolar,valorGeracaoMensal:geracaoMediaKwh*e.tarifa,economiaOperacional,economiaMensal:economiaOperacional-(e.parcelas>0?e.parcela:0),economiaAnual:economiaOperacional*12,economia25Anos:saldo,paybackAnos,projecao};
+  const resultado={versao:1 as const,entradas:e,completo:erros.length===0,erros,avisos,consumoMedio,compensacao,hspMedia,quantidadeCalculada,modulosQtd,potenciaKwp,potenciaNecessariaKwp,capacidadeInversor,areaEstimadaM2,geracaoMensal,geracaoMediaKwh,coberturaPct:consumoMedio>0?geracaoMediaKwh/consumoMedio*100:0,contaSemSolar,contaComSolar,valorGeracaoMensal:geracaoMediaKwh*e.tarifa,economiaOperacional,economiaMensal:economiaOperacional-(e.parcelas>0?e.parcela:0),economiaAnual:economiaOperacional*12,economia25Anos:saldo,paybackAnos,projecao};
   return resultado;
 }
 export type CalculoSolar = ReturnType<typeof calcularProposta>;

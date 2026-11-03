@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, Sliders, Plus, Trash2, Download, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sliders, Plus, Trash2, Download, AlertCircle, CheckCircle2, ShieldAlert, Info } from 'lucide-react';
 import { entradaSolarZerada, type EntradaSolar, type CalculoSolar } from '../../server/src/domain/propostaSolar';
 import { listarSimulacoesOffGrid, abrirSimulacaoOffGrid, type ResumoOffGrid, type SimulacaoOffGrid } from '../services/offGrid';
 
@@ -465,6 +465,25 @@ export function PropostaPremissas({
               <ul className="list-disc list-inside text-[11px] text-amber-800 space-y-0.5">
                 {resultado.erros.map((e) => (
                   <li key={e}>{e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/*
+            Avisos de projeto: a conta fechou e a proposta pode ser emitida — o
+            que está aqui é uma escolha técnica para conferir, não um campo
+            faltando. Em azul, e não em âmbar, justamente para não ser lido como
+            pendência. `?? []` cobre proposta gravada antes deste canal existir.
+          */}
+          {(resultado.avisos ?? []).length > 0 && (
+            <div role="status" className="text-xs bg-sky-50 border border-sky-200 text-sky-900 rounded-xl p-3 space-y-1">
+              <strong className="flex items-center gap-1 text-sky-800">
+                <Info className="w-3.5 h-3.5" /> Confira o projeto
+              </strong>
+              <ul className="list-disc list-inside text-[11px] text-sky-800 space-y-0.5">
+                {(resultado.avisos ?? []).map((a) => (
+                  <li key={a}>{a}</li>
                 ))}
               </ul>
             </div>

@@ -268,12 +268,15 @@ export const SuppliersProductsView: React.FC<SuppliersProductsViewProps> = ({
      * Watts, não quilowatts.
      *
      * É a proposta que paga o engano: a potência do inversor é somada dos itens
-     * do kit para checar o oversizing, e um micro cadastrado como "2" vira 0,002
-     * kW — o dimensionamento passa a acusar excesso de potência em todo sistema,
-     * longe daqui e sem pista da origem. Não existe módulo nem inversor de
-     * catálogo abaixo de 50 W, então o número pequeno é sempre a unidade errada.
+     * do kit para dimensionar, e um micro cadastrado como "2" vira 0,002 kW —
+     * o aviso de DC/AC dispara em todo sistema, longe daqui e sem pista da
+     * origem. Não existe módulo nem inversor de catálogo abaixo de 50 W.
+     *
+     * Só vale para módulo e inversor: cabo e estrutura não têm potência de
+     * verdade, e os que estão no catálogo com "1 Wp" simbólico continuariam
+     * editáveis — travá-los aqui impediria corrigir o nome de um cabo.
      */
-    if (potenciaWp !== undefined && potenciaWp < 50) {
+    if (exigePotencia && potenciaWp !== undefined && potenciaWp < 50) {
       showToast('Potência em watts', 'error', `${potenciaWp} W é baixo demais para ${tipoProd === 'inversor' ? 'um inversor' : 'um módulo'}. Informe em watts: um micro de 2 kW é 2000.`);
       return;
     }

@@ -1271,7 +1271,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">GERAÇÃO MÉDIA</span>
-                <p className="text-base sm:text-lg font-black text-slate-800">{geracaoMediaKwh.toLocaleString('pt-BR')} kWh</p>
+                <p className="text-base sm:text-lg font-black text-slate-800">{geracaoMediaKwh.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kWh</p>
               </div>
 
               <div>
@@ -1520,7 +1520,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                             />
                           </td>
                           <td data-label="TOTAL" className="py-2 px-3 text-right font-bold text-slate-900">
-                            R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td data-label="" className="py-2 px-2 text-center">
                             <button
@@ -1556,7 +1556,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold text-slate-500">Soma dos itens</span>
                   <span className="font-bold text-slate-700">
-                    R$ {somaDosItens.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {somaDosItens.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
 
@@ -1599,7 +1599,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     )}
                   </span>
                   <span className="text-lg font-black text-[#004276]">
-                    R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -1711,15 +1711,15 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 <div className="p-2.5 bg-white rounded-lg border border-slate-200 grid grid-cols-3 gap-2 text-center font-bold">
                   <div>
                     <span className="text-[9px] text-slate-400 block uppercase">VALOR DA ENTRADA</span>
-                    <span className="text-slate-800 text-xs sm:text-sm">R$ {entradaValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span className="text-slate-800 text-xs sm:text-sm">R$ {entradaValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div>
                     <span className="text-[9px] text-slate-400 block uppercase">PARCELA ({parcelasFinanciamento}X)</span>
-                    <span className="text-[#004276] text-xs sm:text-sm font-black">R$ {pmtParcelaFinanciamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span className="text-[#004276] text-xs sm:text-sm font-black">R$ {pmtParcelaFinanciamento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div>
                     <span className="text-[9px] text-slate-400 block uppercase">TOTAL DO FINANCIAMENTO</span>
-                    <span className="text-slate-800 text-xs sm:text-sm">R$ {(entradaValor + pmtParcelaFinanciamento * parcelasFinanciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <span className="text-slate-800 text-xs sm:text-sm">R$ {(entradaValor + pmtParcelaFinanciamento * parcelasFinanciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               </div>
@@ -1740,10 +1740,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   </div>
                   <div className="text-xs space-y-0.5">
                     <p className="font-semibold text-slate-700">
-                      Economia extra: <strong className="text-emerald-700">R$ {((valorTotalInvestimento * descontoAvistaPct) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                      Economia extra: <strong className="text-emerald-700">R$ {((valorTotalInvestimento * descontoAvistaPct) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                     </p>
                     <p className="text-sm font-black text-[#004276]">
-                      Total com desconto: R$ {(valorTotalInvestimento * (1 - descontoAvistaPct / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      Total com desconto: R$ {(valorTotalInvestimento * (1 - descontoAvistaPct / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   </div>
                 </div>
@@ -1903,7 +1903,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             <div>
               <span className="text-[10px] text-blue-200 font-medium uppercase tracking-wider">INVESTIMENTO TOTAL</span>
               <h2 className="text-2xl sm:text-3xl font-black text-white mt-0.5">
-                R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </h2>
             </div>
 
@@ -1914,7 +1914,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
               <div className="bg-white/5 p-2 rounded-lg">
                 <span className="text-blue-200 text-[10px] block">Geração Média</span>
-                <span className="font-extrabold text-white text-sm">{geracaoMediaKwh.toLocaleString('pt-BR')} kWh</span>
+                <span className="font-extrabold text-white text-sm">{geracaoMediaKwh.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kWh</span>
               </div>
               <div className="bg-white/5 p-2 rounded-lg">
                 <span className="text-blue-200 text-[10px] block">Área Estimada</span>
@@ -1941,14 +1941,14 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-medium">Após parcelas / mês</span>
                 <span className="font-extrabold text-emerald-600 text-sm">
-                  R$ {economiaMensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R$ {economiaMensal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-medium">Operacional / ano</span>
                 <span className="font-bold text-slate-800">
-                  R$ {economiaAnual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R$ {economiaAnual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
 
@@ -2043,7 +2043,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       <option value="">Selecione…</option>
                       {kits.map(k => (
                         <option key={k.id} value={k.id}>
-                          {k.nome} — R$ {k.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          {k.nome} — R$ {k.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </option>
                       ))}
                     </select>

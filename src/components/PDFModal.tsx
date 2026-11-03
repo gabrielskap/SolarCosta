@@ -750,7 +750,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                             </div>
                             <p className="text-[10px] text-slate-500 font-medium border-t border-slate-200 pt-1.5 mt-1">
                               {descontoAvistaPct > 0
-                                ? `Economia de R$ ${economiaAvista.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                                ? `Economia de R$ ${economiaAvista.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                 : 'Pagamento integral'}
                             </p>
                           </div>
@@ -781,7 +781,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                               </div>
                             </div>
                             <p className="text-[10px] text-slate-500 font-medium border-t border-slate-200 pt-1.5 mt-1">
-                              Total: R$ {valorTotalCartao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}{taxaCartaoPct > 0 ? ` (${taxaCartaoPct}% taxa)` : ''}
+                              Total: R$ {valorTotalCartao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{taxaCartaoPct > 0 ? ` (${taxaCartaoPct}% taxa)` : ''}
                             </p>
                           </div>
 
@@ -817,7 +817,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                                 ? 'text-blue-200 border-blue-800'
                                 : 'text-slate-500 border-slate-200'
                             }`}>
-                              {entradaFinancValor > 0 ? `Entrada R$ ${entradaFinancValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} • ` : 'Sem entrada • '}
+                              {entradaFinancValor > 0 ? `Entrada R$ ${entradaFinancValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • ` : 'Sem entrada • '}
                               {jurosFinancMesPct}% a.m.{bancoFinancNome ? ` (${bancoFinancNome})` : ''}
                             </p>
                           </div>
@@ -1427,7 +1427,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                     </div>
                     <div>
                       <span className="text-[9px] uppercase font-sans text-slate-500 block">Valor do documento</span>
-                      <strong className="text-sm">R$ {bol.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                      <strong className="text-sm">R$ {bol.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                     </div>
                     <div>
                       <span className="text-[9px] uppercase font-sans text-slate-500 block">Parcela</span>
