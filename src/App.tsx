@@ -1282,6 +1282,12 @@ export default function App() {
             type={pdfModal.type}
             data={pdfModal.data}
             empresa={config?.empresa}
+            onSalvarGarantias={pdfModal.type === 'proposta' ? async (garantiasEquipamentos, observacoes) => {
+              const salva = await handleSaveProposal({ ...(pdfModal.data as Proposta), garantiasEquipamentos, observacoes });
+              if (!salva) return false;
+              setPdfModal(atual => ({ ...atual, data: salva }));
+              return true;
+            } : undefined}
             onClose={() => setPdfModal({ isOpen: false, type: 'proposta', data: null })}
           />
         </Suspense>

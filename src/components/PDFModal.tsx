@@ -7,7 +7,8 @@ import {
   Upload, FileText, Check, RotateCcw, Sparkles, Layers, Eye, EyeOff, Palette, MessageSquare, User,
   CreditCard, Landmark
 } from 'lucide-react';
-import { Proposta, Contrato, Procuracao, Boleto } from '../types';
+import { Proposta, Contrato, Procuracao, Boleto, GarantiasProposta } from '../types';
+import { GarantiasPropostaCampos, GARANTIAS_PROPOSTA_PADRAO, textoGarantiasProposta } from './GarantiasPropostaCampos';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import logoFull from '../assets/logo-full.png';
 import logoIcon from '../assets/logo-icon.png';
@@ -28,6 +29,7 @@ interface PDFModalProps {
   type: 'proposta' | 'contrato' | 'procuracao' | 'boleto';
   data: Proposta | Contrato | Procuracao | Boleto | null;
   onClose: () => void;
+  onSalvarGarantias?: (garantias: GarantiasProposta, observacoes?: string) => Promise<boolean>;
   /**
    * `modal` (padrão) é o uso de dentro do CRM: sobreposição no <body>, barra
    * de ações e painel de customização.
@@ -90,6 +92,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
   variante = 'modal',
   tokenPublico,
   empresa,
+  onSalvarGarantias,
 }) => {
   const ehPagina = variante === 'pagina';
   const [activePage, setActivePage] = useState<number>(0); // 0 = all pages, 1..8 = page 1..8
@@ -185,6 +188,34 @@ export const PDFModal: React.FC<PDFModalProps> = ({
   const [showLogo, setShowLogo] = useState<boolean>(true);
 
   const [observacoesEspecificas, setObservacoesEspecificas] = useState<string>(defaultObservacoes);
+  const [garantiasEquipamentos, setGarantiasEquipamentos] = useState<GarantiasProposta>(
+    () => ({ ...GARANTIAS_PROPOSTA_PADRAO, ...prop?.garantiasEquipamentos }),
+  );
+  const [salvandoGarantias, setSalvandoGarantias] = useState(false);
+  const [erroGarantias, setErroGarantias] = useState('');
+  const garantiasEditaveis = !!onSalvarGarantias && prop?.status !== 'aceita';
+  const alterarGarantias = (valor: GarantiasProposta) => {
+    setObservacoesEspecificas(atual => atual.replace(textoGarantiasProposta(garantiasEquipamentos), textoGarantiasProposta(valor)));
+    setGarantiasEquipamentos(valor);
+    setErroGarantias('');
+  };
+  const aplicarPersonalizacao = async () => {
+    const salvas = { ...GARANTIAS_PROPOSTA_PADRAO, ...prop?.garantiasEquipamentos };
+    if (garantiasEditaveis && JSON.stringify(salvas) !== JSON.stringify(garantiasEquipamentos)) {
+      setSalvandoGarantias(true);
+      setErroGarantias('');
+      try {
+        const observacoes = prop?.observacoes?.replace(textoGarantiasProposta(salvas), textoGarantiasProposta(garantiasEquipamentos));
+        if (!await onSalvarGarantias!(garantiasEquipamentos, observacoes)) throw new Error('Falha ao salvar');
+      } catch {
+        setErroGarantias('Não foi possível salvar as garantias. Tente novamente.');
+        return;
+      } finally {
+        setSalvandoGarantias(false);
+      }
+    }
+    setIsCustomizeOpen(false);
+  };
 
   const [consultorNome, setConsultorNome] = useState<string>('Giselle Costa');
   const [consultorCargo, setConsultorCargo] = useState<string>('Consultora Especialista em Soluções Fotovoltaicas');
@@ -326,7 +357,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
     { label: '🏠 Telhado Colonial', text: '🏠 Estrutura de fixação em alumínio anodizado e aço inox própria para telhado colonial.' },
     { label: '💳 Desconto PIX 5%', text: '💳 Desconto especial de 5% concedido para pagamento à vista via PIX ou Transferência Bancária.' },
     { label: '📱 Monitoramento App', text: '📱 Inversor/Microinversor com conectividade Wi-Fi para acompanhamento da geração em tempo real via celular.' },
-    { label: '🛡️ Garantias Oficiais', text: '🛡️ 25 anos de garantia de eficiência dos módulos, 12 anos para inversores e 1 ano para os serviços de instalação.' }
+    { label: '🛡️ Garantias Oficiais', text: textoGarantiasProposta(garantiasEquipamentos) }
   ];
 
   const handleAddPreset = (textToAdd: string) => {
@@ -1292,9 +1323,14 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                             <Zap className="w-5 h-5" />
                           </div>
                           <h4 className="font-extrabold text-[#004276] text-xs uppercase">MÓDULOS</h4>
-                          <p className="text-[10px] font-bold text-slate-700 leading-tight">
-                            25 ANOS DE PERFORMANCE
-                          </p>
+                          <div className="space-y-2 text-[10px] font-bold text-slate-700 leading-tight uppercase break-words">
+                            {garantiasEquipamentos.modulosProduto.trim() && (
+                              <p><span className="block text-base font-black text-[#004276]">{garantiasEquipamentos.modulosProduto}</span>Garantia do produto</p>
+                            )}
+                            {garantiasEquipamentos.modulosPerformance.trim() && (
+                              <p><span className="block text-base font-black text-[#004276]">{garantiasEquipamentos.modulosPerformance}</span>Performance</p>
+                            )}
+                          </div>
                         </div>
 
                         <div className="bg-slate-50 border-2 border-[#004276] p-4 rounded-2xl text-center flex flex-col justify-between space-y-2">
@@ -1303,8 +1339,8 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                           </div>
                           <h4 className="font-extrabold text-[#004276] text-xs uppercase">INVERSORES</h4>
                           <div className="py-2">
-                            <span className="text-2xl font-black text-[#004276]">12</span>
-                            <span className="block text-[11px] font-bold text-slate-700">ANOS</span>
+                            <span className="block text-base font-black text-[#004276] uppercase break-words">{garantiasEquipamentos.inversores}</span>
+                            {garantiasEquipamentos.inversores.trim() && <span className="block text-[10px] font-bold text-slate-700 uppercase">Garantia do produto</span>}
                           </div>
                         </div>
 
@@ -1608,6 +1644,11 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                   )}
                 </div>
 
+                <div className="space-y-2.5">
+                  <GarantiasPropostaCampos valor={garantiasEquipamentos} onChange={alterarGarantias} escuro disabled={!garantiasEditaveis || salvandoGarantias} />
+                  <p className="text-[11px] text-slate-400">{garantiasEditaveis ? 'Ao aplicar, os prazos são salvos nesta proposta e no documento compartilhado.' : 'As garantias desta proposta estão disponíveis apenas para consulta.'}</p>
+                </div>
+
                 {/* SECTION 2: OBSERVAÇÕES ESPECÍFICAS DA PROPOSTA */}
                 <div className="space-y-2.5">
                   <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
@@ -1693,6 +1734,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                     setShowLogo(true);
                     setObservacoesEspecificas(defaultObservacoes);
                     setThemeColor('blue');
+                    if (garantiasEditaveis) alterarGarantias({ ...GARANTIAS_PROPOSTA_PADRAO });
                   }}
                   className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2"
                 >
@@ -1702,12 +1744,14 @@ export const PDFModal: React.FC<PDFModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setIsCustomizeOpen(false)}
+                  onClick={() => void aplicarPersonalizacao()}
+                  disabled={salvandoGarantias}
                   className="w-full py-2.5 bg-[#FFD100] hover:bg-amber-300 text-[#004276] rounded-xl text-xs font-black shadow transition flex items-center justify-center gap-2"
                 >
                   <Check className="w-4 h-4" />
-                  <span>Aplicar & Fechar Painel</span>
+                  <span>{salvandoGarantias ? 'Salvando garantias...' : 'Aplicar & Fechar Painel'}</span>
                 </button>
+                {erroGarantias && <p role="alert" className="text-xs text-rose-400">{erroGarantias}</p>}
               </div>
             </div>
           )}

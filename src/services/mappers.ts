@@ -472,6 +472,7 @@ export function paraProposta(linha: any): Proposta {
     status: linha.status === 'recusada' || linha.status === 'expirada' ? 'enviada' : linha.status,
     observacoes: linha.observacoes ?? undefined,
     customLogoUrl: linha.logo_customizada_url ?? undefined,
+    garantiasEquipamentos: linha.garantias_equipamentos ?? undefined,
     // Responsável técnico da proposta (V017). Ausente continua ausente — é
     // esse undefined que faz o PDF cair no cadastro da empresa.
     responsavelTecnico: linha.responsavel_tecnico ?? undefined,
@@ -543,6 +544,7 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     financiamento_ajustes: p.financiamentoAjustes ?? null,
     observacoes: p.observacoes ?? null,
     logo_customizada_url: p.customLogoUrl ?? null,
+    garantias_equipamentos: p.garantiasEquipamentos ?? null,
     responsavel_tecnico: p.responsavelTecnico ?? null,
     responsavel_tecnico_id: p.responsavelTecnicoId ?? null,
     conselho_profissional: p.conselhoProfissional ?? null,

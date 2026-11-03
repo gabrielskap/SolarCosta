@@ -18,8 +18,10 @@ export async function prepararBancoTemporario(c: Cliente) {
   // Relações sem qualificação passam a resolver as tabelas temporárias.
   await c.query(fks.map(f => `ALTER TABLE pg_temp.${id(f.nome)} ADD CONSTRAINT ${id(f.conname)} ${f.definicao.replaceAll('REFERENCES public.', 'REFERENCES pg_temp.')};`).join('\n'));
   await c.query(triggers.map(t => t.definicao.replace(/ ON public\./, ' ON pg_temp.') + ';').join('\n'));
-  const migracao = await readFile(new URL('../database/migrations/V033__ajustes_financiamento.sql', import.meta.url), 'utf8');
-  await c.query(migracao.replace(/^BEGIN;\s*$/gm,'').replace(/^COMMIT;\s*$/gm,''));
+  for (const arquivo of ['V033__ajustes_financiamento.sql', 'V034__garantias_proposta.sql']) {
+    const migracao = await readFile(new URL(`../database/migrations/${arquivo}`, import.meta.url), 'utf8');
+    await c.query(migracao.replace(/^BEGIN;\s*$/gm,'').replace(/^COMMIT;\s*$/gm,''));
+  }
   await c.query(`INSERT INTO "SolarCosta_Sequencias" (chave,prefixo) VALUES ('proposta','QA-')`);
   await c.query(`INSERT INTO "SolarCosta_Usuarios" (nome,email,senha_hash,cargo,status)
     VALUES ('Teste temporário','qa-financiamento@example.invalid','hash-apenas-teste','Administrador','ativo')`);

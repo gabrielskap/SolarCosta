@@ -1,5 +1,5 @@
 // Executar em server: npx tsx ../scripts/test-proposta-solar-api.ts
-// Usa tabelas temporárias e savepoints: testa a V033 e reverte tudo ao terminar.
+// Usa tabelas temporárias e savepoints: testa as V033/V034 e reverte tudo ao terminar.
 // TEST_PROPOSTA_ISOLADA=0 permite testar um banco de homologação já migrado.
 import assert from 'node:assert/strict';
 import {pool} from '../server/src/db';
@@ -33,10 +33,15 @@ try {
   assert.equal(criada.status,201,JSON.stringify(criada.data));
   const id=criada.data.proposta.id;
   assert.equal(criada.data.proposta.calculo_solar.completo,false);
+  assert.equal(paraProposta(criada.data.proposta).garantiasEquipamentos, undefined);
+  const garantias = { modulosProduto: '15 anos', modulosPerformance: '30 anos', inversores: '10 anos' };
+  const comGarantias = await api('POST','/api/propostas',{...corpo, garantias_equipamentos: garantias});
+  assert.equal(comGarantias.status,201,JSON.stringify(comGarantias.data));
+  assert.deepEqual(paraProposta(comGarantias.data.proposta).garantiasEquipamentos,garantias);
   assert.equal((await api('PATCH',`/api/propostas/${id}/status`,{status:'enviada'})).status,422);
   const e={...entrada,anoInicial:2026,ucs:[{nome:'UC 1',meses:Array(12).fill(1000),adicionalKwh:0,disponibilidadeKwh:0}],hspMensal:Array(12).fill(5.2),moduloWp:710,perdasPct:24,larguraM:2,alturaM:1.1,inversorKw:14,oversizingPct:30,tarifa:1.19,taxaSem:33.73,disponibilidadeReais:99,taxaCom:33,investimento:22490};
   const completo={...corpo,tarifa_kwh:e.tarifa,modulo_wp:e.moduloWp,perdas_pct:e.perdasPct,iluminacao_publica_sem_sfcr:e.taxaSem,custo_disponibilidade:e.disponibilidadeReais,iluminacao_publica_com_sfcr:e.taxaCom,valor_total_ajustado:22490,itens:[{descricao:'Equipamentos teste',qtd:1,valor_unit:22490}],calculo_solar:{entradas:{...e,investimento:1,parcela:9999}}};
-  const salva=await api('PUT',`/api/propostas/${id}`,{...completo,economia_mensal:999999,potencia_kwp:999});
+  const salva=await api('PUT',`/api/propostas/${id}`,{...completo,economia_mensal:999999,potencia_kwp:999,garantias_equipamentos:garantias});
   assert.equal(salva.status,200,JSON.stringify(salva.data));
   assert.equal(salva.data.proposta.calculo_solar.entradas.investimento,22490);
   assert.equal(salva.data.proposta.calculo_solar.entradas.parcela,0);
@@ -44,11 +49,16 @@ try {
   assert.equal(salva.data.proposta.calculo_solar.economiaMensal,esperado.economiaMensal);
   assert.equal(Number(salva.data.proposta.potencia_kwp),esperado.potenciaKwp);
   const reaberta=paraProposta((await api('GET',`/api/propostas/${id}`)).data.proposta);
+  assert.deepEqual(reaberta.garantiasEquipamentos,garantias);
+  assert.deepEqual(deProposta(reaberta).garantias_equipamentos,garantias);
+  for (const invalida of [{...garantias,inversores:'a'.repeat(121)},{...garantias,modulosProduto:15},{campoIndevido:'10 anos'}])
+    assert.equal((await api('PUT',`/api/propostas/${id}`,{...completo,garantias_equipamentos:invalida})).status,422);
   assert.deepEqual(reaberta.calculoSolar,salva.data.proposta.calculo_solar);
   assert.deepEqual((deProposta(reaberta).calculo_solar as any).entradas,reaberta.calculoSolar!.entradas);
   assert.equal((await api('PATCH',`/api/propostas/${id}/status`,{status:'enviada'})).status,200);
   const token=await obterOuCriarLink(c as any,'proposta',id,u.id);
   const publico=await fetch(`${base}/api/publico/documento/${encodeURIComponent(token)}`).then(r=>r.json());
+  assert.deepEqual(paraProposta(publico.documento).garantiasEquipamentos,garantias);
   assert.deepEqual(paraProposta(publico.documento).calculoSolar,reaberta.calculoSolar,'PDF público usa o mesmo snapshot do CRM.');
   // Condições financeiras são recalculadas, persistidas e iguais no CRM e PDF público.
   await query('UPDATE "SolarCosta_Propostas" SET status=\'rascunho\' WHERE id=$1',[id]);

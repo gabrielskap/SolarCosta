@@ -20,6 +20,7 @@ import { listarPlacas, type PlacaSolar } from '../services/placas';
 import { calcularFinanciamento, moeda, type AjustesFinanciamento, type CampoFinanciamento } from '../../server/src/domain/financiamento';
 import { calcularProposta, entradaSolarZerada, type EntradaSolar } from '../../server/src/domain/propostaSolar';
 import { PropostaPremissas } from './PropostaPremissas';
+import { GarantiasPropostaCampos, GARANTIAS_PROPOSTA_PADRAO, textoGarantiasProposta } from './GarantiasPropostaCampos';
 import { LevantamentoManual } from './mapa/LevantamentoManual';
 import { PreviaLevantamento } from './mapa/PreviaLevantamento';
 import { areaSuperficie, type LevantamentoTelhado } from '../utils/levantamentoTelhado';
@@ -315,6 +316,15 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // Observações da proposta: em branco. Os textos prontos ficam em
   // SolarCosta_ObservacaoPresets e são inseridos com um clique.
   const [observacoes, setObservacoes] = useState<string>(propostaExistente?.observacoes ?? '');
+  const [garantiasEquipamentos, setGarantiasEquipamentos] = useState(
+    () => ({ ...GARANTIAS_PROPOSTA_PADRAO, ...propostaExistente?.garantiasEquipamentos }),
+  );
+  // Também recebe os prazos salvos pelo painel do PDF, sem perder a edição ao voltar.
+  useEffect(() => {
+    const salvas = { ...GARANTIAS_PROPOSTA_PADRAO, ...propostaExistente?.garantiasEquipamentos };
+    setObservacoes(atual => atual.replace(textoGarantiasProposta(garantiasEquipamentos), textoGarantiasProposta(salvas)));
+    setGarantiasEquipamentos(salvas);
+  }, [propostaExistente?.garantiasEquipamentos]);
 
   const [usuariosTecnicos, setUsuariosTecnicos] = useState<User[]>([]);
   const [erroUsuarios, setErroUsuarios] = useState(false);
@@ -775,6 +785,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     status,
     observacoes,
     customLogoUrl,
+    garantiasEquipamentos,
     // Vazio vira undefined de propósito: é o que diz ao PDF para usar o
     // responsável técnico do cadastro da empresa em vez de imprimir em branco.
     responsavelTecnicoId: responsavelTecnicoId || undefined,
@@ -1828,13 +1839,17 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   <FileText className="w-3.5 h-3.5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Observações & Responsável Técnico</h3>
+                  <h3 className="font-bold text-slate-900 text-sm">Garantias, Observações & Responsável Técnico</h3>
                   <p className="text-[11px] text-slate-400">Assinatura técnica da proposta, cláusulas e logo customizada</p>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <GarantiasPropostaCampos valor={garantiasEquipamentos} onChange={valor => {
+                setObservacoes(atual => atual.replace(textoGarantiasProposta(garantiasEquipamentos), textoGarantiasProposta(valor)));
+                setGarantiasEquipamentos(valor);
+              }} />
               {/* Observações */}
               <div className="space-y-2">
                 <label className="block text-[10px] font-bold uppercase text-slate-500">

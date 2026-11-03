@@ -43,7 +43,8 @@ const bundle = await build({
         currentUser={{id:'qa',nome:'Teste',cargo:'Administrador'}}
         onSaveProposal={async p=>{window.salva=p;return p;}} onOpenPDF={()=>{window.abriuPDF=true;}}
         showToast={(...args)=>{window.toast=args;}} />:
-        <PDFModal key={++chave} type="proposta" data={proposta} variante={modo==='publico'?'pagina':'modal'} onClose={()=>{}}/>);
+        <PDFModal key={++chave} type="proposta" data={proposta} variante={modo==='publico'?'pagina':'modal'} onClose={()=>{}}
+          onSalvarGarantias={async g=>{if(window.falharGarantias)return false;window.garantiasSalvas=g;return true;}}/>);
     };
     window.renderMode('formulario');
   ` },
@@ -133,6 +134,45 @@ try {
   assert.match(await texto(),/600,00/);assert.match(await texto(),/23\.000,00/);assert.match(await texto(),/6\.500,00/);
   assert.match(await texto(),/Valores ajustados manualmente/);
   await (await page.$('.folha-pdf')).screenshot({path:join(destino,'pdf-ajustes-manuais.png')});
+  // Garantias: editar no formulário, salvar, reabrir no PDF e compartilhar os mesmos prazos.
+  await render('formulario');
+  const garantias={modulosProduto:'15 anos',modulosPerformance:'30 anos',inversores:'10 anos'};
+  for (const [label,valor] of [['Módulos — garantia do produto','15 anos'],['Módulos — garantia de performance','30 anos'],['Inversor — garantia do produto','10 anos']])
+    await preencher(label,valor);
+  await clicar('Salvar alterações');await page.waitForFunction(()=>window.salva?.garantiasEquipamentos?.inversores==='10 anos');
+  assert.deepEqual(await page.evaluate(()=>window.salva.garantiasEquipamentos),garantias);
+  await render('pdf',{garantiasEquipamentos:garantias});
+  await clicar('Customizar Layout PDF');
+  await page.waitForSelector('[aria-label="Módulos — garantia do produto"]');
+  await preencher('Inversor — garantia do produto','8 anos');
+  await clicar('Garantias Oficiais');
+  assert.match(await texto(),/15 anos de garantia do produto dos módulos, 30 anos de garantia de eficiência dos módulos, 8 anos para inversores/);
+  await preencher('Inversor — garantia do produto','7 anos');
+  assert.doesNotMatch(await texto(),/8 anos para inversores/,'a cláusula rápida acompanha a edição dos prazos');
+  await page.evaluate(()=>{window.falharGarantias=true;});
+  await clicar('Aplicar & Fechar Painel');
+  await page.waitForFunction(()=>document.body.innerText.includes('Não foi possível salvar as garantias'));
+  assert(await page.$('[aria-label="Módulos — garantia do produto"]'),'mantém o painel aberto após falha');
+  await page.evaluate(()=>{window.falharGarantias=false;});
+  await clicar('Aplicar & Fechar Painel');
+  await page.waitForFunction(()=>window.garantiasSalvas?.inversores==='7 anos');
+  const salvas=await page.evaluate(()=>window.garantiasSalvas);
+  for (const modo of ['pdf','publico']) {
+    await render(modo,{garantiasEquipamentos:salvas});
+    const folha=await page.$('.folha-pdf:last-child');
+    const conteudo=await folha.evaluate(e=>e.innerText.replace(/\s+/g,' '));
+    assert.match(conteudo,/15 anos/i);assert.match(conteudo,/30 anos/i);assert.match(conteudo,/7 anos/i);
+    assert.doesNotMatch(conteudo,/12 anos/i);
+    await folha.screenshot({path:join(destino,`${modo}-garantias.png`)});
+    if(modo==='publico') {
+      assert.equal(await page.$('[aria-label="Módulos — garantia do produto"]'),null);
+      const pdf=await page.pdf({format:'A4',printBackground:true});
+      const folhas=await page.$$eval('.folha-pdf',els=>els.length);
+      assert.equal((Buffer.from(pdf).toString('latin1').match(/\/Type \/Page\b/g)||[]).length,folhas,'garantias cabem na folha impressa');
+    }
+  }
+  await render('pdf',{status:'aceita',garantiasEquipamentos:salvas});await clicar('Customizar Layout PDF');
+  assert.equal(await page.$eval('[aria-label="Módulos — garantia do produto"]',el=>el.matches(':disabled')),true);
   assert.deepEqual(erros,[]);
-  console.log(`Financiamento UI: edição de todos os resultados, restauração, salvamento e PDFs interno/público passaram. Evidências em ${destino}`);
+  console.log(`Financiamento e garantias UI: edição, restauração, salvamento, falha recuperável e PDFs interno/público passaram. Evidências em ${destino}`);
 } finally {await browser?.close();await new Promise(r=>servidor.close(r));}

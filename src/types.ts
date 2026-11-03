@@ -254,6 +254,12 @@ export interface SegmentoLayout {
   areaM2: number;
 }
 
+export interface GarantiasProposta {
+  modulosProduto: string;
+  modulosPerformance: string;
+  inversores: string;
+}
+
 export interface Proposta {
   calculoSolar?: CalculoSolar;
   levantamentoTelhado?: import('./utils/levantamentoTelhado').LevantamentoTelhado;
@@ -319,6 +325,7 @@ export interface Proposta {
   status: 'rascunho' | 'enviada' | 'aceita';
   observacoes?: string;
   customLogoUrl?: string;
+  garantiasEquipamentos?: GarantiasProposta;
 
   /**
    * Responsável técnico impresso na folha de equipamentos (V017).

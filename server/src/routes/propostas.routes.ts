@@ -105,6 +105,11 @@ const propostaSchema = z.object({
 
   observacoes: z.string().nullish(),
   logo_customizada_url: z.string().nullish(),
+  garantias_equipamentos: z.object({
+    modulosProduto: z.string().trim().max(120),
+    modulosPerformance: z.string().trim().max(120),
+    inversores: z.string().trim().max(120),
+  }).strict().nullish(),
   validade_dias: z.coerce.number().int().positive().default(10),
 
   // Responsável técnico da folha de equipamentos (V017), escolhido na
@@ -438,7 +443,7 @@ propostasRouter.post(
         ],
       );
       const novoId = rows[0]!.id as string;
-      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb WHERE id = $1`, [novoId, paraJsonb(d.levantamento_telhado)]);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb, garantias_equipamentos = $3::jsonb WHERE id = $1`, [novoId, paraJsonb(d.levantamento_telhado), paraJsonb(d.garantias_equipamentos)]);
 
       await inserirItens(cliente, novoId, d.itens);
       await cliente.query(`UPDATE "SolarCosta_Propostas" SET responsavel_tecnico_id = $2, conselho_profissional = $3, financiamento_ajustes = $4::jsonb WHERE id = $1`, [novoId, d.responsavel_tecnico_id ?? null, d.conselho_profissional ?? null, paraJsonb(d.financiamento_ajustes)]);
@@ -565,7 +570,7 @@ propostasRouter.put(
       );
 
       // Itens são substituídos por inteiro; o trigger recalcula valor_total.
-      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb WHERE id = $1`, [id, paraJsonb(d.levantamento_telhado)]);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb, garantias_equipamentos = $3::jsonb WHERE id = $1`, [id, paraJsonb(d.levantamento_telhado), paraJsonb(d.garantias_equipamentos)]);
       await cliente.query(`DELETE FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1`, [id]);
       await inserirItens(cliente, id, d.itens);
       await cliente.query(`UPDATE "SolarCosta_Propostas" SET responsavel_tecnico_id = $2, conselho_profissional = $3, financiamento_ajustes = $4::jsonb WHERE id = $1`, [id, d.responsavel_tecnico_id ?? null, d.conselho_profissional ?? null, paraJsonb(d.financiamento_ajustes)]);
