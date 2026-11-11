@@ -25,6 +25,7 @@ import { AcoesContato } from './comuns/AcoesContato';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { ehCelular } from './comuns/useEhCelular';
 import { Agendamento, Lead, User as UserType, TipoAgendamento, StatusAgendamento } from '../types';
+import { formatarEnderecoComNumero } from '../utils/format';
 
 interface InteractiveCalendarProps {
   agendamentos: Agendamento[];
@@ -82,7 +83,7 @@ export const InteractiveCalendar: React.FC<InteractiveCalendarProps> = ({
     setFormLeadId(leadId);
     const selectedLead = leads.find(l => l.id === leadId);
     if (selectedLead) {
-      setFormEndereco(selectedLead.endereco || '');
+      setFormEndereco(formatarEnderecoComNumero(selectedLead.endereco, selectedLead.numeroEndereco));
       setFormCidade(selectedLead.cidade || '');
       if (selectedLead.responsavel) {
         setFormResponsavel(selectedLead.responsavel);

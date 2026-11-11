@@ -1,5 +1,5 @@
 import { useCnpjLookup } from '../../services/useCnpjLookup';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Loader2, MapPinned, UserPlus } from 'lucide-react';
 import { ModalCabecalho } from '../comuns/ModalCabecalho';
 import { Lead, User as UserType } from '../../types';
@@ -31,25 +31,38 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
   const [email, setEmail] = useState(lead?.email ?? '');
   const [cidade, setCidade] = useState(lead?.cidade ?? 'Belo Horizonte/MG');
   const [endereco, setEndereco] = useState(lead?.endereco ?? '');
+  const [numeroEndereco, setNumeroEndereco] = useState(lead?.numeroEndereco ?? '');
+  const numeroEditado = useRef(false);
   const [concessionaria, setConcessionaria] = useState(lead?.concessionaria ?? 'CEMIG');
   const [origem, setOrigem] = useState(lead?.origem ?? 'Google Ads');
   const [responsavel, setResponsavel] = useState(lead?.responsavel ?? currentUser.nome);
   const [cep, setCep] = useState(lead?.cep ?? '');
   const [cepLoading, setCepLoading] = useState(false);
+  const consultaCep = useRef(0);
   const { loading: cnpjLoading, erro: cnpjErro } = useCnpjLookup(cpfCnpj, !lead || cpfCnpj !== lead.cpfCnpj, dados => {
     setNome(dados.razao_social || dados.nome_fantasia || '');
     setTelefone(maskPhone(dados.ddd_telefone_1 || ''));
     setEmail(dados.email || '');
     setCidade([dados.municipio, dados.uf].filter(Boolean).join('/'));
+    consultaCep.current += 1;
+    setCepLoading(false);
     setCep(maskCEP(dados.cep || ''));
-    setEndereco([dados.logradouro, dados.numero, dados.complemento, dados.bairro].filter(Boolean).join(', '));
+    const complementoEBairro = [dados.complemento, dados.bairro].filter(Boolean).join(', ');
+    setEndereco([dados.logradouro, complementoEBairro].filter(Boolean).join(' – '));
+    if (!numeroEditado.current) setNumeroEndereco(dados.numero?.trim().slice(0, 20) ?? '');
   });
 
-  // Integração CEP -> endereço (ViaCEP). Preenche endereço e cidade/UF.
-  const handleCepLookup = async (cepValue: string) => {
-    if (onlyDigits(cepValue).length !== 8) return;
-    setCepLoading(true);
-    const result = await fetchAddressByCep(cepValue);
+  const alterarCep = async (valor: string) => {
+    const masked = maskCEP(valor);
+    if (masked === cep) return;
+    setCep(masked);
+    const consulta = ++consultaCep.current;
+    const cepCompleto = onlyDigits(masked).length === 8;
+    setCepLoading(cepCompleto);
+    if (!cepCompleto) return;
+
+    const result = await fetchAddressByCep(masked);
+    if (consulta !== consultaCep.current) return;
     setCepLoading(false);
     if (!result.ok || !result.endereco) {
       showToast('CEP não encontrado', 'error', result.erro || 'Verifique o CEP informado.');
@@ -87,6 +100,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
       email,
       cidade,
       endereco,
+      numeroEndereco: numeroEndereco.trim(),
       cep: cep || undefined,
       concessionaria,
       origem,
@@ -134,7 +148,11 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
                 type="text"
                 inputMode="numeric"
                 value={cpfCnpj}
-                onChange={(e) => setCpfCnpj(maskCPFCNPJ(e.target.value))}
+                onChange={(e) => {
+                  const documento = maskCPFCNPJ(e.target.value);
+                  if (documento !== cpfCnpj) numeroEditado.current = false;
+                  setCpfCnpj(documento);
+                }}
                 placeholder="CPF ou CNPJ"
                 className={`${fieldBase} ${cpfInvalido ? errBorder : okBorder}`}
               />
@@ -196,12 +214,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
                   type="text"
                   inputMode="numeric"
                   value={cep}
-                  onChange={(e) => {
-                    const masked = maskCEP(e.target.value);
-                    setCep(masked);
-                    if (onlyDigits(masked).length === 8) handleCepLookup(masked);
-                  }}
-                  onBlur={() => handleCepLookup(cep)}
+                  onChange={(e) => void alterarCep(e.target.value)}
                   placeholder="00000-000"
                   className={`${fieldBase} ${okBorder} pr-9`}
                 />
@@ -209,7 +222,7 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
                   {cepLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPinned className="w-4 h-4" />}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Preenche endereço automaticamente (ViaCEP)</p>
+              <p className="text-[11px] text-slate-400 mt-1">Preenche rua, bairro e cidade (ViaCEP)</p>
             </div>
 
             <div>
@@ -225,17 +238,35 @@ export const LeadFormModal: React.FC<LeadFormModalProps> = ({
               />
             </div>
 
-            <div className="col-span-1 sm:col-span-2">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Endereço Completo
+            <div className="col-span-1 grid grid-cols-[minmax(0,1fr)_5.5rem] gap-4 sm:col-span-2 sm:grid-cols-[minmax(0,1fr)_7rem]">
+              <label>
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Logradouro e bairro
+                </span>
+                <input
+                  type="text"
+                  value={endereco}
+                  onChange={(e) => setEndereco(e.target.value)}
+                  placeholder="Rua, bairro..."
+                  className={`${fieldBase} ${okBorder}`}
+                />
               </label>
-              <input
-                type="text"
-                value={endereco}
-                onChange={(e) => setEndereco(e.target.value)}
-                placeholder="Rua, número, bairro..."
-                className={`${fieldBase} ${okBorder}`}
-              />
+              <label>
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Número
+                </span>
+                <input
+                  type="text"
+                  maxLength={20}
+                  value={numeroEndereco}
+                  onChange={(e) => {
+                    numeroEditado.current = true;
+                    setNumeroEndereco(e.target.value);
+                  }}
+                  placeholder="Ex: 512A"
+                  className={`${fieldBase} ${okBorder}`}
+                />
+              </label>
             </div>
 
             <div>

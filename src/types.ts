@@ -84,6 +84,7 @@ export interface Lead {
   email: string;
   cidade: string;
   endereco: string;
+  numeroEndereco?: string;
   cep?: string;
   /** Coordenada do imóvel, reaproveitada ao gerar a proposta (V005). */
   latitude?: number;

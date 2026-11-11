@@ -9,6 +9,18 @@
 export const onlyDigits = (v: string | number | undefined | null): string =>
   String(v ?? '').replace(/\D+/g, '');
 
+/** Insere o número antes do bairro ou complemento separado por “ – ”. */
+export function formatarEnderecoComNumero(endereco: string, numeroEndereco?: string): string {
+  const numero = numeroEndereco?.trim();
+  if (!numero) return endereco;
+
+  const [logradouro, ...restante] = endereco.trim().split(' – ');
+  if (logradouro.split(',').some(parte => parte.trim().toLowerCase() === numero.toLowerCase())) {
+    return endereco;
+  }
+  return [[logradouro, numero].filter(Boolean).join(', '), ...restante].join(' – ');
+}
+
 /* ============================== MÁSCARAS ============================== */
 
 /** 000.000.000-00 */

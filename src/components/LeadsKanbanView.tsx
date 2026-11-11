@@ -3,6 +3,7 @@ import { Search, Plus, Filter, User, MapPin, Zap, ArrowRight, MoveRight, Downloa
 import { SeletorEtapa } from './comuns/SeletorEtapa';
 import { Lead, LeadStage, User as UserType } from '../types';
 import { parseBRDate, daysBetween, today } from '../utils/dates';
+import { formatarEnderecoComNumero } from '../utils/format';
 import { SEM_CONTATO_DIAS } from '../utils/notifications';
 import { LeadFormModal } from './leads/LeadFormModal';
 
@@ -158,7 +159,7 @@ export const LeadsKanbanView: React.FC<LeadsKanbanViewProps> = ({
       formatField(lead.telefone),
       formatField(lead.email),
       formatField(lead.cidade),
-      formatField(lead.endereco),
+      formatField(formatarEnderecoComNumero(lead.endereco, lead.numeroEndereco)),
       formatField(lead.cep || ''),
       formatField(lead.consumoKwh),
       formatField(lead.concessionaria),

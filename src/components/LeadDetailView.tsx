@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Lead, LeadStage, PastaDocumento, Proposta, Contrato, Boleto, User } from '../types';
 import { Api } from '../services/api';
+import { formatarEnderecoComNumero } from '../utils/format';
 import { AcoesContato } from './comuns/AcoesContato';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { LeadFormModal } from './leads/LeadFormModal';
@@ -81,6 +82,7 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
   const linkedProposal = propostas.find(p => p.leadId === lead.id || p.id === lead.propostaVinculadaId);
   const linkedContract = contratos.find(c => c.leadId === lead.id);
   const clientBoletos = boletos.filter(b => b.clienteNome.toLowerCase().includes(lead.nome.toLowerCase()));
+  const endereco = formatarEnderecoComNumero(lead.endereco, lead.numeroEndereco);
 
   /*
     Consumo e telhado deixaram de ser perguntados no cadastro do lead: quem os
@@ -335,7 +337,7 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
             */}
             <AcoesContato
               telefone={lead.telefone}
-              endereco={[lead.endereco, lead.cidade]}
+              endereco={[endereco, lead.cidade]}
               mensagemWhatsApp={`Olá, ${lead.nome.split(' ')[0]}! Aqui é da Solar Costa.`}
             />
 
@@ -357,7 +359,7 @@ export const LeadDetailView: React.FC<LeadDetailViewProps> = ({
 
               <div>
                 <span className="font-bold text-slate-400 uppercase">ENDEREÇO DA INSTALAÇÃO</span>
-                <p className="font-medium text-slate-800 leading-relaxed">{lead.endereco || '—'}</p>
+                <p className="font-medium text-slate-800 leading-relaxed">{endereco || '—'}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2 pt-1">

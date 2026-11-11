@@ -192,6 +192,7 @@ export function paraLead(linha: any, extras?: { documentos?: any[]; historico?: 
     email: txt(linha.email),
     cidade: cidadeComUf(linha.cidade, linha.uf),
     endereco: txt(linha.endereco),
+    numeroEndereco: linha.numero_endereco ?? undefined,
     cep: linha.cep ?? undefined,
     // Coordenada resolvida por uma proposta anterior (V005; a vw_Leads só
     // passou a devolvê-la na V006). numOpc pelo mesmo motivo de paraProposta:
@@ -223,6 +224,7 @@ export function deLead(l: Partial<Lead>): Record<string, unknown> {
     email: l.email || null,
     cep: l.cep || null,
     endereco: l.endereco || null,
+    numero_endereco: l.numeroEndereco?.trim(),
     cidade,
     uf,
     latitude: l.latitude ?? null,

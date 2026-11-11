@@ -37,6 +37,7 @@ const leadBase = z.object({
   email: z.string().email('E-mail inválido.').nullish().or(z.literal('')),
   cep: z.string().max(12).nullish(),
   endereco: z.string().max(300).nullish(),
+  numero_endereco: z.string().trim().max(20).nullish(),
   bairro: z.string().max(120).nullish(),
   cidade: z.string().max(120).nullish(),
   uf: z.string().length(2).nullish(),
@@ -185,7 +186,7 @@ leadsRouter.post(
             nome, cpf_cnpj, rg_inscricao, telefone, email, cep, endereco, bairro, cidade, uf,
             consumo_kwh, valor_estimado, observacoes, etapa,
             concessionaria_id, tipo_telhado_id, origem_id, responsavel_id,
-            latitude, longitude, place_id
+            latitude, longitude, place_id, numero_endereco
          ) VALUES (
             $1, $2, $3, $4, NULLIF($5,'')::citext, $6, $7, $8, $9, $10,
             $11, $12, $13, $14,
@@ -193,7 +194,7 @@ leadsRouter.post(
             COALESCE($17::int, (SELECT id FROM "SolarCosta_TiposTelhado"    WHERE nome = $18)),
             COALESCE($19::int, (SELECT id FROM "SolarCosta_OrigensLead"     WHERE nome = $20)),
             COALESCE($21::uuid, (SELECT id FROM "SolarCosta_Usuarios" WHERE nome = $22 AND excluido_em IS NULL)),
-            $23, $24, $25
+            $23, $24, $25, NULLIF($26, '')
          )
          RETURNING id`,
         [
@@ -206,6 +207,7 @@ leadsRouter.post(
           dados.origem_id ?? null, dados.origem ?? null,
           dados.responsavel_id ?? null, dados.responsavel ?? null,
           dados.latitude ?? null, dados.longitude ?? null, dados.place_id ?? null,
+          dados.numero_endereco ?? null,
         ],
       );
 
@@ -257,7 +259,8 @@ leadsRouter.patch(
             responsavel_id    = COALESCE($21::uuid, (SELECT id FROM "SolarCosta_Usuarios" WHERE nome = $22 AND excluido_em IS NULL), responsavel_id),
             latitude          = COALESCE($23, latitude),
             longitude         = COALESCE($24, longitude),
-            place_id          = COALESCE($25, place_id)
+            place_id          = COALESCE($25, place_id),
+            numero_endereco   = CASE WHEN $27::boolean THEN NULLIF($26, '') ELSE numero_endereco END
           WHERE id = $1 AND excluido_em IS NULL
           RETURNING id, nome`,
         [
@@ -270,6 +273,7 @@ leadsRouter.patch(
           dados.origem_id ?? null, dados.origem ?? null,
           dados.responsavel_id ?? null, dados.responsavel ?? null,
           dados.latitude ?? null, dados.longitude ?? null, dados.place_id ?? null,
+          dados.numero_endereco ?? null, dados.numero_endereco !== undefined,
         ],
       );
 

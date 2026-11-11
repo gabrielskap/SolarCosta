@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { Proposta, PropostaItem, Produto, Kit, Lead, User } from '../types';
-import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ } from '../utils/format';
+import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ, formatarEnderecoComNumero } from '../utils/format';
 import {
   fetchAddressByCep,
   buildEnderecoLine,
@@ -153,7 +153,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [cpfCnpj, setCpfCnpj] = useState(propostaExistente?.cpfCnpj ?? linkedLead?.cpfCnpj ?? '');
   const [telefone, setTelefone] = useState(propostaExistente?.telefone ?? linkedLead?.telefone ?? '');
   const [email, setEmail] = useState(propostaExistente?.email ?? linkedLead?.email ?? '');
-  const [endereco, setEndereco] = useState(propostaExistente?.endereco ?? linkedLead?.endereco ?? '');
+  const [enderecoInformado, setEnderecoInformado] = useState(propostaExistente?.endereco ?? linkedLead?.endereco ?? '');
   const [cidade, setCidade] = useState(propostaExistente?.cidade ?? linkedLead?.cidade ?? '');
   const [concessionaria, setConcessionaria] = useState(propostaExistente?.concessionaria ?? linkedLead?.concessionaria ?? '');
   const [telhado, setTelhado] = useState(propostaExistente?.telhado ?? linkedLead?.telhado ?? '');
@@ -169,14 +169,16 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * string já formatada com "–".
    */
   const [enderecoViaCep, setEnderecoViaCep] = useState<EnderecoViaCEP | null>(null);
-  const [numeroEndereco, setNumeroEndereco] = useState(propostaExistente?.numeroEndereco ?? '');
+  const [numeroEndereco, setNumeroEndereco] = useState(
+    (propostaExistente ? propostaExistente.numeroEndereco : linkedLead?.numeroEndereco) ?? '',
+  );
 
   /**
-   * O consultor mexeu na linha do endereço: a partir daí nem o CEP nem o
-   * número a reescrevem. Ver um complemento digitado à mão sumir ao informar o
-   * número seria a pior surpresa possível nesta tela.
+   * O endereço digitado ou recuperado de uma proposta já é uma linha completa.
+   * Para endereços trazidos do lead ou do CEP, a linha acompanha o número.
    */
-  const [enderecoEditadoAMao, setEnderecoEditadoAMao] = useState(false);
+  const [enderecoCompleto, setEnderecoCompleto] = useState(propostaExistente?.endereco != null);
+  const endereco = enderecoCompleto ? enderecoInformado : formatarEnderecoComNumero(enderecoInformado, numeroEndereco);
 
   /** Coordenada já gravada no lead (V005): dispensa o geocoding. */
   const [coordenadaLead, setCoordenadaLead] = useState<CoordenadaConhecida | null>(null);
@@ -215,6 +217,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
     setCepLoading(true);
     const result = await fetchAddressByCep(cepValue);
+    if (ultimoCepConsultado.current !== digitos) return;
     setCepLoading(false);
     if (!result.ok || !result.endereco) {
       // Deixa reconsultar: o erro pode ter sido de rede, não do CEP.
@@ -224,30 +227,17 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     }
 
     setEnderecoViaCep(result.endereco);
-    // CEP novo = endereço novo: a linha volta a ser nossa para reescrever.
-    setEnderecoEditadoAMao(false);
     // E invalida a coordenada herdada do lead — o imóvel agora é outro.
     setCoordenadaLead(null);
 
-    const linha = buildEnderecoLine(result.endereco, numeroEndereco);
-    if (linha) setEndereco(linha);
+    const linha = buildEnderecoLine(result.endereco);
+    if (linha) {
+      setEnderecoInformado(linha);
+      setEnderecoCompleto(!result.endereco.logradouro);
+    }
     const cidadeUf = buildCidadeUf(result.endereco);
     if (cidadeUf) setCidade(cidadeUf);
     showToast('Endereço preenchido', 'success', `${linha || cidadeUf} (via ViaCEP).`);
-  };
-
-  /**
-   * Número do imóvel: remonta a linha do endereço só enquanto ela for nossa.
-   *
-   * Depois de uma edição manual o número continua entrando na CONSULTA (é ele
-   * que faz o geocoding cair sobre a edificação), mas não na linha da tela.
-   */
-  const aoDigitarNumero = (valor: string) => {
-    const limpo = valor.slice(0, 20);
-    setNumeroEndereco(limpo);
-    if (enderecoViaCep && !enderecoEditadoAMao) {
-      setEndereco(buildEnderecoLine(enderecoViaCep, limpo));
-    }
   };
 
   const cpfInvalido = !!cpfCnpj && !isValidCPFCNPJ(cpfCnpj);
@@ -368,7 +358,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setCpfCnpj(lead.cpfCnpj || '');
     setTelefone(lead.telefone || '');
     setEmail(lead.email || '');
-    setEndereco(lead.endereco || '');
+    setEnderecoInformado(lead.endereco || '');
     setCidade(lead.cidade || '');
     setConcessionaria(lead.concessionaria || '');
     setTelhado(lead.telhado || '');
@@ -379,12 +369,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     // remontar a linha, então a busca automática por endereço fica desligada
     // até o consultor mexer no CEP (a coordenada abaixo cobre o caso comum).
     setEnderecoViaCep(null);
-    setNumeroEndereco('');
-    setEnderecoEditadoAMao(false);
+    setNumeroEndereco(lead.numeroEndereco ?? '');
+    setEnderecoCompleto(false);
     // Zera a trava para que redigitar o próprio CEP do lead volte a consultar
     // o ViaCEP — é o caminho do consultor que quer a busca por satélite num
     // lead antigo, sem coordenada gravada.
     ultimoCepConsultado.current = '';
+    setCepLoading(false);
 
     // Coordenada gravada por uma proposta anterior deste lead: o painel abre
     // já localizado, pulando o geocoding.
@@ -1077,8 +1068,9 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </label>
                 <input
                   type="text"
+                  maxLength={20}
                   value={numeroEndereco}
-                  onChange={(e) => aoDigitarNumero(e.target.value)}
+                  onChange={(e) => setNumeroEndereco(e.target.value)}
                   placeholder="512"
                   className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                 />
@@ -1092,8 +1084,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   type="text"
                   value={endereco}
                   onChange={(e) => {
-                    setEndereco(e.target.value);
-                    setEnderecoEditadoAMao(true);
+                    setEnderecoInformado(e.target.value);
+                    setEnderecoCompleto(true);
                   }}
                   className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                 />
@@ -1438,7 +1430,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 hsp={hsp}
                 perdasPct={perdasPct}
                 alvo={modulosQtdCalculada}
-                enderecoBusca={consultaAuto || [endereco, numeroEndereco, cidade].filter(Boolean).join(', ')}
+                enderecoBusca={consultaAuto || [formatarEnderecoComNumero(endereco, numeroEndereco), cidade, cep].filter(Boolean).join(', ')}
                 coordenadaInicial={coordenadaLead ?? undefined}
                 leadId={linkedLead?.id}
                 propostaId={propostaSalva.current?.id}

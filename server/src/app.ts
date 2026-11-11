@@ -59,6 +59,7 @@ export function criarApp(): express.Express {
   // Exceções além do 'self' padrão do helmet:
   // - ViaCEP (connect-src): a busca de endereço por CEP (src/services/cep.ts)
   //   chama https://viacep.com.br direto do navegador.
+  // - BrasilAPI (connect-src): a consulta de CNPJ preenche o cadastro do lead.
   // - Beacon da Cloudflare (script-src/connect-src): injetado pelo proxy da
   //   Cloudflare (Web Analytics), não faz parte do nosso build.
   // - blob: (img-src): a imagem de satélite (GET /api/solar/imagem) chega pela
@@ -84,6 +85,7 @@ export function criarApp(): express.Express {
           'connect-src': [
             "'self'",
             'https://viacep.com.br',
+            'https://brasilapi.com.br',
             'https://cloudflareinsights.com',
             ...hostsGoogleMaps,
             // Streaming de imagens/terreno e malha da vista 3D Google.
