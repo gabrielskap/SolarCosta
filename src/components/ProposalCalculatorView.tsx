@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import {
   Plus, Trash2, Calculator, Check, FileText, Download, Sparkles, Loader2,
   MapPinned, ArrowLeft, Boxes, User as UserIcon, Zap, Sun, CreditCard,
@@ -23,7 +23,10 @@ import { listarPlacas, type PlacaSolar } from '../services/placas';
 import { calcularFinanciamento, moeda, type AjustesFinanciamento, type CampoFinanciamento } from '../../server/src/domain/financiamento';
 import { calcularProposta, entradaSolarZerada, type EntradaSolar } from '../../server/src/domain/propostaSolar';
 import { PropostaPremissas } from './PropostaPremissas';
-import { GarantiasPropostaCampos, GARANTIAS_PROPOSTA_PADRAO, textoGarantiasProposta } from './GarantiasPropostaCampos';
+import { GARANTIAS_PROPOSTA_PADRAO, textoGarantiasProposta } from './GarantiasPropostaCampos';
+import { PropostaDocumentoCampos } from './PropostaDocumentoCampos';
+import { CabecalhoSecaoProposta } from './CabecalhoSecaoProposta';
+import './PropostaOrcamento.css';
 import { LevantamentoManual } from './mapa/LevantamentoManual';
 import { PreviaLevantamento } from './mapa/PreviaLevantamento';
 import { areaSuperficie, type LevantamentoTelhado } from '../utils/levantamentoTelhado';
@@ -120,6 +123,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
    * proposta muda, então isto nunca vira de false para true com o formulário
    * já preenchido.
    */
+  const idCampos = useId();
   const propostaSalva = useRef(propostaExistente);
   const salvando = useRef(false);
   const [ultimaVersaoSalva, setUltimaVersaoSalva] = useState<Date | null>(null);
@@ -877,9 +881,9 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const handleGeneratePDF = () => { void salvar(true); };
 
   return (
-      <div className="space-y-4">
+      <div className="proposta-orcamento space-y-5">
         {/* Top Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs">
+          <div className="proposta-campos flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs">
             <div>
               {onBack && (
                 <button
@@ -897,7 +901,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-[#004276] border border-blue-200">
                   {editando ? `Nº ${propostaExistente!.numero || '—'}` : 'Rascunho'}
                 </span>
-                <span className="text-xs text-slate-400 font-medium">
+                <span className="text-xs text-slate-600 font-medium">
                   · criada em {editando ? propostaExistente!.dataCriacao : new Date().toLocaleDateString('pt-BR')}
                   · válida por {paramNum(config, 'proposta.validade_dias', 10)} dias
                 </span>
@@ -913,7 +917,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 />
               </label>
               {ultimaVersaoSalva && (
-                <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5" role="status">
+                <p className="text-xs text-slate-600 mt-1 flex items-center gap-1.5" role="status">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   Última versão salva às {ultimaVersaoSalva.toLocaleTimeString('pt-BR')}
                 </p>
@@ -945,12 +949,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             </div>
 
               {/* Main Form Layout (8/12 Form, 4/12 Sidebar Sticky) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <div className="grid min-w-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_23rem] gap-5 items-start">
 
                     {/* LEFT FORM (8/12) */}
-                    <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+                    <div className="min-w-0 space-y-5">
                       {/* Passos — no celular */}
-                      <div className="md:hidden -mx-4 px-4 flex gap-1.5 overflow-x-auto pb-1">
+                      <nav id="proposta-etapas" aria-label="Etapas da proposta" className="md:hidden flex gap-2 overflow-x-auto pb-2">
                         {PASSOS.map((rotulo, i) => {
                           const numero = i + 1;
                           const ativo = numero === secaoVisivel;
@@ -958,42 +962,31 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                             <button
                               key={rotulo}
                               type="button"
+                              aria-current={ativo ? 'step' : undefined}
+                              aria-controls={numero === 2 ? 'proposta-etapa-2 proposta-telhado' : `proposta-etapa-${numero}`}
                               onClick={() => setSecaoVisivel(numero)}
-                  className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${ativo ? 'bg-[#004276] text-white border-[#004276] shadow-xs' : 'bg-white text-slate-600 border-slate-200'
+                  className={`shrink-0 min-h-11 px-3 py-2.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${ativo ? 'bg-[#004276] text-white border-[#004276] shadow-xs' : 'bg-white text-slate-600 border-slate-200'
                                 }`}
                             >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px]">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full text-xs">
                     {numero}
                   </span>
                   {rotulo}
                 </button>
               );
             })}
-          </div>
+          </nav>
           
           {/* Section 1: Dados do cliente */}
-          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 1 ? '' : 'hidden md:block'}`}>
-                                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-                                      <div className="flex items-center gap-2.5">
-                                        <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                                          <UserIcon className="w-3.5 h-3.5" />
-                                        </div>
-                                        <div>
-                                          <h3 className="font-bold text-slate-900 text-sm">Dados do Cliente</h3>
-                                          <p className="text-[11px] text-slate-400">Identificação, contato e endereço de instalação</p>
-                                        </div>
-                                      </div>
-                                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                        {linkedLead ? `Lead ${linkedLead.numero}` : 'Sem lead vinculado'}
-                                      </span>
-                                    </div>
+          <div id="proposta-etapa-1" role="region" aria-labelledby="proposta-etapa-1-titulo" className={`proposta-secao proposta-campos bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-5 ${secaoVisivel === 1 ? '' : 'hidden md:block'}`}>
+            <CabecalhoSecaoProposta id="proposta-etapa-1-titulo" titulo="Dados do cliente" descricao="Identificação, contato e endereço de instalação." icone={UserIcon} acao={<span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">{linkedLead ? `Lead ${linkedLead.numero}` : 'Sem lead vinculado'}</span>} />
 
-                                    {/* Lead Vinculado Combobox */}
+            {/* Lead Vinculado Combobox */}
                                     <div className="relative" onBlur={e => {
                                       if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setListaLeadsAberta(false);
                                     }}>
-                                      <label htmlFor="lead-vinculado" className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                                        VINCULAR LEAD EXISTENTE (OPCIONAL)
+                                      <label htmlFor="lead-vinculado" className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                                        Vincular lead existente (opcional)
                                       </label>
                                       <div className="relative">
                                         <input
@@ -1021,8 +1014,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                                           <button
                                             type="button"
                                             onClick={() => escolherLead('')}
-                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                                            title="Desvincular lead"
+                                            className="proposta-botao-icone absolute right-1 top-1/2 -translate-y-1/2 text-slate-600 hover:bg-slate-100"
+                                            aria-label="Desvincular lead" title="Desvincular lead"
                                           >
                                             <X className="w-3.5 h-3.5" />
                                           </button>
@@ -1038,18 +1031,18 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       className={'block w-full px-3 py-2 text-left text-xs transition ' + (indice === indiceLead ? 'bg-blue-50 text-[#004276] font-bold' : 'text-slate-700 hover:bg-slate-50')}
                     >{lead ? rotuloLead(lead) : 'Nenhum — preencher manualmente'}</button>
                   ))}
-                  {leadsFiltrados.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">Nenhum lead encontrado.</p>}
+                  {leadsFiltrados.length === 0 && <p className="px-3 py-2 text-xs text-slate-600">Nenhum lead encontrado.</p>}
                 </div>
               )}
             </div>
 
             {/* Grid dos Dados do Cliente */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  NOME / RAZÃO SOCIAL
+            <div className="grid grid-cols-1 @min-[32rem]:grid-cols-2 gap-4">
+              <div className="min-w-0 @min-[32rem]:col-span-2">
+                <label htmlFor={`${idCampos}-campo-1`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Nome / razão social
                 </label>
-                <input
+                <input id={`${idCampos}-campo-1`}
                   type="text"
                   autoComplete="name"
                   value={clienteNome}
@@ -1059,26 +1052,27 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                <label htmlFor={`${idCampos}-campo-2`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
                   {docLabel(cpfCnpj)}
                 </label>
-                <input
+                <input id={`${idCampos}-campo-2`}
                   type="text"
                   inputMode="numeric"
+                  aria-invalid={cpfInvalido} aria-describedby={cpfInvalido ? `${idCampos}-erro-documento` : undefined}
                   value={cpfCnpj}
                   onChange={(e) => setCpfCnpj(maskCPFCNPJ(e.target.value))}
                   className={`w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-semibold focus:outline-none transition ${
                     cpfInvalido ? 'border-rose-300 focus:border-rose-500 bg-rose-50/40 text-rose-700' : 'border-slate-200 focus:border-[#004276]'
                   }`}
                 />
-                {cpfInvalido && <p className="text-[10px] text-rose-600 font-semibold mt-0.5">{docLabel(cpfCnpj)} inválido</p>}
+                {cpfInvalido && <p id={`${idCampos}-erro-documento`} role="alert" className="text-xs text-rose-600 font-semibold mt-0.5">{docLabel(cpfCnpj)} inválido</p>}
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  TELEFONE / WHATSAPP
+                <label htmlFor={`${idCampos}-campo-3`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Telefone / WhatsApp
                 </label>
-                <input
+                <input id={`${idCampos}-campo-3`}
                   type="text"
                   inputMode="tel"
                   value={telefone}
@@ -1089,11 +1083,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
               {/* Endereço: CEP, Número, Logradouro */}
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                <label htmlFor={`${idCampos}-campo-4`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
                   CEP
                 </label>
                 <div className="relative">
-                  <input
+                  <input id={`${idCampos}-campo-4`}
                     type="text"
                     inputMode="numeric"
                     value={cep}
@@ -1103,19 +1097,17 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       if (onlyDigits(masked).length === 8) handleCepLookup(masked);
                     }}
                     placeholder="00000-000"
-                    className="w-full px-2.5 py-1.5 pr-7 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
+                    className="proposta-campo-cep w-full px-2.5 py-1.5 pr-7 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#004276] transition"
                   />
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600">
                     {cepLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPinned className="w-3.5 h-3.5" />}
                   </span>
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  NÚMERO
-                </label>
-                <input
+                <label htmlFor={`${idCampos}-campo-5`} className="block text-xs font-bold uppercase text-slate-500 mb-1">Número</label>
+                <input id={`${idCampos}-campo-5`}
                   type="text"
                   maxLength={20}
                   value={numeroEndereco}
@@ -1125,11 +1117,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 />
               </div>
 
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  ENDEREÇO DA INSTALAÇÃO (LOGRADOURO, BAIRRO, CIDADE/UF)
+              <div className="min-w-0 @min-[32rem]:col-span-2">
+                <label htmlFor={`${idCampos}-campo-6`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Endereço da instalação
                 </label>
-                <input
+                <input id={`${idCampos}-campo-6`}
                   type="text"
                   value={endereco}
                   onChange={(e) => {
@@ -1141,11 +1133,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               {/* Telhado & Concessionária */}
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  TIPO DE TELHADO
+              <div className="min-w-0">
+                <label htmlFor={`${idCampos}-campo-7`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Tipo de telhado
                 </label>
-                <select
+                <select id={`${idCampos}-campo-7`}
                   value={telhado}
                   onChange={(e) => setTelhado(e.target.value)}
                   className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#004276] transition"
@@ -1158,11 +1150,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </select>
               </div>
 
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  CONCESSIONÁRIA
+              <div className="min-w-0">
+                <label htmlFor={`${idCampos}-campo-8`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Concessionária
                 </label>
-                <select
+                <select id={`${idCampos}-campo-8`}
                   value={concessionaria}
                   onChange={(e) => setConcessionaria(e.target.value)}
                   className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#004276] transition"
@@ -1177,26 +1169,16 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 2: Dimensionamento do sistema */}
-          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 2 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                  <Sun className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Dimensionamento do Sistema</h3>
-                  <p className="text-[11px] text-slate-400">Consumo mensal, irradiação local e parâmetros de geração</p>
-                </div>
-              </div>
-            </div>
+          <div id="proposta-etapa-2" role="region" aria-labelledby="proposta-etapa-2-titulo" className={`proposta-secao proposta-campos bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-5 ${secaoVisivel === 2 ? '' : 'hidden md:block'}`}>
+            <CabecalhoSecaoProposta id="proposta-etapa-2-titulo" titulo="Dimensionamento do sistema" descricao="Consumo, irradiação e parâmetros usados na estimativa de geração." icone={Sun} />
 
             {/* Inputs Principais de Dimensionamento */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            <div className="grid grid-cols-1 @min-[24rem]:grid-cols-2 @min-[42rem]:grid-cols-3 gap-4">
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  CONSUMO MÉDIO <span className="text-slate-400 font-normal">(KWH)</span>
+                <label htmlFor={`${idCampos}-campo-9`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Consumo médio <span className="text-slate-600 font-normal">(KWH)</span>
                 </label>
-                <input
+                <input id={`${idCampos}-campo-9`}
                   type="number"
                   value={consumoKwh}
                   onChange={(e) => {
@@ -1212,10 +1194,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  TARIFA <span className="text-slate-400 font-normal">(R$/KWH)</span>
+                <label htmlFor={`${idCampos}-campo-10`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Tarifa <span className="text-slate-600 font-normal">(R$/KWH)</span>
                 </label>
-                <input
+                <input id={`${idCampos}-campo-10`}
                   type="number"
                   step="0.01"
                   value={tarifaKwh}
@@ -1225,10 +1207,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  HSP MÉDIA <span className="text-slate-400 font-normal">(H/DIA)</span>
+                <label htmlFor={`${idCampos}-campo-11`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  HSP média <span className="text-slate-600 font-normal">(H/DIA)</span>
                 </label>
-                <input
+                <input id={`${idCampos}-campo-11`}
                   type="number"
                   step="0.1"
                   value={hsp}
@@ -1242,10 +1224,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  PERDAS <span className="text-slate-400 font-normal">(%)</span>
+                <label htmlFor={`${idCampos}-campo-12`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Perdas <span className="text-slate-600 font-normal">(%)</span>
                 </label>
-                <input
+                <input id={`${idCampos}-campo-12`}
                   type="number"
                   step="0.5"
                   value={perdasPct}
@@ -1255,10 +1237,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  MÓDULO <span className="text-slate-400 font-normal">(WP)</span>
+                <label htmlFor={`${idCampos}-campo-13`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Módulo <span className="text-slate-600 font-normal">(WP)</span>
                 </label>
-                <input
+                <input id={`${idCampos}-campo-13`}
                   type="number"
                   value={moduloWp}
                   disabled={!!levantamentoTelhado}
@@ -1275,10 +1257,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 módulo cadastradas, e sem elas a área imprimia 0 m² no PDF.
               */}
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  ÁREA ESTIMADA <span className="text-slate-400 font-normal">(M²)</span>
+                <label htmlFor={`${idCampos}-campo-14`} className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Área estimada <span className="text-slate-600 font-normal">(M²)</span>
                 </label>
-                <input
+                <input id={`${idCampos}-campo-14`}
                   type="number"
                   min="0"
                   step="0.01"
@@ -1295,9 +1277,9 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             </div>
 
             {/* Calculated sizing banner - Compact KPI Strip */}
-            <div className="bg-gradient-to-r from-blue-50/80 to-slate-50 border border-blue-100 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center sm:text-left">
+            <div className="bg-gradient-to-r from-blue-50/80 to-slate-50 border border-blue-100 rounded-xl p-3 grid grid-cols-2 @min-[42rem]:grid-cols-3 @min-[56rem]:grid-cols-5 gap-4 text-left">
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">POTÊNCIA</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">POTÊNCIA</span>
                 <p className="text-base sm:text-lg font-black text-[#004276]">{potenciaKwpCalculada} kWp</p>
                 {/*
                   A capacidade do inversor vem somada dos itens do kit e é o que
@@ -1307,7 +1289,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   origem visível, já na hora de gerar o PDF.
                 */}
                 <p
-                  className={`mt-0.5 text-[10px] font-normal ${inversorKwEfetivo > 0 && potenciaKwpCalculada > inversorKwEfetivo * (1 + entradaSolar.oversizingPct / 100) ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}
+                  className={`mt-0.5 text-xs font-normal ${inversorKwEfetivo > 0 && potenciaKwpCalculada > inversorKwEfetivo * (1 + entradaSolar.oversizingPct / 100) ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}
                   title="Soma da potência dos inversores do kit, mais o oversizing das premissas. Preencher o campo 'Potência nominal inversor' em Premissas substitui esta soma."
                 >
                   Inversor: {inversorKwEfetivo > 0
@@ -1317,11 +1299,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">MÓDULOS</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Módulos</span>
                 <p className="text-base sm:text-lg font-black text-slate-800">{modulosQtdCalculada} un</p>
                 {calculoSolar.quantidadeCalculada > 0 && Number.isFinite(calculoSolar.quantidadeCalculada) && (
                   <p
-                    className="mt-0.5 text-[10px] font-normal text-slate-500"
+                    className="mt-0.5 text-xs font-normal text-slate-500"
                     title="Quantidade calculada com os parâmetros atuais, antes do arredondamento para cima. Quando há levantamento do telhado, o total instalado segue os módulos do layout."
                   >
                     Calculado: {calculoSolar.quantidadeCalculada.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} un
@@ -1330,20 +1312,20 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </div>
 
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ÁREA ESTIMADA</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Área estimada</span>
                 <p className="text-base sm:text-lg font-black text-slate-800">{areaEstimadaM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</p>
                 {!preservarLegado && (entradaSolar.areaManualM2 ?? 0) > 0 && (
-                  <p className="mt-0.5 text-[10px] font-normal text-slate-500">Informada manualmente</p>
+                  <p className="mt-0.5 text-xs font-normal text-slate-500">Informada manualmente</p>
                 )}
               </div>
 
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">GERAÇÃO MÉDIA</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">GERAÇÃO MÉDIA</span>
                 <p className="text-base sm:text-lg font-black text-slate-800">{geracaoMediaKwh.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kWh</p>
               </div>
 
               <div>
-                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">COBERTURA</span>
+                <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider block">COBERTURA</span>
                 <p className="text-base sm:text-lg font-black text-emerald-700">{coberturaPct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%</p>
               </div>
             </div>
@@ -1361,15 +1343,15 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
             {/* Despesas Fixas da Conta */}
             <div>
-              <h4 className="text-[10px] font-bold uppercase text-slate-500 mb-1.5 tracking-wider">
-                DESPESAS FIXAS DA CONTA (R$/MÊS)
+              <h4 className="text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wider">
+                Despesas fixas da conta (R$/mês)
               </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 @min-[36rem]:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-                    TX. ILUM. PÚBLICA (HOJE)
+                  <label htmlFor={`${idCampos}-campo-15`} className="block text-xs font-semibold text-slate-500 mb-1">
+                    Iluminação pública hoje
                   </label>
-                  <input
+                  <input id={`${idCampos}-campo-15`}
                     type="number"
                     step="0.01"
                     value={iluminacaoPublicaSemSfcr}
@@ -1379,10 +1361,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-                    CUSTO DE DISPONIBILIDADE
+                  <label htmlFor={`${idCampos}-campo-16`} className="block text-xs font-semibold text-slate-500 mb-1">
+                    Custo de disponibilidade
                   </label>
-                  <input
+                  <input id={`${idCampos}-campo-16`}
                     type="number"
                     step="0.01"
                     value={custoDisponibilidade}
@@ -1392,10 +1374,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-                    TX. ILUM. PÚBLICA (COM SISTEMA)
+                  <label htmlFor={`${idCampos}-campo-17`} className="block text-xs font-semibold text-slate-500 mb-1">
+                    Iluminação pública com sistema
                   </label>
-                  <input
+                  <input id={`${idCampos}-campo-17`}
                     type="number"
                     step="0.01"
                     value={iluminacaoPublicaComSfcr}
@@ -1408,21 +1390,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Telhado por satélite */}
-          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3 ${secaoVisivel === 2 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#004276]" />
-                <h3 className="font-bold text-slate-900 text-sm">Levantamento do Telhado</h3>
-              </div>
-              {levantamentoTelhado && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  {levantamentoTelhado.placas.length} módulos aplicados
-                </span>
-              )}
-            </div>
+          <div id="proposta-telhado" role="region" aria-labelledby="proposta-telhado-titulo" className={`proposta-secao bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-5 ${secaoVisivel === 2 ? '' : 'hidden md:block'}`}>
+            <CabecalhoSecaoProposta id="proposta-telhado-titulo" titulo="Levantamento do telhado" descricao="Imagem de satélite, medição do telhado e distribuição dos módulos." icone={MapPin} acao={levantamentoTelhado && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">{levantamentoTelhado.placas.length} módulos aplicados</span>} />
 
             {editando && dadosTelhado && (
-              <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-2.5 text-[11px] font-medium text-[#004276]">
+              <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-2.5 text-xs font-medium text-[#004276]">
                 O layout de telhado gravado nesta proposta foi mantido e sai no PDF. Buscar novamente substitui o desenho atual.
               </div>
             )}
@@ -1434,7 +1406,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             <div className="flex flex-wrap items-center gap-2.5">
               <button
                 type="button"
-                className="bg-[#004276] hover:bg-[#003159] text-white rounded-xl px-4 py-2 font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                className="min-h-11 bg-[#004276] hover:bg-[#003159] text-white rounded-xl px-4 py-2.5 font-bold text-sm shadow-xs transition flex items-center gap-2"
                 onClick={() => setEditorManualAberto(true)}
               >
                 <MapPinned className="w-3.5 h-3.5" />
@@ -1444,7 +1416,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               {levantamentoTelhado && (
                 <button
                   type="button"
-                  className="text-xs text-rose-600 hover:text-rose-800 font-bold underline px-2 py-1"
+                  className="min-h-11 text-sm text-rose-700 hover:text-rose-800 font-semibold underline px-3 py-2"
                   onClick={() => setLevantamentoTelhado(undefined)}
                 >
                   Remover levantamento
@@ -1463,11 +1435,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     googleAtivo={config?.google_maps_ativo !== false}
                   />
                 )}
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-700">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
                   <div>
                     <strong>{levantamentoTelhado.placas.length} módulos</strong> · {areaSuperficie(levantamentoTelhado).toFixed(1)} m² de superfície · {levantamentoTelhado.modulo.modelo} ({levantamentoTelhado.modulo.potenciaWp} Wp)
                   </div>
-                  <span className="text-[10px] text-slate-400">Potência recalculada pela quantidade do levantamento</span>
+                  <span className="text-xs text-slate-600">Potência recalculada pela quantidade do levantamento</span>
                 </div>
               </div>
             )}
@@ -1507,36 +1479,15 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 3: Kit de equipamentos e serviços */}
-          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 3 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                  <Boxes className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Kit de Equipamentos e Serviços</h3>
-                  <p className="text-[11px] text-slate-400">Composição do sistema, módulos, inversores e serviços inclusos</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAbaCatalogo(kits.length > 0 ? 'kit' : 'produto');
-                  setIsAddItemOpen(true);
-                }}
-                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#004276] text-xs font-bold rounded-xl transition flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Adicionar item</span>
-              </button>
-            </div>
+          <div id="proposta-etapa-3" role="region" aria-labelledby="proposta-etapa-3-titulo" className={`proposta-secao proposta-campos bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-5 ${secaoVisivel === 3 ? '' : 'hidden md:block'}`}>
+            <CabecalhoSecaoProposta id="proposta-etapa-3-titulo" titulo="Equipamentos e serviços" descricao="Composição do sistema e valores incluídos no investimento." icone={Boxes} acao={<button type="button" onClick={() => { setAbaCatalogo(kits.length > 0 ? 'kit' : 'produto'); setIsAddItemOpen(true); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-[#004276] transition hover:bg-blue-100"><Plus className="h-4 w-4" aria-hidden="true" />Adicionar item</button>} />
 
             {/* Tabela do Kit */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
-              <table className="tabela-mobile w-full text-left">
+            <div className="proposta-tabela-kit border border-slate-200 rounded-xl overflow-hidden text-sm">
+              <table className="w-full text-left">
+                <caption className="sr-only">Equipamentos e serviços da proposta, quantidades e valores</caption>
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
+                  <tr className="bg-slate-50 text-slate-500 font-bold uppercase text-xs border-b border-slate-200">
                     <th className="py-2.5 px-3">DESCRIÇÃO</th>
                     <th className="py-2.5 px-3 text-center w-24">QTD.</th>
                     <th className="py-2.5 px-3 text-right w-32">VALOR UNIT.</th>
@@ -1547,7 +1498,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {kitItens.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-6 text-center text-slate-400 text-xs">
+                      <td colSpan={5} className="py-6 text-center text-slate-600 text-xs">
                         Nenhum item adicionado à proposta. Clique em &quot;Adicionar item&quot; para selecionar um kit ou produto.
                       </td>
                     </tr>
@@ -1555,45 +1506,48 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     kitItens.map((item) => (
                       <React.Fragment key={item.id}>
                         <tr className="hover:bg-slate-50/80 transition">
-                          <td data-label="DESCRIÇÃO" className="py-2 px-3 font-semibold text-slate-900">
+                          <td data-label="Descrição" className="py-2 px-3 font-semibold text-slate-900">
                             {item.kitId && (
-                              <span className="bg-blue-50 text-[#004276] font-bold px-1.5 py-0.5 rounded text-[9px] mr-1.5 align-middle border border-blue-200">
+                              <span className="bg-blue-50 text-[#004276] font-bold px-1.5 py-0.5 rounded text-xs mr-1.5 align-middle border border-blue-200">
                                 KIT
                               </span>
                             )}
                             {item.descricao}
                             {avisoPaineisAtual && (item.kitId || contarPaineis([item]) > 0) && (
-                              <p role="status" className="mt-0.5 text-[10px] font-medium text-red-600">
+                              <p role="status" className="mt-0.5 text-xs font-medium text-red-600">
                                 {avisoPaineisAtual}
                               </p>
                             )}
                           </td>
-                          <td data-label="QTD." className="py-2 px-3 text-center">
+                          <td data-label="Quantidade" className="py-2 px-3 text-center">
                             <input
                               type="number"
                               min="1"
+                              aria-label={`Quantidade de ${item.descricao}`}
                               value={item.qtd}
                               onChange={(e) => handleUpdateItemQtd(item.id, Number(e.target.value))}
                               className="w-16 px-1.5 py-1 text-center bg-white border border-slate-200 rounded-lg font-bold text-xs focus:outline-none focus:border-[#004276]"
                             />
                           </td>
-                          <td data-label="VALOR UNIT." className="py-2 px-3 text-right">
+                          <td data-label="Valor unitário" className="py-2 px-3 text-right">
                             <input
                               type="number"
                               min="0"
                               step="0.01"
+                              aria-label={`Valor unitário de ${item.descricao}`}
                               value={item.valorUnit}
                               onChange={(e) => handleUpdateItemValor(item.id, Number(e.target.value))}
                               className="w-24 px-1.5 py-1 text-right bg-white border border-slate-200 rounded-lg font-bold text-xs focus:outline-none focus:border-[#004276]"
                             />
                           </td>
-                          <td data-label="TOTAL" className="py-2 px-3 text-right font-bold text-slate-900">
+                          <td data-label="Total" className="py-2 px-3 text-right font-bold text-slate-900">
                             R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td data-label="" className="py-2 px-2 text-center">
                             <button
+                              type="button" aria-label={`Remover ${item.descricao}`}
                               onClick={() => handleRemoveItem(item.id)}
-                              className="text-slate-400 hover:text-rose-600 p-1 transition"
+                              className="proposta-botao-icone text-rose-700 hover:bg-rose-50 p-1 transition"
                               title="Remover item"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1604,12 +1558,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                         {/* Composição do kit */}
                         {(item.componentes ?? []).map((c) => (
                           <tr key={c.id} className="bg-slate-50/50 text-slate-500">
-                            <td data-label="DESCRIÇÃO" className="py-1.5 px-3 pl-8 text-[11px]">↳ {c.descricao}</td>
-                            <td data-label="QTD." className="py-1.5 px-3 text-center text-[11px] font-bold">
+                            <td data-label="Descrição" className="py-1.5 px-3 pl-8 text-xs">↳ {c.descricao}</td>
+                            <td data-label="Quantidade" className="py-1.5 px-3 text-center text-xs font-bold">
                               {c.qtd.toLocaleString('pt-BR')}
                             </td>
-                            <td data-label="VALOR UNIT." className="py-1.5 px-3 text-right text-[11px] italic text-slate-400">incluso no kit</td>
-                            <td data-label="TOTAL" className="py-1.5 px-3 text-right text-[11px] text-slate-400">—</td>
+                            <td data-label="Valor unitário" className="py-1.5 px-3 text-right text-xs italic text-slate-600">incluso no kit</td>
+                            <td data-label="Total" className="py-1.5 px-3 text-right text-xs text-slate-600">—</td>
                             <td className="py-1.5 px-2"></td>
                           </tr>
                         ))}
@@ -1628,16 +1582,17 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center gap-3">
+                <div className="flex flex-wrap justify-between items-center gap-3">
                   <div className="min-w-0">
-                    <span className="text-xs font-semibold text-slate-600">Valor negociado (ajuste livre)</span>
-                    <p className="text-[10px] text-slate-400">Quando informado, substitui o valor final.</p>
+                    <label htmlFor={`${idCampos}-valor-negociado`} className="block text-sm font-semibold text-slate-700">Valor negociado (R$)</label>
+                    <p id={`${idCampos}-negociado-ajuda`} className="text-xs text-slate-600">Quando informado, substitui o valor final.</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <input
                       type="number"
                       min="0"
                       step="0.01"
+                      id={`${idCampos}-valor-negociado`} aria-describedby={`${idCampos}-negociado-ajuda`}
                       value={valorNegociado ?? ''}
                       placeholder={somaDosItens.toFixed(2)}
                       onChange={(e) => setValorNegociado(
@@ -1649,7 +1604,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setValorNegociado(null)}
-                        className="text-[11px] font-bold text-slate-500 hover:text-rose-600 underline"
+                        className="text-xs font-bold text-slate-500 hover:text-rose-600 underline"
                       >
                         limpar
                       </button>
@@ -1657,11 +1612,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+                <div className="flex flex-wrap justify-between items-center gap-3 border-t border-slate-200 pt-3">
                   <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                     Total do investimento
                     {valorNegociado !== null && (
-                      <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">
+                      <span className="text-xs font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">
                         NEGOCIADO
                       </span>
                     )}
@@ -1675,38 +1630,30 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 4: Forma de pagamento */}
-          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 4 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                  <CreditCard className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Modalidades de Pagamento</h3>
-                  <p className="text-[11px] text-slate-400">Condições comerciais e prazos para simulação no PDF</p>
-                </div>
-              </div>
-            </div>
+          <div id="proposta-etapa-4" role="region" aria-labelledby="proposta-etapa-4-titulo" className={`proposta-secao proposta-campos bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-5 ${secaoVisivel === 4 ? '' : 'hidden md:block'}`}>
+            <CabecalhoSecaoProposta id="proposta-etapa-4-titulo" titulo="Modalidades de pagamento" descricao="Configure os valores e as condições que serão apresentados na proposta." icone={CreditCard} />
 
             {/* Segmented Selector */}
-            <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl">
+            <div role="group" aria-label="Modalidade de pagamento" className="grid grid-cols-1 @min-[30rem]:grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-xl">
               <button
                 type="button"
+                aria-pressed={formaPagamento === 'avista'}
                 onClick={() => setFormaPagamento('avista')}
                 className={`py-2 rounded-lg font-bold text-xs transition ${
                   formaPagamento === 'avista'
-                    ? 'bg-white text-[#004276] shadow-xs'
+                    ? 'bg-white text-[#004276] shadow-sm ring-1 ring-[#004276]/25'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                À vista (desconto)
+                À vista
               </button>
               <button
                 type="button"
+                aria-pressed={formaPagamento === 'cartao'}
                 onClick={() => setFormaPagamento('cartao')}
                 className={`py-2 rounded-lg font-bold text-xs transition ${
                   formaPagamento === 'cartao'
-                    ? 'bg-white text-[#004276] shadow-xs'
+                    ? 'bg-white text-[#004276] shadow-sm ring-1 ring-[#004276]/25'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -1714,10 +1661,11 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               </button>
               <button
                 type="button"
+                aria-pressed={formaPagamento === 'financiamento'}
                 onClick={() => setFormaPagamento('financiamento')}
                 className={`py-2 rounded-lg font-bold text-xs transition ${
                   formaPagamento === 'financiamento'
-                    ? 'bg-white text-[#004276] shadow-xs'
+                    ? 'bg-white text-[#004276] shadow-sm ring-1 ring-[#004276]/25'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -1742,10 +1690,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   </div>
                   <p className="text-slate-500">Sim: considera a entrada e desconta as parcelas no saldo e no retorno. Não: calcula o retorno pelo valor do sistema, sem descontar parcelas.</p>
                 </fieldset>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-1 @min-[24rem]:grid-cols-2 @min-[48rem]:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">ENTRADA (%)</label>
-                    <input
+                    <label htmlFor={`${idCampos}-campo-18`} className="block text-xs font-bold text-slate-500 uppercase mb-1">Entrada (%)</label>
+                    <input id={`${idCampos}-campo-18`}
                       type="number"
                       min="0" max="100" step="0.01"
                       aria-label="Entrada (%)"
@@ -1758,8 +1706,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     {financiamento.erros.entradaPct && <p id="erro-entrada-financiamento" className="text-red-600 mt-1">{financiamento.erros.entradaPct}</p>}
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">PARCELAS</label>
-                    <input
+                    <label htmlFor={`${idCampos}-campo-19`} className="block text-xs font-bold text-slate-500 uppercase mb-1">Parcelas</label>
+                    <input id={`${idCampos}-campo-19`}
                       type="number" min="1" max="1200" step="1"
                       aria-label="Prazo do financiamento (meses)"
                       aria-invalid={!!financiamento.erros.parcelas}
@@ -1772,8 +1720,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     {financiamento.erros.parcelas && <p id="erro-prazo-financiamento" className="text-red-600 mt-1">{financiamento.erros.parcelas}</p>}
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">JUROS MÊS (%)</label>
-                    <input
+                    <label htmlFor={`${idCampos}-campo-20`} className="block text-xs font-bold text-slate-500 uppercase mb-1">Juros ao mês (%)</label>
+                    <input id={`${idCampos}-campo-20`}
                       type="number"
                       min="0" max="999.999" step="0.001"
                       aria-label="Juros mensais (%)"
@@ -1787,8 +1735,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     {financiamento.erros.jurosMesPct && <p id="erro-juros-financiamento" className="text-red-600 mt-1">{financiamento.erros.jurosMesPct}</p>}
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">AGENTE / BANCO</label>
-                    <input
+                    <label htmlFor={`${idCampos}-campo-21`} className="block text-xs font-bold text-slate-500 uppercase mb-1">Agente / banco</label>
+                    <input id={`${idCampos}-campo-21`}
                       type="text"
                       value={bancoFinanciamento}
                       onChange={(e) => setBancoFinanciamento(e.target.value)}
@@ -1799,14 +1747,15 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </div>
 
                 {financiamento.erros.investimento && <p className="text-red-600" role="status">{financiamento.erros.investimento}</p>}
-                <div className="p-2.5 bg-white rounded-lg border border-slate-200 grid grid-cols-2 sm:grid-cols-3 gap-3 font-bold">
+                <div className="p-4 bg-white rounded-xl border border-slate-200 grid grid-cols-1 @min-[24rem]:grid-cols-2 @min-[42rem]:grid-cols-3 gap-4 font-bold">
                   {([
                     ['entradaValor', 'Valor da entrada'], ['valorFinanciado', 'Valor financiado'],
                     ['parcela', 'Valor da parcela'], ['totalPrestacoes', 'Total das prestações'],
                     ['jurosTotais', 'Juros totais'], ['totalPago', 'Total com entrada'],
                   ] as const).map(([campo, rotulo]) => <div key={campo} className="min-w-0">
-                    <label className="text-[9px] text-slate-500 block uppercase mb-1" htmlFor={`financiamento-${campo}`}>{rotulo} (R$)</label>
+                    <label className="text-xs text-slate-500 block uppercase mb-1" htmlFor={`financiamento-${campo}`}>{rotulo} (R$)</label>
                     <input id={`financiamento-${campo}`} type="number" min={campo === 'parcela' || campo === 'valorFinanciado' ? '0.01' : '0'} step="0.01"
+                      data-ajustado={financiamentoAjustes[campo] != null}
                       aria-label={rotulo} aria-invalid={!!financiamento.erros[campo]}
                       aria-describedby={financiamento.erros[campo] ? `erro-ajuste-${campo}` : undefined}
                       placeholder="Aguardando cálculo"
@@ -1814,7 +1763,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       onChange={e => ajustarFinanciamento(campo, e.target.value)}
                       className={`w-full min-w-0 px-2 py-1.5 border rounded-lg text-[#004276] text-xs sm:text-sm ${financiamentoAjustes[campo] != null ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white'}`}
                     />
-                    {financiamentoAjustes[campo] != null && <div className="text-[10px] text-amber-800 mt-1 font-normal">
+                    {financiamentoAjustes[campo] != null && <div className="text-xs text-amber-800 mt-1 font-normal">
                       <span>Ajustado manualmente</span>
                       <button type="button" aria-label={`Restaurar ${rotulo.toLowerCase()}`} onClick={() => ajustarFinanciamento(campo, '')}
                         className="block underline">Usar calculado: {financiamento.calculados[campo].toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</button>
@@ -1825,7 +1774,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 {financiamento.ajusteManual && <button type="button" className="text-xs text-[#004276] underline"
                   onClick={() => setFinanciamentoAjustes({})}>Restaurar todos os valores calculados</button>}
                 {!financiamento.completo && <p role="status" className="text-slate-500">Financiamento não simulado. Revise as condições acima.</p>}
-                <p className="text-[10px] text-slate-500">A calculadora do BCB é a referência inicial. Todos os valores em reais podem ser ajustados individualmente; os ajustes são mantidos ao recalcular. Prestações mensais fixas e juros compostos, primeira parcela em um mês. Valores sem IOF, seguros ou tarifas adicionais.</p>
+                <p className="text-xs text-slate-500">A calculadora do BCB é a referência inicial. Todos os valores em reais podem ser ajustados individualmente; os ajustes são mantidos ao recalcular. Prestações mensais fixas e juros compostos, primeira parcela em um mês. Valores sem IOF, seguros ou tarifas adicionais.</p>
               </div>
             )}
 
@@ -1844,7 +1793,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     ))}
                   </div>
                   {pagamentoAvistaEtapas && <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 @min-[30rem]:grid-cols-2 gap-4">
                       <label className="space-y-1 font-bold text-slate-600">
                         <span className="block">Entrada à vista (%)</span>
                         <input type="number" min="0" max="100" step="0.01" value={entradaAvistaPct}
@@ -1860,8 +1809,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     </div>
                     <p className="text-slate-500">Os percentuais se ajustam para somar 100% do valor final à vista.</p>
                     <p className="font-semibold text-[#004276]">
-                      Entrada: {moeda(dividirPagamentoAvista(valorTotalInvestimento * (1 - descontoAvistaPct / 100), entradaAvistaPct).entrada)}
-                      {' · '}Na entrega: {moeda(dividirPagamentoAvista(valorTotalInvestimento * (1 - descontoAvistaPct / 100), entradaAvistaPct).entrega)}
+                      Entrada: {dividirPagamentoAvista(valorTotalInvestimento * (1 - descontoAvistaPct / 100), entradaAvistaPct).entrada.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      {' · '}Na entrega: {dividirPagamentoAvista(valorTotalInvestimento * (1 - descontoAvistaPct / 100), entradaAvistaPct).entrega.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </p>
                   </>}
                 </fieldset>
@@ -1880,8 +1829,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </fieldset>
                 <div className="flex flex-wrap items-center gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">DESCONTO (%)</label>
-                    <input
+                    <label htmlFor={`${idCampos}-campo-22`} className="block text-xs font-bold uppercase text-slate-500 mb-1">Desconto (%)</label>
+                    <input id={`${idCampos}-campo-22`}
                       type="number"
                       value={descontoAvistaPct}
                       onChange={(e) => setDescontoAvistaPct(Number(e.target.value))}
@@ -1902,10 +1851,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
             {formaPagamento === 'cartao' && (
               <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 @min-[30rem]:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">PARCELAS CARTÃO</label>
-                    <select
+                    <label htmlFor={`${idCampos}-campo-23`} className="block text-xs font-bold uppercase text-slate-500 mb-1">Parcelas no cartão</label>
+                    <select id={`${idCampos}-campo-23`}
                       value={parcelasCartao}
                       onChange={(e) => setParcelasCartao(Number(e.target.value))}
                       className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold"
@@ -1918,8 +1867,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">TAXA DO CARTÃO (%)</label>
-                    <input
+                    <label htmlFor={`${idCampos}-campo-24`} className="block text-xs font-bold uppercase text-slate-500 mb-1">Taxa do cartão (%)</label>
+                    <input id={`${idCampos}-campo-24`}
                       type="number"
                       step="0.5"
                       value={taxaCartaoPct}
@@ -1933,119 +1882,38 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Section 5: Observações & Personalização do PDF */}
-          <div className={`bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5 ${secaoVisivel === 5 ? '' : 'hidden md:block'}`}>
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-[#004276] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                  <FileText className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Garantias, Observações & Responsável Técnico</h3>
-                  <p className="text-[11px] text-slate-400">Assinatura técnica da proposta, cláusulas e logo customizada</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              <GarantiasPropostaCampos valor={garantiasEquipamentos} onChange={valor => {
+          <div id="proposta-etapa-5" className={secaoVisivel === 5 ? '' : 'hidden md:block'}>
+            <PropostaDocumentoCampos
+              garantias={garantiasEquipamentos}
+              onGarantiasChange={valor => {
                 setObservacoes(atual => atual.replace(textoGarantiasProposta(garantiasEquipamentos), textoGarantiasProposta(valor)));
                 setGarantiasEquipamentos(valor);
-              }} />
-              {/* Observações */}
-              <div className="space-y-2">
-                <label className="block text-[10px] font-bold uppercase text-slate-500">
-                  OBSERVAÇÕES / CLÁUSULAS DA PROPOSTA
-                </label>
-                <textarea
-                  rows={4}
-                  value={observacoes}
-                  onChange={(e) => setObservacoes(e.target.value)}
-                  placeholder="Escreva observações específicas sobre o projeto, vigência, desconto especial ou telhado..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#004276] leading-relaxed font-medium"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="exclusoes-escopo" className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  ITENS FORA DO ESCOPO DE FORNECIMENTO
-                </label>
-                <p className="text-xs text-slate-500 mb-2">Edite ou remova os itens que não deseja citar. A primeira linha é o título. Deixe vazio para ocultar toda a seção no PDF.</p>
-                <textarea id="exclusoes-escopo" rows={10} maxLength={10000} value={exclusoesEscopo}
-                  onChange={e => { escopoEditado.current = true; setExclusoesEscopo(e.target.value); }}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#004276] leading-relaxed font-medium" />
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <button type="button" onClick={() => void definirEscopoPadrao()} disabled={salvandoEscopoPadrao}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#004276] text-white text-xs font-bold disabled:opacity-50">
-                    {salvandoEscopoPadrao ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    {salvandoEscopoPadrao ? 'Salvando padrão...' : 'Definir texto como padrão'}
-                  </button>
-                  <button type="button" onClick={() => { escopoEditado.current = true; setExclusoesEscopo(textoEscopoPadrao); }}
-                    className="text-xs text-[#004276] underline">Restaurar texto padrão</button>
-                </div>
-                <p className="mt-1 text-[10px] text-slate-500">O padrão é compartilhado para novas propostas. Propostas já salvas mantêm seu próprio texto.</p>
-              </div>
-
-              {/* Responsável Técnico & Logo */}
-              <div className="space-y-2.5">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                    RESPONSÁVEL TÉCNICO
-                  </label>
-                  <input
-                    type="text"
-                    aria-label="Responsável técnico"
-                    value={responsavelTecnico}
-                    onChange={e => setResponsavelTecnico(e.target.value)}
-                    maxLength={200}
-                    placeholder="Digite o nome do técnico"
-                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-[#004276]"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">Informe apenas o nome, se preferir. Não é necessário cadastrar um usuário.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                    REGISTRO PROFISSIONAL (OPCIONAL)
-                  </label>
-                  <select aria-label="Conselho profissional" value={conselhoProfissional}
-                    onChange={e => setConselhoProfissional(e.target.value as 'CREA' | 'CRT')}
-                    className="mb-1 w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800">
-                    <option value="CREA">CREA</option>
-                    <option value="CRT">CRT</option>
-                  </select>
-                  <input
-                    aria-label="Registro do responsável técnico"
-                    value={crea}
-                    onChange={e => setCrea(e.target.value)}
-                    maxLength={60}
-                    placeholder="Número do registro (opcional)"
-                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-[#004276]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                    URL LOGO CUSTOMIZADA (OPCIONAL)
-                  </label>
-                  <input
-                    type="url"
-                    value={customLogoUrl}
-                    onChange={(e) => setCustomLogoUrl(e.target.value)}
-                    placeholder="https://exemplo.com/logo.png"
-                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-[#004276]"
-                  />
-                </div>
-              </div>
-            </div>
+              }}
+              observacoes={observacoes}
+              onObservacoesChange={setObservacoes}
+              exclusoesEscopo={exclusoesEscopo}
+              onExclusoesChange={valor => { escopoEditado.current = true; setExclusoesEscopo(valor); }}
+              onDefinirPadrao={() => void definirEscopoPadrao()}
+              onRestaurarPadrao={() => { escopoEditado.current = true; setExclusoesEscopo(textoEscopoPadrao); }}
+              salvandoPadrao={salvandoEscopoPadrao}
+              responsavelTecnico={responsavelTecnico}
+              onResponsavelChange={setResponsavelTecnico}
+              conselho={conselhoProfissional}
+              onConselhoChange={setConselhoProfissional}
+              registro={crea}
+              onRegistroChange={setCrea}
+              logoUrl={customLogoUrl}
+              onLogoChange={setCustomLogoUrl}
+            />
           </div>
 
           {/* Navegação Celular */}
-          <div className="md:hidden flex items-center gap-2 pt-2">
+          <div className="md:hidden flex items-center gap-3 pt-2">
             <button
               type="button"
               onClick={() => setSecaoVisivel((n) => Math.max(1, n - 1))}
               disabled={secaoVisivel === 1}
-              className="flex-1 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs disabled:opacity-40"
+              className="flex-1 min-h-11 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs disabled:opacity-40"
             >
               Anterior
             </button>
@@ -2053,7 +1921,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               type="button"
               onClick={() => setSecaoVisivel((n) => Math.min(PASSOS.length, n + 1))}
               disabled={secaoVisivel === PASSOS.length}
-              className="flex-1 py-2 rounded-xl bg-[#004276] text-white font-bold text-xs disabled:opacity-40"
+              className="flex-1 min-h-11 py-2.5 rounded-xl bg-[#004276] text-white font-bold text-xs disabled:opacity-40"
             >
               Próximo
             </button>
@@ -2061,47 +1929,47 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
         </div>
 
         {/* RIGHT SIDEBAR (STICKY ON DESKTOP) */}
-        <div className="lg:col-span-5 xl:col-span-4 sticky top-4 space-y-3.5 self-start">
+        <div className="proposta-resumo proposta-campos min-w-0 space-y-4 self-start">
           
           {/* Card Dark Blue "RESUMO DA PROPOSTA" */}
           <div className="bg-gradient-to-br from-[#004276] to-[#003159] text-white p-5 rounded-2xl shadow-md space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black text-[#FFD100] uppercase tracking-wider">
+              <span className="text-xs font-black text-[#FFD100] uppercase tracking-wider">
                 RESUMO DA PROPOSTA
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-blue-100">
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white/10 text-blue-100">
                 {coberturaPct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% cobertura
               </span>
             </div>
 
             <div>
-              <span className="text-[10px] text-blue-200 font-medium uppercase tracking-wider">INVESTIMENTO TOTAL</span>
-              <h2 className="text-2xl sm:text-3xl font-black text-white mt-0.5">
+              <span className="text-xs text-blue-200 font-medium uppercase tracking-wider">INVESTIMENTO TOTAL</span>
+              <p className="break-words text-2xl sm:text-3xl font-black text-white mt-0.5">
                 R$ {valorTotalInvestimento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </h2>
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs border-t border-white/10 pt-3">
               <div className="bg-white/5 p-2 rounded-lg">
-                <span className="text-blue-200 text-[10px] block">Potência</span>
+                <span className="text-blue-200 text-xs block">Potência</span>
                 <span className="font-extrabold text-white text-sm">{potenciaKwpCalculada} kWp</span>
               </div>
               <div className="bg-white/5 p-2 rounded-lg">
-                <span className="text-blue-200 text-[10px] block">Geração Média</span>
+                <span className="text-blue-200 text-xs block">Geração Média</span>
                 <span className="font-extrabold text-white text-sm">{geracaoMediaKwh.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kWh</span>
               </div>
               <div className="bg-white/5 p-2 rounded-lg">
-                <span className="text-blue-200 text-[10px] block">Área Estimada</span>
+                <span className="text-blue-200 text-xs block">Área Estimada</span>
                 <span className="font-extrabold text-white text-sm">{areaEstimadaM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</span>
               </div>
               <div className="bg-white/5 p-2 rounded-lg">
-                <span className="text-blue-200 text-[10px] block">Perdas</span>
+                <span className="text-blue-200 text-xs block">Perdas</span>
                 <span className="font-extrabold text-white text-sm">{perdasPct}%</span>
               </div>
             </div>
 
             {!preservarLegado && !calculoSolar.completo && (
-              <p role="status" className="text-[11px] text-amber-300 font-semibold bg-amber-500/20 p-2 rounded-lg">
+              <p role="status" className="text-xs text-amber-300 font-semibold bg-amber-500/20 p-2 rounded-lg">
                 Pendente de preenchimento de parâmetros
               </p>
             )}
@@ -2133,8 +2001,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </span>
               </div>
 
-              <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-emerald-900 font-bold text-xs mt-2 flex justify-between items-center">
-                <span className="text-[11px]">Payback operacional estimado</span>
+              <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-emerald-900 font-bold text-xs mt-2 flex flex-wrap gap-2 justify-between items-center">
+                <span className="text-xs">Payback operacional estimado</span>
                 <span className="bg-emerald-600 text-white px-2.5 py-0.5 rounded-full text-xs font-black">
                   {paybackAnos == null ? 'Sem retorno no período' : `${paybackAnos.toFixed(1)} anos`}
                 </span>
@@ -2163,8 +2031,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
           </div>
 
           {/* Card "CONDIÇÕES COMERCIAIS" */}
-          <div className="bg-amber-50/70 border border-amber-200/80 p-3.5 rounded-2xl text-[11px] space-y-1 text-amber-900">
-            <h4 className="font-bold text-amber-950 uppercase tracking-wider text-[10px]">CONDIÇÕES COMERCIAIS</h4>
+          <div className="bg-amber-50/70 border border-amber-200/80 p-3.5 rounded-2xl text-xs space-y-1 text-amber-900">
+            <h4 className="font-bold text-amber-950 uppercase tracking-wider text-xs">CONDIÇÕES COMERCIAIS</h4>
             <p className="leading-relaxed text-amber-800">
               Válida por {paramNum(config, 'proposta.validade_dias', 10)} dias · despacho em até 30 dias · instalação agendada após a entrega dos equipamentos · crédito sujeito a aprovação.
             </p>
@@ -2183,7 +2051,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               onFechar={() => setIsAddItemOpen(false)}
             />
 
-            <div className="modal-corpo campos-modal p-5 space-y-4 text-xs">
+            <div className="modal-corpo proposta-campos campos-modal p-5 space-y-4 text-xs">
               <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
                 <button
                   type="button"
@@ -2208,8 +2076,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               {abaCatalogo === 'kit' ? (
                 <>
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1.5">Selecione o kit</label>
-                    <select
+                    <label htmlFor={`${idCampos}-campo-25`} className="block font-bold text-slate-600 mb-1.5">Selecione o kit</label>
+                    <select id={`${idCampos}-campo-25`}
                       value={selectedCatalogKitId}
                       onChange={(e) => setSelectedCatalogKitId(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
@@ -2222,7 +2090,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       ))}
                     </select>
                     {kits.length === 0 && (
-                      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 mt-2">
+                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 mt-2">
                         Nenhum kit cadastrado. Monte os kits em Parâmetros &gt; Kits.
                       </p>
                     )}
@@ -2235,7 +2103,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     if (!kit) return null;
                     return (
                       <div className="border border-slate-200 rounded-xl p-3 space-y-1 bg-slate-50">
-                        <p className="font-bold text-slate-600 uppercase text-[10px]">Composição</p>
+                        <p className="font-bold text-slate-600 uppercase text-xs">Composição</p>
                         {kit.itens.map(i => (
                           <div key={i.id} className="flex justify-between text-slate-600">
                             <span className="truncate">{i.produtoNome}</span>
@@ -2267,8 +2135,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               ) : (
                 <>
                   <div>
-                    <label className="block font-bold text-slate-600 mb-1.5">Selecione o produto</label>
-                    <select
+                    <label htmlFor={`${idCampos}-campo-26`} className="block font-bold text-slate-600 mb-1.5">Selecione o produto</label>
+                    <select id={`${idCampos}-campo-26`}
                       value={selectedCatalogProdutoId}
                       onChange={(e) => setSelectedCatalogProdutoId(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
@@ -2284,8 +2152,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-bold text-slate-600 mb-1.5">Quantidade</label>
-                      <input
+                      <label htmlFor={`${idCampos}-campo-27`} className="block font-bold text-slate-600 mb-1.5">Quantidade</label>
+                      <input id={`${idCampos}-campo-27`}
                         type="number"
                         min="1"
                         value={qtdAvulso}
@@ -2294,8 +2162,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-600 mb-1.5">Valor unitário (R$)</label>
-                      <input
+                      <label htmlFor={`${idCampos}-campo-28`} className="block font-bold text-slate-600 mb-1.5">Valor unitário (R$)</label>
+                      <input id={`${idCampos}-campo-28`}
                         type="number"
                         min="0"
                         step="0.01"
@@ -2306,7 +2174,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-xs text-slate-500">
                     O valor é digitado aqui: o cadastro de produto não guarda preço de venda.
                     Também dá para ajustar depois, na tabela.
                   </p>

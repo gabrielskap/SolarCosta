@@ -9,9 +9,9 @@ const requireServer = createRequire(resolve('server/package.json'));
 const puppeteer = requireServer('puppeteer-core');
 const destino = resolve('build/financiamento-qa');
 await mkdir(destino, { recursive: true });
-const cssNome = (await readdir('dist/assets')).find(n => n.endsWith('.css'));
-assert(cssNome, 'Execute npm run build antes do teste visual.');
-const css = await readFile(join('dist/assets', cssNome));
+const cssNomes = (await readdir('dist/assets')).filter(n => n.endsWith('.css'));
+assert(cssNomes.length, 'Execute npm run build antes do teste visual.');
+const css = (await Promise.all(cssNomes.map(nome => readFile(join('dist/assets', nome), 'utf8')))).join('\n');
 const bundle = await build({
   stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
     import React from 'react';
@@ -50,7 +50,8 @@ const bundle = await build({
   ` },
   bundle: true, write: false, format: 'iife', platform: 'browser',
   define: { 'import.meta.env': '{"DEV":false}', 'process.env.NODE_ENV': '"production"' },
-  loader: { '.png': 'dataurl', '.jpg': 'dataurl' },
+  // O CSS compilado é servido por /qa.css para exercitar os estilos do build real.
+  loader: { '.png': 'dataurl', '.jpg': 'dataurl', '.css': 'empty' },
 });
 const js = bundle.outputFiles[0].contents;
 const servidor = createServer((req, res) => {
@@ -113,6 +114,49 @@ try {
   await clicar('Restaurar todos os valores calculados');
   await preencher('Juros mensais (%)',2.2);
   await page.waitForFunction(()=>document.querySelector('[aria-label="Valor da parcela"]').value==='518.13');
+  // A página inteira deve continuar utilizável quando o espaço do formulário diminui.
+  await render('formulario');
+  await page.$eval('#root', e => { e.style.maxWidth='1100px'; e.style.margin='0 auto'; });
+  for (const largura of [1280,1024,768,390,320]) {
+    await page.setViewport({width:largura,height:900,deviceScaleFactor:1});
+    const etapas=largura<768?[1,2,3,4,5]:[0];
+    for (const etapa of etapas) {
+      if(etapa) await page.$eval(`#proposta-etapas button:nth-child(${etapa})`,e=>e.click());
+      await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,`página cabe em ${largura}px, etapa ${etapa}`);
+      const semNome=await page.$$eval('input,select,textarea',els=>els.filter(e=>e.getClientRects().length&&!e.labels?.length&&!e.getAttribute('aria-label')).map(e=>e.outerHTML));
+      assert.deepEqual(semNome,[],`campos identificados em ${largura}px, etapa ${etapa}`);
+      if(etapa===2||etapa===0) {
+        const acordeao=await page.$('.proposta-premissas > button');
+        if(await acordeao.evaluate(e=>e.getAttribute('aria-expanded')!=='true')) {
+          await acordeao.focus();await page.keyboard.press('Enter');
+        }
+        assert.equal(await acordeao.evaluate(e=>e.getAttribute('aria-expanded')),'true','premissas abrem pelo teclado');
+        for(const aba of ['Consumo & UCs','HSP Mensal','Parâmetros do Sistema']) {
+          const achou=await page.evaluate(t=>{const b=[...document.querySelectorAll('.proposta-premissas button')].find(b=>b.textContent.trim().startsWith(t));b?.click();return !!b;},aba);
+          assert(achou,`aba ${aba} disponível`);
+          await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
+          assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,`premissas cabem em ${largura}px, aba ${aba}`);
+        }
+        await acordeao.click();
+      }
+      if(largura===390&&etapa) await (await page.$(`#proposta-etapa-${etapa}`)).screenshot({path:join(destino,`etapa-${etapa}-mobile.png`)});
+      if(largura===1280) for(const numero of [1,2,3,4,5]) await (await page.$(`#proposta-etapa-${numero}`)).screenshot({path:join(destino,`etapa-${numero}-desktop.png`)});
+    }
+    if(largura<768) await page.$eval('#proposta-etapas button:nth-child(4)',e=>e.click());
+    for(const [indice,modo] of ['avista','cartao','financiamento'].entries()) {
+      await page.$$eval('[aria-label="Modalidade de pagamento"] button',(bs,i)=>bs[i].click(),indice);
+      await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
+      if(modo==='avista') {
+        await page.$eval('#proposta-etapa-4 fieldset button',e=>e.click());
+        await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
+      }
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,`pagamento ${modo} cabe em ${largura}px`);
+      assert.equal(await page.$$eval('[aria-label="Modalidade de pagamento"] button',(bs,i)=>bs[i].getAttribute('aria-pressed'),indice),'true');
+      if(largura===390) await (await page.$('#proposta-etapa-4')).screenshot({path:join(destino,`pagamento-${modo}-mobile.png`)});
+    }
+  }
+  await page.$eval('#root', e => { e.style.maxWidth=''; e.style.margin=''; });
   await page.setViewport({width:1440,height:1080,deviceScaleFactor:1});
   for(const modo of ['pdf','publico']) {
     await render(modo);await page.waitForSelector('.folha-pdf');
@@ -174,5 +218,5 @@ try {
   await render('pdf',{status:'aceita',garantiasEquipamentos:salvas});await clicar('Customizar Layout PDF');
   assert.equal(await page.$eval('[aria-label="Módulos — garantia do produto"]',el=>el.matches(':disabled')),true);
   assert.deepEqual(erros,[]);
-  console.log(`Financiamento e garantias UI: edição, restauração, salvamento, falha recuperável e PDFs interno/público passaram. Evidências em ${destino}`);
+  console.log(`Layout da proposta (320–1280 px), teclado, edição, restauração, salvamento e PDFs interno/público passaram. Evidências em ${destino}`);
 } finally {await browser?.close();await new Promise(r=>servidor.close(r));}

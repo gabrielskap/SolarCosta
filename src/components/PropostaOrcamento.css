@@ -1,0 +1,124 @@
+/* Regras locais do editor: não alteram documentos impressos nem controles do mapa. */
+.proposta-orcamento .proposta-secao {
+  container-type: inline-size;
+  min-width: 0;
+  scroll-margin-top: 1rem;
+}
+
+.proposta-orcamento .proposta-campos :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea) {
+  min-width: 0;
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: .625rem .75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: .75rem;
+  background-color: #fff;
+  color: #0f172a;
+  font-size: .875rem;
+  line-height: 1.5;
+}
+
+.proposta-orcamento .proposta-campos :is(input, textarea)::placeholder { color: #64748b; }
+.proposta-orcamento .proposta-campos :is(input, select, textarea):disabled {
+  background: #f1f5f9;
+  color: #475569;
+  opacity: 1;
+  cursor: not-allowed;
+}
+.proposta-orcamento .proposta-campos label {
+  font-size: .875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-transform: none;
+  color: #334155;
+}
+.proposta-orcamento .proposta-campos label.block { margin-bottom: .375rem; }
+.proposta-orcamento .proposta-campos fieldset { min-width: 0; }
+.proposta-orcamento .proposta-campos legend { max-width: 100%; font-size: .875rem; line-height: 1.5; }
+.proposta-orcamento .proposta-campos :is(input, select, textarea):focus {
+  border-color: #004276;
+  outline: 2px solid #004276;
+  outline-offset: 2px;
+}
+.proposta-orcamento .proposta-campos [aria-invalid='true'] {
+  border-color: #be123c;
+  background: #fff1f2;
+}
+.proposta-orcamento .proposta-campos input[data-ajustado='true']:not([aria-invalid='true']) {
+  border-color: #d97706;
+  background: #fffbeb;
+}
+.proposta-orcamento :is(button, a, [role='button']):focus-visible {
+  outline: 2px solid #004276;
+  outline-offset: 3px;
+}
+.proposta-orcamento .proposta-premissas > button:focus-visible {
+  outline-offset: -3px;
+  border-radius: .75rem;
+}
+.proposta-orcamento .proposta-campos button:not(.proposta-botao-icone) {
+  min-height: 2.75rem;
+  font-size: .875rem;
+}
+.proposta-orcamento .proposta-botao-icone {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: .75rem;
+}
+.proposta-orcamento .proposta-campos :is(.proposta-campo-cep, #lead-vinculado) { padding-right: 3rem; }
+.proposta-orcamento .proposta-campos .proposta-mes {
+  padding-right: .25rem;
+  padding-left: .25rem;
+  text-align: center;
+}
+.proposta-orcamento .proposta-tabela-kit { container-type: inline-size; }
+.proposta-orcamento .proposta-tabela-kit table { font-size: .875rem; }
+.proposta-orcamento .proposta-tabela-kit td { overflow-wrap: anywhere; }
+
+/* A tabela se adapta à largura disponível, inclusive com o resumo ao lado. */
+@container (max-width: 43rem) {
+  .proposta-orcamento .proposta-tabela-kit :is(table, tbody, tr, td) { display: block; width: 100%; }
+  .proposta-orcamento .proposta-tabela-kit thead { display: none; }
+  .proposta-orcamento .proposta-tabela-kit tr {
+    border-bottom: 1px solid #e2e8f0;
+    padding: .75rem 1rem;
+    margin: 0;
+    border-radius: 0;
+  }
+  .proposta-orcamento .proposta-tabela-kit td {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+    padding: .5rem 0;
+    text-align: right;
+  }
+  .proposta-orcamento .proposta-tabela-kit td::before {
+    content: attr(data-label);
+    font-size: .75rem;
+    font-weight: 600;
+    color: #475569;
+    text-align: left;
+    text-transform: none;
+  }
+  .proposta-orcamento .proposta-tabela-kit td:not([data-label])::before,
+  .proposta-orcamento .proposta-tabela-kit td[data-label='']::before,
+  .proposta-orcamento .proposta-tabela-kit td[colspan]::before { content: none; }
+  .proposta-orcamento .proposta-tabela-kit td[colspan],
+  .proposta-orcamento .proposta-tabela-kit td[data-label='Descrição'] { display: block; text-align: left; }
+  .proposta-orcamento .proposta-tabela-kit td[data-label='Descrição']::before { display: block; margin-bottom: .375rem; }
+}
+
+@media (max-width: 767px) {
+  .proposta-orcamento .proposta-campos :is(input, select, textarea) { font-size: 1rem; }
+}
+@media (min-width: 1280px) and (min-height: 900px) {
+  .proposta-orcamento .proposta-resumo { position: sticky; top: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proposta-orcamento :is(input, select, textarea, button) { transition: none; }
+}

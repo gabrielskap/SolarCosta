@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useId, useState } from 'react';
 import { ChevronDown, ChevronUp, Sliders, Plus, Trash2, Download, AlertCircle, CheckCircle2, ShieldAlert, Info } from 'lucide-react';
 import { entradaSolarZerada, type EntradaSolar, type CalculoSolar } from '../../server/src/domain/propostaSolar';
 import { listarSimulacoesOffGrid, abrirSimulacaoOffGrid, type ResumoOffGrid, type SimulacaoOffGrid } from '../services/offGrid';
@@ -25,6 +25,7 @@ export function PropostaPremissas({
   dimensoesFixas?: boolean;
 }) {
   const [expandido, setExpandido] = useState(legado && !confirmado);
+  const idPremissas = useId();
   const [abaAtiva, setAbaAtiva] = useState<'ucs' | 'hsp' | 'parametros' | 'offgrid'>('ucs');
   const [simulacoes, setSimulacoes] = useState<ResumoOffGrid[]>([]);
   const [previa, setPrevia] = useState<SimulacaoOffGrid | null>(null);
@@ -44,10 +45,11 @@ export function PropostaPremissas({
 
   const numero = (label: string, key: keyof EntradaSolar, unidade?: string, step = 'any') => (
     <div key={key}>
-      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-        {label} {unidade && <span className="text-slate-400 font-normal">({unidade})</span>}
+      <label htmlFor={`${idPremissas}-${key}`} className="block text-sm font-semibold text-slate-700 mb-1.5">
+        {label} {unidade && <span className="text-slate-600 font-normal">({unidade})</span>}
       </label>
       <input
+        id={`${idPremissas}-${key}`}
         aria-label={label}
         className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#004276]"
         type="number"
@@ -65,32 +67,32 @@ export function PropostaPremissas({
     previa?.dados.equipamentos.reduce((s, c) => s + (c.potenciaW * c.quantidade * c.horasDia) / 1000, 0) ?? 0;
 
   return (
-    <div className="border border-slate-200 rounded-xl bg-slate-50/80 overflow-hidden text-xs transition-all">
+    <div className="proposta-premissas @container border border-slate-200 rounded-xl bg-slate-50/80 overflow-hidden text-sm">
       {/* Header do Accordion */}
-      <div
+      <button
+        type="button"
+        aria-expanded={expandido}
+        aria-controls={`${idPremissas}-conteudo`}
         onClick={() => setExpandido(!expandido)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandido(!expandido); } }}
         className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-100/80 transition cursor-pointer select-none"
       >
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-start gap-3 min-w-0">
           <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-xs shrink-0">
             <Sliders className="w-3.5 h-3.5 text-[#004276]" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-800 text-xs">Premissas e Parâmetros Avançados</span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-[#004276] border border-blue-200">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-[#004276] text-sm">Premissas e Parâmetros Avançados</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-[#004276] border border-blue-200">
                 {entrada.modo === 'tecnico' ? 'Por equipamentos instalados' : 'Por demanda de consumo'}
               </span>
               {entrada.ucs.length > 1 && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">
+                <span className="text-xs font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">
                   {entrada.ucs.length} UCs
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-500 truncate">
+            <p className="text-xs text-slate-600 leading-relaxed">
               {resultado.completo
                 ? `Cálculo completo · Projeção ${entrada.anoInicial}–${entrada.anoInicial + 24}`
                 : 'Pendente de preenchimento de parâmetros'}
@@ -100,15 +102,15 @@ export function PropostaPremissas({
 
         <div className="flex items-center gap-2 shrink-0">
           {legado && !confirmado && (
-            <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+            <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
               <ShieldAlert className="w-3 h-3" /> Revisão necessária
             </span>
           )}
-          <span className="text-slate-400">
+          <span className="text-slate-600">
             {expandido ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </span>
         </div>
-      </div>
+      </button>
 
       <div className="px-4 pb-3">
         <button type="button" onClick={() => { setExpandido(true); setAbaAtiva('offgrid'); }} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-[#004276] hover:bg-blue-50">
@@ -117,7 +119,7 @@ export function PropostaPremissas({
       </div>
       {/* Conteúdo Expansível */}
       {expandido && (
-        <div className="p-4 pt-1 border-t border-slate-200 bg-white space-y-4">
+        <div id={`${idPremissas}-conteudo`} className="p-4 border-t border-slate-200 bg-white space-y-5">
           {/* Alerta de legado */}
           {legado && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-2">
@@ -125,10 +127,10 @@ export function PropostaPremissas({
                 <ShieldAlert className="w-4 h-4 text-amber-600" />
                 <span>Proposta de versão anterior (legada)</span>
               </div>
-              <p className="text-amber-800 leading-relaxed text-[11px]">
+              <p className="text-amber-800 leading-relaxed text-xs">
                 Os resultados salvos serão preservados até que você confirme a revisão abaixo:
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-amber-100/60 p-2.5 rounded-lg text-[11px] font-semibold text-amber-900">
+              <div className="grid grid-cols-1 @min-[32rem]:grid-cols-2 gap-2 bg-amber-100/60 p-2.5 rounded-lg text-xs font-semibold text-amber-900">
                 <div>Potência: {anterior?.potenciaKwp ?? 0} kWp → {resultado.potenciaKwp.toFixed(2)} kWp</div>
                 <div>Economia: R$ {(anterior?.economiaMensal ?? 0).toFixed(2)} → R$ {resultado.economiaMensal.toFixed(2)}/mês</div>
               </div>
@@ -157,32 +159,32 @@ export function PropostaPremissas({
             <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
               <button
                 type="button"
-                onClick={() => setAbaAtiva('ucs')}
-                className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${abaAtiva === 'ucs' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                aria-pressed={abaAtiva === 'ucs'} onClick={() => setAbaAtiva('ucs')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition ${abaAtiva === 'ucs' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 Consumo & UCs ({entrada.ucs.length})
               </button>
               <button
                 type="button"
-                onClick={() => setAbaAtiva('hsp')}
-                className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${abaAtiva === 'hsp' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                aria-pressed={abaAtiva === 'hsp'} onClick={() => setAbaAtiva('hsp')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition ${abaAtiva === 'hsp' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 HSP Mensal
               </button>
               <button
                 type="button"
-                onClick={() => setAbaAtiva('parametros')}
-                className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${abaAtiva === 'parametros' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                aria-pressed={abaAtiva === 'parametros'} onClick={() => setAbaAtiva('parametros')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition ${abaAtiva === 'parametros' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 Parâmetros do Sistema
               </button>
               <button
                 type="button"
-                onClick={() => setAbaAtiva('offgrid')}
-                className={`px-3 py-1 rounded-md text-[11px] font-bold transition ${abaAtiva === 'offgrid' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                aria-pressed={abaAtiva === 'offgrid'} onClick={() => setAbaAtiva('offgrid')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition ${abaAtiva === 'offgrid' ? 'bg-white text-[#004276] shadow-xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 Off-Grid
@@ -190,7 +192,7 @@ export function PropostaPremissas({
             </div>
 
             <div className="flex items-center gap-2">
-              <label className="text-[10px] font-bold uppercase text-slate-500 flex items-center gap-1.5">
+              <label className="text-xs font-bold uppercase text-slate-500 flex items-center gap-1.5">
                 Modo:
                 <select
                   aria-label="Modo de cálculo"
@@ -208,8 +210,8 @@ export function PropostaPremissas({
           {/* Aba UCs */}
           {abaAtiva === 'ucs' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-slate-500">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-500">
                   Histórico de consumo mensal em kWh. O campo de consumo médio geral preenche os 12 meses; ajuste fino individual abaixo:
                 </p>
                 <button
@@ -228,7 +230,7 @@ export function PropostaPremissas({
 
               {entrada.ucs.map((uc, i) => (
                 <div key={i} className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
                     <input
                       aria-label={`Nome UC ${i + 1}`}
                       className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 w-48 focus:outline-none focus:border-[#004276]"
@@ -240,7 +242,7 @@ export function PropostaPremissas({
                         })
                       }
                     />
-                    <div className="text-[11px] text-slate-500 font-medium ml-1">
+                    <div className="text-xs text-slate-500 font-medium ml-1">
                       Média:{' '}
                       <strong className="text-slate-800">
                         {Math.round(uc.meses.reduce((a, b) => a + b, 0) / 12)} kWh/mês
@@ -249,7 +251,7 @@ export function PropostaPremissas({
                     {entrada.ucs.length > 1 && (
                       <button
                         type="button"
-                        className="ml-auto text-slate-400 hover:text-rose-600 p-1 transition"
+                        className="proposta-botao-icone ml-auto text-rose-700 hover:bg-rose-50 p-1 transition"
                         title="Remover UC"
                         onClick={() => onChange({ ...entrada, ucs: entrada.ucs.filter((_, j) => j !== i) })}
                       >
@@ -258,13 +260,13 @@ export function PropostaPremissas({
                     )}
                   </div>
 
-                  <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5">
+                  <div className="grid grid-cols-3 @min-[32rem]:grid-cols-4 @min-[44rem]:grid-cols-6 gap-3">
                     {MESES.map((m, j) => (
                       <div key={m} className="bg-white p-1.5 rounded-lg border border-slate-200 text-center">
-                        <span className="block text-[9px] font-bold text-slate-400 uppercase">{m}</span>
+                        <span className="block text-xs font-bold text-slate-600 uppercase">{m}</span>
                         <input
                           aria-label={`${uc.nome} ${m}`}
-                          className="w-full text-center text-xs font-bold text-slate-800 focus:outline-none"
+                          className="proposta-mes w-full text-center text-xs font-bold text-slate-800 focus:outline-none"
                           type="number"
                           min="0"
                           value={uc.meses[j]}
@@ -283,9 +285,9 @@ export function PropostaPremissas({
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
+                  <div className="grid grid-cols-1 @min-[32rem]:grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
                     {(['adicionalKwh', 'disponibilidadeKwh'] as const).map((k) => (
-                      <label key={k} className="flex items-center justify-between text-[11px] text-slate-600">
+                      <label key={k} className="flex items-center justify-between text-xs text-slate-600">
                         <span>{k === 'adicionalKwh' ? 'Adicional (kWh/mês)' : 'Disponibilidade (kWh/mês)'}</span>
                         <input
                           className="w-24 px-2 py-1 bg-white border border-slate-200 rounded-md text-xs font-semibold text-right"
@@ -310,16 +312,16 @@ export function PropostaPremissas({
           {/* Aba HSP */}
           {abaAtiva === 'hsp' && (
             <div className="space-y-3">
-              <p className="text-[11px] text-slate-500">
+              <p className="text-xs text-slate-500">
                 Horas de Sol Pleno (HSP) mensais (h/dia). O campo geral acima preenche a média uniforme; customize os meses conforme irradiação solar local:
               </p>
-              <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5">
+              <div className="grid grid-cols-3 @min-[32rem]:grid-cols-4 @min-[44rem]:grid-cols-6 gap-3">
                 {MESES.map((m, j) => (
                   <div key={m} className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
-                    <span className="block text-[9px] font-bold text-slate-400 uppercase">{m}</span>
+                    <span className="block text-xs font-bold text-slate-600 uppercase">{m}</span>
                     <input
                       aria-label={`HSP ${m}`}
-                      className="w-full text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded mt-1 p-1 focus:outline-none focus:border-[#004276]"
+                      className="proposta-mes w-full text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded mt-1 p-1 focus:outline-none focus:border-[#004276]"
                       type="number"
                       min="0"
                       step="0.01"
@@ -340,7 +342,7 @@ export function PropostaPremissas({
           {/* Aba Parâmetros Técnicos & Financeiros */}
           {abaAtiva === 'parametros' && (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 @min-[24rem]:grid-cols-2 @min-[42rem]:grid-cols-3 gap-4">
                 {numero('Largura do módulo', 'larguraM', 'm', '0.01')}
                 {numero('Altura do módulo', 'alturaM', 'm', '0.01')}
                 {/* 0 = área calculada pelas dimensões acima. Mesmo campo do topo
@@ -359,7 +361,7 @@ export function PropostaPremissas({
                 {numero('Poupança (comparativo)', 'poupancaMesPct', '% a.m.', '0.05')}
                 {entrada.modo === 'excel' && numero('Geração inicial projeção', 'geracaoAnualExcel', 'kWh/ano', '10')}
               </div>
-              <p className="text-[11px] text-slate-400 italic">
+              <p className="text-xs text-slate-600 italic">
                 Projeção considerada: ciclo de 25 anos ({entrada.anoInicial}–{entrada.anoInicial + 24}).
               </p>
             </div>
@@ -413,7 +415,7 @@ export function PropostaPremissas({
                   <p className="font-bold text-[#004276]">
                     {previa.titulo}: {consumoImportado.toFixed(2)} kWh/dia → {(consumoImportado * 30).toFixed(2)} kWh/mês; HSP {previa.dados.config.irradiacaoSolar}; módulo {previa.dados.config.potenciaModuloWp} Wp; perdas {previa.dados.config.perdasSistema}%.
                   </p>
-                  <p className="text-[11px] text-slate-600">
+                  <p className="text-xs text-slate-600">
                     Aplicar substitui o histórico de UCs e o HSP mensal pelos dados desta simulação.
                   </p>
                   <button
@@ -448,7 +450,7 @@ export function PropostaPremissas({
               )}
 
               {entrada.origemOffGrid && (
-                <p className="text-[11px] text-slate-500">
+                <p className="text-xs text-slate-500">
                   Origem vinculada: <strong className="text-slate-700">{entrada.origemOffGrid.titulo}</strong> ({new Date(entrada.origemOffGrid.importadoEm).toLocaleDateString('pt-BR')})
                 </p>
               )}
@@ -462,7 +464,7 @@ export function PropostaPremissas({
               <strong className="flex items-center gap-1 text-amber-800">
                 <AlertCircle className="w-3.5 h-3.5" /> Pendente de preenchimento
               </strong>
-              <ul className="list-disc list-inside text-[11px] text-amber-800 space-y-0.5">
+              <ul className="list-disc list-inside text-xs text-amber-800 space-y-0.5">
                 {resultado.erros.map((e) => (
                   <li key={e}>{e}</li>
                 ))}
@@ -481,7 +483,7 @@ export function PropostaPremissas({
               <strong className="flex items-center gap-1 text-sky-800">
                 <Info className="w-3.5 h-3.5" /> Confira o projeto
               </strong>
-              <ul className="list-disc list-inside text-[11px] text-sky-800 space-y-0.5">
+              <ul className="list-disc list-inside text-xs text-sky-800 space-y-0.5">
                 {(resultado.avisos ?? []).map((a) => (
                   <li key={a}>{a}</li>
                 ))}
@@ -490,29 +492,29 @@ export function PropostaPremissas({
           )}
 
           {resultado.completo && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 grid grid-cols-1 @min-[24rem]:grid-cols-2 @min-[42rem]:grid-cols-3 gap-3 text-xs">
               <div>
-                <span className="text-slate-400 block uppercase text-[9px] font-bold">Sem solar</span>
+                <span className="text-slate-600 block uppercase text-xs font-bold">Sem solar</span>
                 <span className="font-bold text-slate-800">R$ {resultado.contaSemSolar.toFixed(2)}/mês</span>
               </div>
               <div>
-                <span className="text-slate-400 block uppercase text-[9px] font-bold">Com solar (sem parcelas)</span>
+                <span className="text-slate-600 block uppercase text-xs font-bold">Com solar (sem parcelas)</span>
                 <span className="font-bold text-slate-800">R$ {resultado.contaComSolar.toFixed(2)}/mês</span>
               </div>
               <div>
-                <span className="text-slate-400 block uppercase text-[9px] font-bold">Economia operacional</span>
+                <span className="text-slate-600 block uppercase text-xs font-bold">Economia operacional</span>
                 <span className="font-bold text-emerald-700">R$ {resultado.economiaOperacional.toFixed(2)}/mês</span>
               </div>
               <div>
-                <span className="text-slate-400 block uppercase text-[9px] font-bold">Economia após parcelas</span>
+                <span className="text-slate-600 block uppercase text-xs font-bold">Economia após parcelas</span>
                 <span className="font-bold text-emerald-700">R$ {resultado.economiaMensal.toFixed(2)}/mês</span>
               </div>
               <div>
-                <span className="text-slate-400 block uppercase text-[9px] font-bold">Valor da geração</span>
+                <span className="text-slate-600 block uppercase text-xs font-bold">Valor da geração</span>
                 <span className="font-bold text-slate-800">R$ {resultado.valorGeracaoMensal.toFixed(2)}/mês</span>
               </div>
               <div>
-                <span className="text-slate-400 block uppercase text-[9px] font-bold">Módulos exatos calc.</span>
+                <span className="text-slate-600 block uppercase text-xs font-bold">Módulos exatos calc.</span>
                 <span className="font-bold text-slate-800">{resultado.quantidadeCalculada.toFixed(3)} un</span>
               </div>
             </div>
