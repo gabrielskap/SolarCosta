@@ -18,6 +18,9 @@ import { ContratoLegado, usaLayoutLegado } from './contrato/ContratoLegado';
 import { DocumentoProcuracao } from './procuracao/DocumentoProcuracao';
 import { FiguraLevantamento } from './mapa/LevantamentoManual';
 import { areaSuperficie } from '../utils/levantamentoTelhado';
+import { dataPropostaPorExtenso } from '../utils/dataProposta';
+import { EXCLUSOES_ESCOPO_PADRAO } from '../utils/escopoProposta';
+import { dividirPagamentoAvista } from '../utils/pagamentoAvista';
 import { imagemTelhado } from '../services/solar';
 import { enquadrar, rosaDosVentos } from '../utils/layoutModulos';
 import { formatarLinhaDigitavel, formatCurrencyBRL } from '../utils/format';
@@ -168,11 +171,12 @@ export const PDFModal: React.FC<PDFModalProps> = ({
    * posterior do cadastro da empresa — o PDF é remontado a cada impressão, de
    * modo que o documento já enviado ao cliente mudaria junto.
    *
-   * Cada metade cai de volta na empresa por conta própria: proposta anterior à
-   * V017 não tem nenhuma das duas e imprime o par do cadastro, como sempre.
+   * Nome informado sem registro não herda o registro de outro técnico da empresa.
+   * Propostas sem nome próprio continuam usando os dados do cadastro da empresa.
    */
+  const registroResponsavel = prop?.responsavelTecnico?.trim() ? prop?.crea : prop?.crea ?? empresa?.crea;
   const creaResponsavel = [
-    prop?.crea ?? empresa?.crea,
+    registroResponsavel,
     prop?.responsavelTecnico ?? empresa?.responsavel_tecnico,
   ]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
@@ -560,6 +564,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
               const descontoAvistaPct = prop?.descontoAvistaPct ?? 7;
               const valorAvistaComDesconto = Number((valorInvestimento * (1 - descontoAvistaPct / 100)).toFixed(2));
               const economiaAvista = Number((valorInvestimento * (descontoAvistaPct / 100)).toFixed(2));
+              const etapasAvista = dividirPagamentoAvista(valorAvistaComDesconto, prop.entradaAvistaPct ?? 50);
 
               // 2. Cartão de Crédito
               const parcelasCartaoQtd = prop?.parcelasCartao ?? 12;
@@ -674,7 +679,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                           Proposta Técnica e Comercial para Fornecimento de Sistema Solar Fotovoltaico Conectado à Rede Elétrica
                         </h2>
                         <div className="text-xs font-bold text-slate-600 space-y-0.5 pt-1">
-                          <p>Belo Horizonte, 30 de Julho de 2026</p>
+                          <p>Belo Horizonte, {dataPropostaPorExtenso(prop)}</p>
                           <p className="text-[#004276]">Att: {prop?.clienteNome || 'Cristiano'} — {prop?.cidade || 'Belo Horizonte / BH'}</p>
                         </div>
                       </div>
@@ -745,48 +750,34 @@ export const PDFModal: React.FC<PDFModalProps> = ({
 
                         <div className="grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-3">
                           {/* 1. À VISTA */}
-                          <div className={`p-3.5 rounded-xl border-2 flex flex-col justify-between relative ${
-                            formaPagamentoSelecionada === 'avista'
-                              ? 'bg-blue-50/70 border-[#004276] shadow-sm'
-                              : 'bg-slate-50 border-slate-200'
-                          }`}>
-                            {formaPagamentoSelecionada === 'avista' && (
-                              <span className="absolute -top-2.5 right-3 bg-[#004276] text-[#FFD100] text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
-                                ★ Selecionada
-                              </span>
-                            )}
+                          <div className="p-3.5 rounded-xl border-2 flex flex-col justify-between bg-slate-50 border-slate-200 text-slate-900">
                             <div>
                               <div className="flex items-center gap-1.5 mb-1">
-                                <DollarSign className="w-4 h-4 text-emerald-600" />
+                                <DollarSign className="w-4 h-4 text-[#004276]" />
                                 <h5 className="text-xs font-black uppercase text-slate-900">À Vista</h5>
                               </div>
-                              <p className="text-[10px] font-bold text-slate-500">
+                              {prop.exibirDescontoProposta !== false && <p className="text-[10px] font-bold text-slate-500">
                                 {descontoAvistaPct > 0 ? `${descontoAvistaPct}% de desconto especial` : 'Sem desconto'}
-                              </p>
+                              </p>}
                               <div className="my-1.5">
-                                <span className="text-lg font-black text-emerald-700 block">
+                                <span className="text-lg font-black text-[#004276] block">
                                   R$ {valorAvistaComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                               </div>
+                              {prop.pagamentoAvistaEtapas && <div className="text-[10px] space-y-1 mt-2">
+                                <p><strong>Entrada à vista ({prop.entradaAvistaPct ?? 50}%):</strong> {formatCurrencyBRL(etapasAvista.entrada)}</p>
+                                <p><strong>Na entrega da usina instalada ({etapasAvista.entregaPct}%):</strong> {formatCurrencyBRL(etapasAvista.entrega)}</p>
+                              </div>}
                             </div>
                             <p className="text-[10px] text-slate-500 font-medium border-t border-slate-200 pt-1.5 mt-1">
-                              {descontoAvistaPct > 0
+                              {prop.exibirDescontoProposta !== false && descontoAvistaPct > 0
                                 ? `Economia de R$ ${economiaAvista.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                : 'Pagamento integral'}
+                                : prop.pagamentoAvistaEtapas ? 'Entrada + saldo na entrega da usina instalada' : 'Pagamento integral'}
                             </p>
                           </div>
 
                           {/* 2. CARTÃO DE CRÉDITO */}
-                          <div className={`p-3.5 rounded-xl border-2 flex flex-col justify-between relative ${
-                            formaPagamentoSelecionada === 'cartao'
-                              ? 'bg-blue-50/70 border-[#004276] shadow-sm'
-                              : 'bg-slate-50 border-slate-200'
-                          }`}>
-                            {formaPagamentoSelecionada === 'cartao' && (
-                              <span className="absolute -top-2.5 right-3 bg-[#004276] text-[#FFD100] text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
-                                ★ Selecionada
-                              </span>
-                            )}
+                          <div className="p-3.5 rounded-xl border-2 flex flex-col justify-between bg-slate-50 border-slate-200 text-slate-900">
                             <div>
                               <div className="flex items-center gap-1.5 mb-1">
                                 <CreditCard className="w-4 h-4 text-[#004276]" />
@@ -807,28 +798,19 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                           </div>
 
                           {/* 3. FINANCIAMENTO BANCÁRIO */}
-                          <div className={`p-3.5 rounded-xl border-2 flex flex-col justify-between relative ${
-                            formaPagamentoSelecionada === 'financiamento'
-                              ? 'bg-[#004276] text-white border-blue-900 shadow-md'
-                              : 'bg-slate-50 border-slate-200'
-                          }`}>
-                            {formaPagamentoSelecionada === 'financiamento' && (
-                              <span className="absolute -top-2.5 right-3 bg-[#FFD100] text-[#004276] text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
-                                ★ Selecionada
-                              </span>
-                            )}
+                          <div className="p-3.5 rounded-xl border-2 flex flex-col justify-between bg-slate-50 border-slate-200 text-slate-900">
                             <div>
                               <div className="flex items-center gap-1.5 mb-1">
-                                <Landmark className={`w-4 h-4 ${formaPagamentoSelecionada === 'financiamento' ? 'text-[#FFD100]' : 'text-[#004276]'}`} />
-                                <h5 className={`text-xs font-black uppercase ${formaPagamentoSelecionada === 'financiamento' ? 'text-white' : 'text-slate-900'}`}>
+                                <Landmark className="w-4 h-4 text-[#004276]" />
+                                <h5 className="text-xs font-black uppercase text-slate-900">
                                   Financiamento
                                 </h5>
                               </div>
-                              <p className={`text-[10px] font-bold ${formaPagamentoSelecionada === 'financiamento' ? 'text-blue-100' : 'text-slate-500'}`}>
+                              <p className="text-[10px] font-bold text-slate-500">
                                 {financiamento.completo ? `Plano em ${parcelasFinancQtd} meses` : 'Financiamento não simulado'}
                               </p>
                               {financiamento.completo && <div className="my-1.5">
-                                <span className={`text-lg font-black block ${formaPagamentoSelecionada === 'financiamento' ? 'text-[#FFD100]' : 'text-[#004276]'}`}>
+                                <span className="text-lg font-black block text-[#004276]">
                                   {parcelasFinancQtd}x {formatCurrencyBRL(financiamento.parcela)}
                                 </span>
                                 <dl className="text-[10px] space-y-0.5 mt-1">
@@ -845,14 +827,10 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                               </div>}
                             </div>
                             {financiamento.completo && <>
-                            <p className={`text-[10px] font-medium border-t pt-1.5 mt-1 ${
-                              formaPagamentoSelecionada === 'financiamento'
-                                ? 'text-blue-200 border-blue-800'
-                                : 'text-slate-500 border-slate-200'
-                            }`}>
+                            <p className="text-[10px] font-medium border-t pt-1.5 mt-1 text-slate-500 border-slate-200">
                               {jurosFinancMesPct?.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}% a.m.{bancoFinancNome ? ` (${bancoFinancNome})` : ''}
                             </p>
-                            <p className="text-[9px] mt-1">{financiamento.ajusteManual ? 'Valores ajustados manualmente. Referência inicial: BCB.' : 'Prestações fixas (BCB), primeira parcela em um mês.'} Sem IOF, seguros ou tarifas adicionais.</p>
+                            <p className="text-[9px] mt-1">{financiamento.ajusteManual ? 'Valores ajustados manualmente. Referência inicial: BCB.' : 'Prestações fixas (BCB), primeira parcela em um mês.'}</p>
                             </>}
                           </div>
                         </div>
@@ -1082,22 +1060,16 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                       </div>
 
                       {/* EXCLUSÕES DE ESCOPO */}
-                      <div className="space-y-2 pt-1">
-                        <p className="text-sm font-bold text-[#ED7D31] leading-snug">
-                          Os custos de aquisição e execução dos seguintes itens não fazem parte
-                          do escopo de fornecimento, podendo ser cotados à parte, se necessário:
-                        </p>
-                        <ul className="text-[11px] text-slate-700 leading-relaxed space-y-0.5">
-                          <li>• Adequação das estruturas civis ao peso dos equipamentos;</li>
-                          <li>• Adequação das instalações existentes para os requisitos da concessionária;</li>
-                          <li>• Sistemas de para-raios e aterramento, mesmo que adequação de sistemas existentes.</li>
-                          <li>• Medidor (es) bidirecional (is) de energia no padrão da concessionária;</li>
-                          <li>• Licenças ambientais, se necessárias;</li>
-                          <li>• Quaisquer taxas e emolumentos devidos a autarquias ou órgãos das administrações municipais, estaduais e federais;</li>
-                          <li>• Obras civis de qualquer natureza, tais como, abrigos para equipamentos elétricos, passagem de eletrodutos, reforço em estruturas, bases para equipamentos, etc.;</li>
-                          <li>• Quaisquer outros itens não mencionados claramente nesta proposta.</li>
-                        </ul>
-                      </div>
+                      {(prop.exclusoesEscopo ?? EXCLUSOES_ESCOPO_PADRAO).trim() && (
+                        <div className="space-y-2 pt-1 break-words">
+                          <p className="text-sm font-bold text-[#ED7D31] leading-snug">
+                            {(prop.exclusoesEscopo ?? EXCLUSOES_ESCOPO_PADRAO).trim().split('\n')[0]}
+                          </p>
+                          <p className="text-[11px] text-slate-700 leading-relaxed whitespace-pre-line">
+                            {(prop.exclusoesEscopo ?? EXCLUSOES_ESCOPO_PADRAO).trim().split('\n').slice(1).join('\n')}
+                          </p>
+                        </div>
+                      )}
 
                     </div>
                   </PageWrapper>
@@ -1178,7 +1150,7 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                       {creaResponsavel && (
                         <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-rose-700 flex items-center gap-2">
                           <ShieldCheck className="w-4 h-4 shrink-0" />
-                          <span>{prop?.conselhoProfissional ?? 'CREA'} RESPONSÁVEL: {creaResponsavel}</span>
+                          <span>{registroResponsavel?.trim() ? `${prop?.conselhoProfissional ?? 'CREA'} RESPONSÁVEL` : 'RESPONSÁVEL TÉCNICO'}: {creaResponsavel}</span>
                         </div>
                       )}
                     </div>

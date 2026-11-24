@@ -3,6 +3,7 @@ import { calcularProposta, type EntradaSolar } from '../domain/propostaSolar.js'
 const n=z.number().finite().nonnegative();
 const pct=n.max(100);
 export const entradaSolarSchema=z.object({
+  considerarParcelasPayback:z.boolean().optional(),entradaFinanciamento:n.optional(),
   modo:z.enum(['tecnico','excel']),anoInicial:z.number().int().min(1900).max(2200),
   ucs:z.array(z.object({nome:z.string().max(120),meses:z.array(n).length(12),adicionalKwh:n,disponibilidadeKwh:n})).min(1).max(100),
   hspMensal:z.array(n.max(24)).length(12),moduloWp:n.int(),perdasPct:n.lt(100),larguraM:n,alturaM:n,areaManualM2:n.optional(),

@@ -462,6 +462,9 @@ export function paraProposta(linha: any): Proposta {
     paybackAnos: linha.payback_anos == null ? null : num(linha.payback_anos),
     formaPagamento: linha.forma_pagamento,
     descontoAvistaPct: linha.desconto_avista_pct ?? undefined,
+    exibirDescontoProposta: linha.exibir_desconto_proposta ?? true,
+    pagamentoAvistaEtapas: linha.pagamento_avista_etapas ?? false,
+    entradaAvistaPct: linha.entrada_avista_pct == null ? 50 : num(linha.entrada_avista_pct),
     parcelasCartao: linha.parcelas_cartao ?? undefined,
     taxaCartaoPct: linha.taxa_cartao_pct ?? undefined,
     entradaFinanciamentoValor: linha.entrada_financiamento_valor ?? undefined,
@@ -470,11 +473,13 @@ export function paraProposta(linha: any): Proposta {
     jurosFinanciamentoMesPct: linha.juros_financiamento_mes_pct ?? undefined,
     financiamentoAjustes: linha.financiamento_ajustes ?? undefined,
     bancoFinanciamento: linha.banco_financiamento ?? undefined,
+    dataProposta: paraDataISO(linha.data_proposta) ?? paraDataISO(linha.criado_em) ?? undefined,
     dataCriacao: paraDataBR(linha.criado_em),
     status: linha.status === 'recusada' || linha.status === 'expirada' ? 'enviada' : linha.status,
     observacoes: linha.observacoes ?? undefined,
     customLogoUrl: linha.logo_customizada_url ?? undefined,
     garantiasEquipamentos: linha.garantias_equipamentos ?? undefined,
+    exclusoesEscopo: linha.exclusoes_escopo ?? undefined,
     // Responsável técnico da proposta (V017). Ausente continua ausente — é
     // esse undefined que faz o PDF cair no cadastro da empresa.
     responsavelTecnico: linha.responsavel_tecnico ?? undefined,
@@ -508,6 +513,7 @@ export function paraProposta(linha: any): Proposta {
 
 export function deProposta(p: Proposta): Record<string, unknown> {
   return {
+    data_proposta: p.dataProposta ?? undefined,
     lead_id: p.leadId || null,
     cliente_nome: p.clienteNome,
     cpf_cnpj: p.cpfCnpj || null,
@@ -537,6 +543,9 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     payback_anos: p.paybackAnos,
     forma_pagamento: p.formaPagamento,
     desconto_avista_pct: p.descontoAvistaPct ?? null,
+    exibir_desconto_proposta: p.exibirDescontoProposta ?? true,
+    pagamento_avista_etapas: p.pagamentoAvistaEtapas ?? false,
+    entrada_avista_pct: p.entradaAvistaPct ?? 50,
     parcelas_cartao: p.parcelasCartao ?? null,
     taxa_cartao_pct: p.taxaCartaoPct ?? null,
     entrada_financiamento_valor: p.entradaFinanciamentoValor ?? null,
@@ -547,6 +556,7 @@ export function deProposta(p: Proposta): Record<string, unknown> {
     observacoes: p.observacoes ?? null,
     logo_customizada_url: p.customLogoUrl ?? null,
     garantias_equipamentos: p.garantiasEquipamentos ?? null,
+    exclusoes_escopo: p.exclusoesEscopo ?? undefined,
     responsavel_tecnico: p.responsavelTecnico ?? null,
     responsavel_tecnico_id: p.responsavelTecnicoId ?? null,
     conselho_profissional: p.conselhoProfissional ?? null,

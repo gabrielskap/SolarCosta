@@ -5,6 +5,9 @@ import {
   Save, ShieldCheck, Info, CheckCircle2, Sliders, MapPin, X
 } from 'lucide-react';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
+import { dataDaProposta } from '../utils/dataProposta';
+import { EXCLUSOES_ESCOPO_PADRAO } from '../utils/escopoProposta';
+import { dividirPagamentoAvista } from '../utils/pagamentoAvista';
 import { Proposta, PropostaItem, Produto, Kit, Lead, User } from '../types';
 import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ, formatarEnderecoComNumero } from '../utils/format';
 import {
@@ -14,7 +17,7 @@ import {
   buildCidadeUf,
   type EnderecoViaCEP,
 } from '../services/cep';
-import { Api, paramNum, type ConfigApp } from '../services/api';
+import { paramNum, type ConfigApp } from '../services/api';
 import { slugDoTipoProduto } from '../services/mappers';
 import { listarPlacas, type PlacaSolar } from '../services/placas';
 import { calcularFinanciamento, moeda, type AjustesFinanciamento, type CampoFinanciamento } from '../../server/src/domain/financiamento';
@@ -122,6 +125,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [ultimaVersaoSalva, setUltimaVersaoSalva] = useState<Date | null>(null);
   const [salvamentoEmCurso, setSalvamentoEmCurso] = useState(false);
   const editando = !!propostaExistente;
+  const [dataProposta, setDataProposta] = useState(() => dataDaProposta(propostaExistente));
   const [levantamentoTelhado, setLevantamentoTelhado] = useState<LevantamentoTelhado | undefined>(propostaExistente?.levantamentoTelhado);
   const [editorManualAberto, setEditorManualAberto] = useState(false);
   const manterEditorCaptura = useRef(false);
@@ -285,6 +289,13 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
 
   // Payment Options
   const [formaPagamento, setFormaPagamento] = useState<'avista' | 'cartao' | 'financiamento'>(propostaExistente?.formaPagamento ?? 'avista');
+  const [exibirDescontoProposta, setExibirDescontoProposta] = useState(propostaExistente?.exibirDescontoProposta ?? true);
+  const [pagamentoAvistaEtapas, setPagamentoAvistaEtapas] = useState(propostaExistente?.pagamentoAvistaEtapas ?? false);
+  const [entradaAvistaPct, setEntradaAvistaPct] = useState(propostaExistente?.entradaAvistaPct ?? 50);
+  const alterarPercentualAvista = (valor: string, entrega = false) => {
+    const percentual = Math.round(Math.min(100, Math.max(0, Number(valor) || 0)) * 100) / 100;
+    setEntradaAvistaPct(entrega ? Number((100 - percentual).toFixed(2)) : percentual);
+  };
   const [descontoAvistaPct, setDescontoAvistaPct] = useState(() => propostaExistente?.descontoAvistaPct ?? 0);
   const [parcelasCartao, setParcelasCartao] = useState(() => propostaExistente?.parcelasCartao ?? 0);
   const [taxaCartaoPct, setTaxaCartaoPct] = useState(() => propostaExistente?.taxaCartaoPct ?? 0);
@@ -306,6 +317,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // Observações da proposta: em branco. Os textos prontos ficam em
   // SolarCosta_ObservacaoPresets e são inseridos com um clique.
   const [observacoes, setObservacoes] = useState<string>(propostaExistente?.observacoes ?? '');
+  const [exclusoesEscopo, setExclusoesEscopo] = useState(propostaExistente?.exclusoesEscopo ?? EXCLUSOES_ESCOPO_PADRAO);
   const [garantiasEquipamentos, setGarantiasEquipamentos] = useState(
     () => ({ ...GARANTIAS_PROPOSTA_PADRAO, ...propostaExistente?.garantiasEquipamentos }),
   );
@@ -316,24 +328,9 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     setGarantiasEquipamentos(salvas);
   }, [propostaExistente?.garantiasEquipamentos]);
 
-  const [usuariosTecnicos, setUsuariosTecnicos] = useState<User[]>([]);
-  const [erroUsuarios, setErroUsuarios] = useState(false);
-  const [responsavelTecnicoId, setResponsavelTecnicoId] = useState(propostaExistente?.responsavelTecnicoId ?? '');
   const [responsavelTecnico, setResponsavelTecnico] = useState(propostaExistente?.responsavelTecnico ?? '');
   const [crea, setCrea] = useState(propostaExistente?.crea ?? '');
   const [conselhoProfissional, setConselhoProfissional] = useState<'CREA' | 'CRT'>(propostaExistente?.conselhoProfissional ?? 'CREA');
-  useEffect(() => {
-    let ativo = true;
-    Api.getUsuarios().then(usuarios => { if (ativo) setUsuariosTecnicos(usuarios); }).catch(() => { if (ativo) setErroUsuarios(true); });
-    return () => { ativo = false; };
-  }, []);
-  const selecionarResponsavel = (id: string) => {
-    const usuario = usuariosTecnicos.find(u => u.id === id);
-    setResponsavelTecnicoId(id);
-    setResponsavelTecnico(usuario?.nome ?? '');
-    setCrea((usuario?.tipoProfissional === 'tecnico' ? usuario.crt : usuario?.crea) ?? '');
-    setConselhoProfissional(usuario?.tipoProfissional === 'tecnico' ? 'CRT' : 'CREA');
-  };
 
   /**
    * Só reaplica quando o LEAD muda de fato.
@@ -506,6 +503,8 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     taxaSem: iluminacaoPublicaSemSfcr, disponibilidadeReais: custoDisponibilidade, taxaCom: iluminacaoPublicaComSfcr,
     investimento: valorTotalInvestimento, parcela: formaPagamento === 'financiamento' ? pmtParcelaFinanciamento : 0,
     parcelas: formaPagamento === 'financiamento' && financiamento.completo ? Number(parcelasFinanciamento) : 0,
+    considerarParcelasPayback: formaPagamento === 'financiamento' && entradaSolar.considerarParcelasPayback === true,
+    entradaFinanciamento: entradaValor,
     quantidadeInstalada: levantamentoTelhado ? levantamentoTelhado.placas.length : null
   });
   if (financiamentoPendente) {
@@ -671,6 +670,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // Espelha os requisitos mínimos do backend (propostaSchema): sem isso, o
   // POST falha depois que o PDF já foi aberto/impresso com dados fictícios.
   const validarProposta = (rascunho = false, silencioso = false): boolean => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataProposta) || !Number.isFinite(Date.parse(dataProposta))) {
+      if (!silencioso) showToast('Data inválida', 'error', 'Informe a data da proposta.');
+      return false;
+    }
     if (silencioso && (!clienteNome.trim() || cpfInvalido)) return false;
     if (!clienteNome.trim()) {
       showToast('Campos incompletos', 'error', 'Informe o nome do cliente.');
@@ -762,6 +765,9 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     paybackAnos,
     formaPagamento,
     descontoAvistaPct,
+    exibirDescontoProposta,
+    pagamentoAvistaEtapas,
+    entradaAvistaPct,
     parcelasCartao,
     taxaCartaoPct,
     entradaFinanciamentoValor: entradaValor,
@@ -770,6 +776,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     jurosFinanciamentoMesPct: jurosFinanciamentoMesPct === '' ? undefined : jurosFinanciamentoMesPct,
     financiamentoAjustes: Object.keys(financiamentoAjustes).length ? financiamentoAjustes : undefined,
     bancoFinanciamento,
+    dataProposta,
     // A data de criação é do banco; aqui ela só não pode ser reinventada a
     // cada edição do rascunho.
     dataCriacao: propostaSalva.current?.dataCriacao ?? new Date().toLocaleDateString('pt-BR'),
@@ -777,9 +784,10 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
     observacoes,
     customLogoUrl,
     garantiasEquipamentos,
+    exclusoesEscopo,
     // Vazio vira undefined de propósito: é o que diz ao PDF para usar o
     // responsável técnico do cadastro da empresa em vez de imprimir em branco.
-    responsavelTecnicoId: responsavelTecnicoId || undefined,
+    responsavelTecnicoId: undefined,
     conselhoProfissional,
     responsavelTecnico: responsavelTecnico.trim() || undefined,
     crea: crea.trim() || undefined,
@@ -863,6 +871,16 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                   · válida por {paramNum(config, 'proposta.validade_dias', 10)} dias
                 </span>
               </div>
+              <label className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+                Data da proposta
+                <input
+                  type="date"
+                  value={dataProposta}
+                  onChange={e => setDataProposta(e.target.value)}
+                  required
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-[#004276]"
+                />
+              </label>
               {ultimaVersaoSalva && (
                 <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5" role="status">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
@@ -1679,6 +1697,20 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             {/* Modo Financiamento */}
             {formaPagamento === 'financiamento' && (
               <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 space-y-3 text-xs">
+                <fieldset className="space-y-2">
+                  <legend className="font-bold text-slate-700">Considerar parcelas no payback?</legend>
+                  <div className="flex gap-2">
+                    {[false, true].map(valor => (
+                      <button key={String(valor)} type="button"
+                        aria-pressed={(entradaSolar.considerarParcelasPayback === true) === valor}
+                        onClick={() => setEntradaSolar(prev => ({ ...prev, considerarParcelasPayback: valor }))}
+                        className={`px-4 py-2 rounded-lg border font-bold ${(entradaSolar.considerarParcelasPayback === true) === valor ? 'bg-[#004276] border-[#004276] text-white' : 'bg-white border-slate-300 text-slate-600'}`}>
+                        {valor ? 'Sim' : 'Não'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-slate-500">Sim: considera a entrada e desconta as parcelas no saldo e no retorno. Não: calcula o retorno pelo valor do sistema, sem descontar parcelas.</p>
+                </fieldset>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">ENTRADA (%)</label>
@@ -1769,6 +1801,52 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
             {/* Modo À Vista */}
             {formaPagamento === 'avista' && (
               <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 text-xs">
+                <fieldset className="mb-4 space-y-2">
+                  <legend className="font-bold text-slate-700">Habilitar pagamento com entrada e saldo na entrega?</legend>
+                  <div className="flex gap-2">
+                    {[true, false].map(valor => (
+                      <button key={String(valor)} type="button" aria-pressed={pagamentoAvistaEtapas === valor}
+                        onClick={() => setPagamentoAvistaEtapas(valor)}
+                        className={`px-4 py-2 rounded-lg border font-bold ${pagamentoAvistaEtapas === valor ? 'bg-[#004276] border-[#004276] text-white' : 'bg-white border-slate-300 text-slate-600'}`}>
+                        {valor ? 'Sim' : 'Não'}
+                      </button>
+                    ))}
+                  </div>
+                  {pagamentoAvistaEtapas && <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="space-y-1 font-bold text-slate-600">
+                        <span className="block">Entrada à vista (%)</span>
+                        <input type="number" min="0" max="100" step="0.01" value={entradaAvistaPct}
+                          onChange={e => alterarPercentualAvista(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900" />
+                      </label>
+                      <label className="space-y-1 font-bold text-slate-600">
+                        <span className="block">Na entrega da usina instalada (%)</span>
+                        <input type="number" min="0" max="100" step="0.01" value={Number((100 - entradaAvistaPct).toFixed(2))}
+                          onChange={e => alterarPercentualAvista(e.target.value, true)}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900" />
+                      </label>
+                    </div>
+                    <p className="text-slate-500">Os percentuais se ajustam para somar 100% do valor final à vista.</p>
+                    <p className="font-semibold text-[#004276]">
+                      Entrada: {moeda(dividirPagamentoAvista(valorTotalInvestimento * (1 - descontoAvistaPct / 100), entradaAvistaPct).entrada)}
+                      {' · '}Na entrega: {moeda(dividirPagamentoAvista(valorTotalInvestimento * (1 - descontoAvistaPct / 100), entradaAvistaPct).entrega)}
+                    </p>
+                  </>}
+                </fieldset>
+                <fieldset className="mb-3 space-y-2">
+                  <legend className="font-bold text-slate-700">Adicionar dados de desconto na proposta?</legend>
+                  <div className="flex gap-2">
+                    {[true, false].map(valor => (
+                      <button key={String(valor)} type="button" aria-pressed={exibirDescontoProposta === valor}
+                        onClick={() => setExibirDescontoProposta(valor)}
+                        className={`px-4 py-2 rounded-lg border font-bold ${exibirDescontoProposta === valor ? 'bg-[#004276] border-[#004276] text-white' : 'bg-white border-slate-300 text-slate-600'}`}>
+                        {valor ? 'Sim' : 'Não'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-slate-500">Ao selecionar Não, o PDF mostra somente o valor final à vista, sem mencionar desconto ou economia do desconto.</p>
+                </fieldset>
                 <div className="flex flex-wrap items-center gap-4">
                   <div>
                     <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">DESCONTO (%)</label>
@@ -1856,42 +1934,54 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 />
               </div>
 
+              <div>
+                <label htmlFor="exclusoes-escopo" className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  ITENS FORA DO ESCOPO DE FORNECIMENTO
+                </label>
+                <p className="text-xs text-slate-500 mb-2">Edite ou remova os itens que não deseja citar. A primeira linha é o título. Deixe vazio para ocultar toda a seção no PDF.</p>
+                <textarea id="exclusoes-escopo" rows={10} maxLength={10000} value={exclusoesEscopo}
+                  onChange={e => setExclusoesEscopo(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#004276] leading-relaxed font-medium" />
+                <button type="button" onClick={() => setExclusoesEscopo(EXCLUSOES_ESCOPO_PADRAO)}
+                  className="mt-1 text-xs text-[#004276] underline">Restaurar texto padrão</button>
+              </div>
+
               {/* Responsável Técnico & Logo */}
               <div className="space-y-2.5">
                 <div>
                   <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                     RESPONSÁVEL TÉCNICO
                   </label>
-                  <select
+                  <input
+                    type="text"
                     aria-label="Responsável técnico"
-                    value={responsavelTecnicoId}
-                    onChange={e => selecionarResponsavel(e.target.value)}
+                    value={responsavelTecnico}
+                    onChange={e => setResponsavelTecnico(e.target.value)}
+                    maxLength={200}
+                    placeholder="Digite o nome do técnico"
                     className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-[#004276]"
-                  >
-                    <option value="">{responsavelTecnico && !responsavelTecnicoId ? responsavelTecnico + ' (salvo na proposta)' : 'Selecione um usuário'}</option>
-                    {responsavelTecnicoId && !usuariosTecnicos.some(u => u.id === responsavelTecnicoId) && (
-                      <option value={responsavelTecnicoId}>{responsavelTecnico} (indisponível)</option>
-                    )}
-                    {usuariosTecnicos.filter(u => u.status === 'ativo' || u.id === responsavelTecnicoId).map(u => (
-                      <option key={u.id} value={u.id} disabled={u.status !== 'ativo' || !u.tipoProfissional || !(u.tipoProfissional === 'tecnico' ? u.crt : u.crea)?.trim()}>
-                        {u.nome}{u.tipoProfissional ? ' — ' + (u.tipoProfissional === 'tecnico' ? 'CRT ' + (u.crt || 'não informado') : 'CREA ' + (u.crea || 'não informado')) : ' — sem registro'}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Informe apenas o nome, se preferir. Não é necessário cadastrar um usuário.</p>
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                    {conselhoProfissional} (REGISTRO)
+                    REGISTRO PROFISSIONAL (OPCIONAL)
                   </label>
+                  <select aria-label="Conselho profissional" value={conselhoProfissional}
+                    onChange={e => setConselhoProfissional(e.target.value as 'CREA' | 'CRT')}
+                    className="mb-1 w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800">
+                    <option value="CREA">CREA</option>
+                    <option value="CRT">CRT</option>
+                  </select>
                   <input
                     aria-label="Registro do responsável técnico"
-                    readOnly
                     value={crea}
-                    placeholder="Preenchido pelo usuário selecionado"
-                    className="w-full px-2.5 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
+                    onChange={e => setCrea(e.target.value)}
+                    maxLength={60}
+                    placeholder="Número do registro (opcional)"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-[#004276]"
                   />
-                  {erroUsuarios && <p className="text-[10px] text-rose-600 mt-1">Não foi possível carregar os usuários.</p>}
                 </div>
 
                 <div>

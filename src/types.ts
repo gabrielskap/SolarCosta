@@ -314,6 +314,9 @@ export interface Proposta {
   paybackAnos: number | null;
   formaPagamento: FormaPagamentoType;
   descontoAvistaPct?: number;
+  exibirDescontoProposta?: boolean;
+  pagamentoAvistaEtapas?: boolean;
+  entradaAvistaPct?: number;
   parcelasCartao?: number;
   taxaCartaoPct?: number;
   entradaFinanciamentoValor?: number;
@@ -322,11 +325,15 @@ export interface Proposta {
   jurosFinanciamentoMesPct?: number;
   financiamentoAjustes?: import('../server/src/domain/financiamento').AjustesFinanciamento;
   bancoFinanciamento?: string;
+  /** Data de emissão editável em YYYY-MM-DD, independente da criação. */
+  dataProposta?: string;
   dataCriacao: string;
   status: 'rascunho' | 'enviada' | 'aceita';
   observacoes?: string;
   customLogoUrl?: string;
   garantiasEquipamentos?: GarantiasProposta;
+  /** undefined mantém o texto padrão; vazio oculta a seção no PDF. */
+  exclusoesEscopo?: string;
 
   /**
    * Responsável técnico impresso na folha de equipamentos (V017).

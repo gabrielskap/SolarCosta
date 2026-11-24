@@ -12,6 +12,8 @@ export interface EntradaSolar {
   inversorKw: number; oversizingPct: number; quantidadeInstalada: number | null;
   tarifa: number; taxaSem: number; disponibilidadeReais: number; taxaCom: number;
   investimento: number; parcela: number; parcelas: number;
+  considerarParcelasPayback?: boolean;
+  entradaFinanciamento?: number;
   reajustePct: number; degradacaoInicialPct: number; degradacaoAnualPct: number;
   manutencaoAnual: number; reajusteManutencaoPct: number; trocaInversorAno: number; trocaInversorValor: number;
   poupancaMesPct: number; geracaoAnualExcel: number;
@@ -92,7 +94,10 @@ export function calcularProposta(e: EntradaSolar) {
   const residual = e.modo==='excel'?0:media(consumoMensal.map((c,m)=>Math.max(0,c-(geracaoMensal[m]??0))));
   const contaComSolar = residual*e.tarifa+e.disponibilidadeReais+e.taxaCom;
   const economiaOperacional = contaSemSolar-contaComSolar;
-  let saldo=-e.investimento, saldoPoupanca=-e.investimento, acumuladoSem=0, paybackAnos:number|null=null;
+  const considerarParcelas = e.considerarParcelasPayback === true && e.parcelas > 0;
+  const investimentoInicial = considerarParcelas ? (e.entradaFinanciamento ?? 0) : e.investimento;
+  if (!Number.isFinite(investimentoInicial) || investimentoInicial < 0) erros.push('Entrada do financiamento inválida.');
+  let saldo=-investimentoInicial, saldoPoupanca=-investimentoInicial, acumuladoSem=0, paybackAnos:number|null=null;
   const projecao = [];
   let degradacao=1;
   for(let indice=0;indice<25;indice++) {
@@ -104,15 +109,16 @@ export function calcularProposta(e: EntradaSolar) {
     const receitaAnual=soma(geracoes)*tarifa;
     const beneficio=e.modo==='excel'?receitaAnual:soma(geracoes.map((g,m)=>Math.min(consumoMensal[m]??0,g)*tarifa))+12*(e.taxaSem-e.disponibilidadeReais-e.taxaCom);
     const resultadoAnual=beneficio-custos, anterior=saldo;
-    saldo+=resultadoAnual;
-    if(paybackAnos===null && e.investimento>0 && anterior<0 && saldo>=0 && resultadoAnual>0) paybackAnos=indice+(-anterior/resultadoAnual);
     let parcelasAno=0;
     for(let mes=0;mes<12;mes++) {
       const parcela=indice*12+mes<e.parcelas?e.parcela:0;
       parcelasAno+=parcela;
       const fluxo=e.modo==='excel'?resultadoAnual/12:Math.min(consumoMensal[mes]??0,geracoes[mes]??0)*tarifa+e.taxaSem-e.disponibilidadeReais-e.taxaCom-custos/12;
-      saldoPoupanca+=(saldoPoupanca>0?saldoPoupanca*e.poupancaMesPct/100:0)+fluxo;
+      saldoPoupanca+=(saldoPoupanca>0?saldoPoupanca*e.poupancaMesPct/100:0)+fluxo-(considerarParcelas?parcela:0);
     }
+    const resultadoRetorno = resultadoAnual - (considerarParcelas ? parcelasAno : 0);
+    saldo += resultadoRetorno;
+    if(paybackAnos===null && e.investimento>0 && anterior<=0 && saldo>=0 && resultadoRetorno>0) paybackAnos=indice+(-anterior/resultadoRetorno);
     acumuladoSem+=despesaAnual;
     projecao.push({ano,tarifa,despesaAnual,despesaAcumulada:acumuladoSem,geracaoAnual:soma(geracoes),receitaAnual,custos,resultadoAnual,parcelasAno,resultadoAposParcelas:resultadoAnual-parcelasAno,saldoAcumulado:saldo,saldoComPoupanca:e.modo==='excel'?saldo*(1+e.poupancaMesPct/100):saldoPoupanca});
   }

@@ -362,10 +362,10 @@ publicoRouter.get(
                 p.geracao_media_kwh, p.cobertura_pct,
                 p.economia_mensal, p.economia_anual, p.economia_25_anos, p.payback_anos, p.calculo_solar,
                 p.valor_total, p.forma_pagamento::text AS forma_pagamento,
-                p.desconto_avista_pct, p.parcelas_cartao, p.taxa_cartao_pct,
+                p.desconto_avista_pct, p.exibir_desconto_proposta, p.pagamento_avista_etapas, p.entrada_avista_pct, p.parcelas_cartao, p.taxa_cartao_pct,
                 p.entrada_financiamento_valor, p.entrada_financiamento_pct,
                 p.parcelas_financiamento, p.juros_financiamento_mes_pct, p.financiamento_ajustes,
-                p.observacoes, p.logo_customizada_url, p.garantias_equipamentos, p.validade_dias, p.criado_em,
+                p.observacoes, p.logo_customizada_url, p.garantias_equipamentos, p.validade_dias, p.criado_em, p.data_proposta, p.exclusoes_escopo,
                 -- V017: responsável técnico escolhido NA proposta. Sem ele
                 -- aqui, o link do cliente e o PDF do WhatsApp cairiam no
                 -- cadastro da empresa e imprimiriam outro engenheiro — o PDF

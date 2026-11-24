@@ -40,6 +40,12 @@ const itemSchema = z.object({
 const valorAjuste = z.number().finite().min(0).max(999999999999.99)
   .refine(v => temPrecisao(v, 2), 'O valor ajustado aceita até duas casas decimais.');
 const propostaSchema = z.object({
+  data_proposta: z.string().date('Data da proposta inválida.').optional(),
+  exclusoes_escopo: z.string().max(10000).optional(),
+  exibir_desconto_proposta: z.boolean().optional(),
+  pagamento_avista_etapas: z.boolean().optional(),
+  entrada_avista_pct: z.number().finite().min(0).max(100)
+    .refine(v => temPrecisao(v, 2), 'O percentual de entrada aceita até duas casas decimais.').optional(),
   calculo_solar: z.object({entradas:entradaSolarSchema}).nullish(),
   levantamento_telhado: levantamentoTelhadoSchema.nullish(),
   lead_id: z.string().uuid().nullish(),
@@ -200,6 +206,8 @@ function recalcular(d:DadosProposta): CalculoSolar | undefined {
     alturaM:d.levantamento_telhado?.modulo.alturaM ?? d.calculo_solar.entradas.alturaM,
     taxaSem:d.iluminacao_publica_sem_sfcr??0,disponibilidadeReais:d.custo_disponibilidade??0,taxaCom:d.iluminacao_publica_com_sfcr??0,
     investimento,parcelas,parcela:parcelas>0?f.parcela:0,
+    considerarParcelasPayback:d.forma_pagamento==='financiamento' && d.calculo_solar.entradas.considerarParcelasPayback===true,
+    entradaFinanciamento:f.entradaValor,
     quantidadeInstalada:d.levantamento_telhado?d.levantamento_telhado.placas.length:null};
   const {calculo,campos}=resultadosProposta(e);
   if (d.forma_pagamento === 'financiamento' && !f.completo) {
@@ -443,9 +451,11 @@ propostasRouter.post(
         ],
       );
       const novoId = rows[0]!.id as string;
-      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb, garantias_equipamentos = $3::jsonb WHERE id = $1`, [novoId, paraJsonb(d.levantamento_telhado), paraJsonb(d.garantias_equipamentos)]);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb, garantias_equipamentos = $3::jsonb, data_proposta = COALESCE($4::date, data_proposta), exclusoes_escopo = COALESCE($5::text, exclusoes_escopo) WHERE id = $1`, [novoId, paraJsonb(d.levantamento_telhado), paraJsonb(d.garantias_equipamentos), d.data_proposta ?? null, d.exclusoes_escopo ?? null]);
 
       await inserirItens(cliente, novoId, d.itens);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET pagamento_avista_etapas = COALESCE($2::boolean, pagamento_avista_etapas), entrada_avista_pct = COALESCE($3::numeric, entrada_avista_pct) WHERE id = $1`, [novoId, d.pagamento_avista_etapas ?? null, d.entrada_avista_pct ?? null]);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET exibir_desconto_proposta = COALESCE($2::boolean, exibir_desconto_proposta) WHERE id = $1`, [novoId, d.exibir_desconto_proposta ?? null]);
       await cliente.query(`UPDATE "SolarCosta_Propostas" SET responsavel_tecnico_id = $2, conselho_profissional = $3, financiamento_ajustes = $4::jsonb WHERE id = $1`, [novoId, d.responsavel_tecnico_id ?? null, d.conselho_profissional ?? null, paraJsonb(d.financiamento_ajustes)]);
       await guardarCalculo(cliente, novoId, calculo);
       await propagarCoordenadaAoLead(cliente, d.lead_id, d);
@@ -570,9 +580,11 @@ propostasRouter.put(
       );
 
       // Itens são substituídos por inteiro; o trigger recalcula valor_total.
-      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb, garantias_equipamentos = $3::jsonb WHERE id = $1`, [id, paraJsonb(d.levantamento_telhado), paraJsonb(d.garantias_equipamentos)]);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET levantamento_telhado = $2::jsonb, garantias_equipamentos = $3::jsonb, data_proposta = COALESCE($4::date, data_proposta), exclusoes_escopo = COALESCE($5::text, exclusoes_escopo) WHERE id = $1`, [id, paraJsonb(d.levantamento_telhado), paraJsonb(d.garantias_equipamentos), d.data_proposta ?? null, d.exclusoes_escopo ?? null]);
       await cliente.query(`DELETE FROM "SolarCosta_PropostaItens" WHERE proposta_id = $1`, [id]);
       await inserirItens(cliente, id, d.itens);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET pagamento_avista_etapas = COALESCE($2::boolean, pagamento_avista_etapas), entrada_avista_pct = COALESCE($3::numeric, entrada_avista_pct) WHERE id = $1`, [id, d.pagamento_avista_etapas ?? null, d.entrada_avista_pct ?? null]);
+      await cliente.query(`UPDATE "SolarCosta_Propostas" SET exibir_desconto_proposta = COALESCE($2::boolean, exibir_desconto_proposta) WHERE id = $1`, [id, d.exibir_desconto_proposta ?? null]);
       await cliente.query(`UPDATE "SolarCosta_Propostas" SET responsavel_tecnico_id = $2, conselho_profissional = $3, financiamento_ajustes = $4::jsonb WHERE id = $1`, [id, d.responsavel_tecnico_id ?? null, d.conselho_profissional ?? null, paraJsonb(d.financiamento_ajustes)]);
       await guardarCalculo(cliente, id, calculo);
       await propagarCoordenadaAoLead(cliente, d.lead_id, d);
