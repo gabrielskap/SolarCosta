@@ -1,3 +1,5 @@
+export const CHAVE_ESCOPO_PADRAO = 'proposta.exclusoes_escopo_padrao';
+
 export const EXCLUSOES_ESCOPO_PADRAO = `Os custos de aquisição e execução dos seguintes itens não fazem parte do escopo de fornecimento, podendo ser cotados à parte, se necessário:
 • Adequação das estruturas civis ao peso dos equipamentos;
 • Adequação das instalações existentes para os requisitos da concessionária;

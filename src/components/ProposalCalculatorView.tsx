@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { ModalCabecalho } from './comuns/ModalCabecalho';
 import { dataDaProposta } from '../utils/dataProposta';
-import { EXCLUSOES_ESCOPO_PADRAO } from '../utils/escopoProposta';
+import { CHAVE_ESCOPO_PADRAO, EXCLUSOES_ESCOPO_PADRAO } from '../utils/escopoProposta';
 import { dividirPagamentoAvista } from '../utils/pagamentoAvista';
 import { Proposta, PropostaItem, Produto, Kit, Lead, User } from '../types';
 import { maskCPFCNPJ, maskPhone, maskCEP, onlyDigits, docLabel, isValidCPFCNPJ, formatarEnderecoComNumero } from '../utils/format';
@@ -17,7 +17,7 @@ import {
   buildCidadeUf,
   type EnderecoViaCEP,
 } from '../services/cep';
-import { paramNum, type ConfigApp } from '../services/api';
+import { Api, param, paramNum, type ConfigApp } from '../services/api';
 import { slugDoTipoProduto } from '../services/mappers';
 import { listarPlacas, type PlacaSolar } from '../services/placas';
 import { calcularFinanciamento, moeda, type AjustesFinanciamento, type CampoFinanciamento } from '../../server/src/domain/financiamento';
@@ -317,7 +317,38 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   // Observações da proposta: em branco. Os textos prontos ficam em
   // SolarCosta_ObservacaoPresets e são inseridos com um clique.
   const [observacoes, setObservacoes] = useState<string>(propostaExistente?.observacoes ?? '');
-  const [exclusoesEscopo, setExclusoesEscopo] = useState(propostaExistente?.exclusoesEscopo ?? EXCLUSOES_ESCOPO_PADRAO);
+  const [textoEscopoPadrao, setTextoEscopoPadrao] = useState(() => param(config, CHAVE_ESCOPO_PADRAO, EXCLUSOES_ESCOPO_PADRAO));
+  const [exclusoesEscopo, setExclusoesEscopo] = useState(() => propostaExistente
+    ? propostaExistente.exclusoesEscopo ?? EXCLUSOES_ESCOPO_PADRAO
+    : param(config, CHAVE_ESCOPO_PADRAO, EXCLUSOES_ESCOPO_PADRAO));
+  const escopoEditado = useRef(false);
+  const padraoEscopoAlterado = useRef(false);
+  const [salvandoEscopoPadrao, setSalvandoEscopoPadrao] = useState(false);
+  // Busca o padrão atual mesmo quando a configuração do App veio de outra tela.
+  useEffect(() => {
+    let ativo = true;
+    Api.getConfig().then(atual => {
+      if (!ativo || padraoEscopoAlterado.current) return;
+      const texto = param(atual, CHAVE_ESCOPO_PADRAO, EXCLUSOES_ESCOPO_PADRAO);
+      setTextoEscopoPadrao(texto);
+      if (!propostaExistente && !escopoEditado.current) setExclusoesEscopo(texto);
+    }).catch(() => { /* Mantém o padrão já carregado se a atualização falhar. */ });
+    return () => { ativo = false; };
+  }, []);
+  const definirEscopoPadrao = async () => {
+    if (salvandoEscopoPadrao) return;
+    padraoEscopoAlterado.current = true;
+    setSalvandoEscopoPadrao(true);
+    try {
+      const salvo = await Api.salvarEscopoPadrao(exclusoesEscopo);
+      setTextoEscopoPadrao(salvo.texto);
+      showToast('Texto padrão salvo', 'success', 'Este texto será preenchido nas novas propostas.');
+    } catch {
+      showToast('Não foi possível salvar o padrão', 'error', 'Tente novamente.');
+    } finally {
+      setSalvandoEscopoPadrao(false);
+    }
+  };
   const [garantiasEquipamentos, setGarantiasEquipamentos] = useState(
     () => ({ ...GARANTIAS_PROPOSTA_PADRAO, ...propostaExistente?.garantiasEquipamentos }),
   );
@@ -1940,10 +1971,18 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
                 </label>
                 <p className="text-xs text-slate-500 mb-2">Edite ou remova os itens que não deseja citar. A primeira linha é o título. Deixe vazio para ocultar toda a seção no PDF.</p>
                 <textarea id="exclusoes-escopo" rows={10} maxLength={10000} value={exclusoesEscopo}
-                  onChange={e => setExclusoesEscopo(e.target.value)}
+                  onChange={e => { escopoEditado.current = true; setExclusoesEscopo(e.target.value); }}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#004276] leading-relaxed font-medium" />
-                <button type="button" onClick={() => setExclusoesEscopo(EXCLUSOES_ESCOPO_PADRAO)}
-                  className="mt-1 text-xs text-[#004276] underline">Restaurar texto padrão</button>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <button type="button" onClick={() => void definirEscopoPadrao()} disabled={salvandoEscopoPadrao}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#004276] text-white text-xs font-bold disabled:opacity-50">
+                    {salvandoEscopoPadrao ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    {salvandoEscopoPadrao ? 'Salvando padrão...' : 'Definir texto como padrão'}
+                  </button>
+                  <button type="button" onClick={() => { escopoEditado.current = true; setExclusoesEscopo(textoEscopoPadrao); }}
+                    className="text-xs text-[#004276] underline">Restaurar texto padrão</button>
+                </div>
+                <p className="mt-1 text-[10px] text-slate-500">O padrão é compartilhado para novas propostas. Propostas já salvas mantêm seu próprio texto.</p>
               </div>
 
               {/* Responsável Técnico & Logo */}

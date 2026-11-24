@@ -500,6 +500,9 @@ export const Api = {
   /** Empresa, parâmetros e domínios — substitui os literais dos componentes. */
   getConfig: async (): Promise<any> => http.get<any>('/api/config'),
 
+  salvarEscopoPadrao: async (texto: string): Promise<{ texto: string }> =>
+    http.patch<{ texto: string }>('/api/config/escopo-proposta-padrao', { texto }),
+
   salvarParametros: async (parametros: { chave: string; valor: string }[]): Promise<any> =>
     http.patch<any>('/api/config/parametros', { parametros }),
 

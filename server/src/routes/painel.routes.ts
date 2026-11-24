@@ -256,6 +256,25 @@ configRouter.patch(
 );
 
 configRouter.patch(
+  '/escopo-proposta-padrao',
+  exigirPermissao('emitir_propostas'),
+  asyncHandler(async (req: RequestAutenticado, res) => {
+    const { texto } = z.object({ texto: z.string().max(10000) }).parse(req.body);
+    await emTransacao(async (cliente) => {
+      await cliente.query(
+        `INSERT INTO "SolarCosta_Parametros" (chave, valor, tipo, grupo, descricao, atualizado_por)
+         VALUES ('proposta.exclusoes_escopo_padrao', $1, 'texto', 'proposta',
+                 'Texto padrão de itens fora do escopo para novas propostas', "SolarCosta_fn_usuario_atual"())
+         ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor,
+           atualizado_em = now(), atualizado_por = EXCLUDED.atualizado_por`,
+        [texto],
+      );
+    }, ator(req));
+    res.json({ texto });
+  }),
+);
+
+configRouter.patch(
   '/parametros',
   exigirPermissao('gerenciar_usuarios'),
   asyncHandler(async (req: RequestAutenticado, res) => {
