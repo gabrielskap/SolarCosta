@@ -1,3 +1,5 @@
+import { calcularCobrancaFioB, type CobrancaFioB, type PremissasFioB } from './fioB.js';
+
 /** Motor versionado da proposta. Sem parâmetros comerciais implícitos. */
 export interface UnidadeSolar { nome: string; meses: number[]; adicionalKwh: number; disponibilidadeKwh: number }
 export interface EntradaSolar {
@@ -11,6 +13,8 @@ export interface EntradaSolar {
   areaManualM2?: number;
   inversorKw: number; oversizingPct: number; quantidadeInstalada: number | null;
   tarifa: number; taxaSem: number; disponibilidadeReais: number; taxaCom: number;
+  /** Ausente preserva a premissa anterior de propostas já gravadas. */
+  fioB?: PremissasFioB;
   investimento: number; parcela: number; parcelas: number;
   considerarParcelasPayback?: boolean;
   entradaFinanciamento?: number;
@@ -43,6 +47,9 @@ export function calcularProposta(e: EntradaSolar) {
    */
   const erros: string[] = [];
   const avisos: string[] = [];
+  if (e.fioB && Object.values(e.fioB).some(v => !Number.isFinite(v) || v < 0 || v > 100)) {
+    erros.push('Informe percentuais de Fio B e consumo simultâneo entre 0 e 100.');
+  }
   // Área informada à mão vence o cálculo por dimensões do módulo. 0 = automático.
   const areaManualM2 = e.areaManualM2 ?? 0;
   const numeros = [e.anoInicial,e.moduloWp,e.perdasPct,e.larguraM,e.alturaM,areaManualM2,e.inversorKw,e.oversizingPct,e.tarifa,e.taxaSem,e.disponibilidadeReais,e.taxaCom,e.investimento,e.parcela,e.parcelas,e.reajustePct,e.degradacaoInicialPct,e.degradacaoAnualPct,e.manutencaoAnual,e.reajusteManutencaoPct,e.trocaInversorAno,e.trocaInversorValor,e.poupancaMesPct,e.geracaoAnualExcel,...e.hspMensal,...e.ucs.flatMap(u=>[...u.meses,u.adicionalKwh,u.disponibilidadeKwh])];
@@ -92,7 +99,13 @@ export function calcularProposta(e: EntradaSolar) {
   const geracaoMediaKwh = media(geracaoMensal);
   const contaSemSolar = consumoMedio*e.tarifa+e.taxaSem;
   const residual = e.modo==='excel'?0:media(consumoMensal.map((c,m)=>Math.max(0,c-(geracaoMensal[m]??0))));
-  const contaComSolar = residual*e.tarifa+e.disponibilidadeReais+e.taxaCom;
+  const camposFioB: { cobrancaFioB?: CobrancaFioB } = e.fioB ? {
+    cobrancaFioB: calcularCobrancaFioB(consumoMedio, e.modo === 'excel' ? e.geracaoAnualExcel / 12 : geracaoMediaKwh, e.tarifa, e.fioB),
+  } : {};
+  const energiaPaga = camposFioB.cobrancaFioB
+    ? camposFioB.cobrancaFioB.valorFioB + camposFioB.cobrancaFioB.valorEnergiaNaoAtendida
+    : residual * e.tarifa;
+  const contaComSolar = energiaPaga+e.disponibilidadeReais+e.taxaCom;
   const economiaOperacional = contaSemSolar-contaComSolar;
   const considerarParcelas = e.considerarParcelasPayback === true && e.parcelas > 0;
   const investimentoInicial = considerarParcelas ? (e.entradaFinanciamento ?? 0) : e.investimento;
@@ -105,15 +118,18 @@ export function calcularProposta(e: EntradaSolar) {
     const ano=e.anoInicial+indice, tarifa=e.tarifa*Math.pow(1+e.reajustePct/100,indice);
     const geracoes=e.hspMensal.map((h,m)=>e.modo==='excel'?e.geracaoAnualExcel/12*degradacao:potenciaKwp*(1-e.perdasPct/100)*h*dias(ano,m)*degradacao);
     const despesaAnual= (consumoMedio*e.tarifa+e.taxaSem)*12*Math.pow(1+e.reajustePct/100,indice);
-    const custos=e.manutencaoAnual*Math.pow(1+e.reajusteManutencaoPct/100,indice)+(indice+1===e.trocaInversorAno?e.trocaInversorValor:0);
+    const fioBAno=e.fioB?calcularCobrancaFioB(consumoMedio*12,soma(geracoes),tarifa,e.fioB):undefined;
+    const custos=e.manutencaoAnual*Math.pow(1+e.reajusteManutencaoPct/100,indice)+(indice+1===e.trocaInversorAno?e.trocaInversorValor:0)+(fioBAno?.valorFioB??0);
     const receitaAnual=soma(geracoes)*tarifa;
-    const beneficio=e.modo==='excel'?receitaAnual:soma(geracoes.map((g,m)=>Math.min(consumoMensal[m]??0,g)*tarifa))+12*(e.taxaSem-e.disponibilidadeReais-e.taxaCom);
+    const beneficio=fioBAno
+      ? consumoMedio*12*tarifa-fioBAno.valorEnergiaNaoAtendida+12*(e.taxaSem-e.disponibilidadeReais-e.taxaCom)
+      : e.modo==='excel'?receitaAnual:soma(geracoes.map((g,m)=>Math.min(consumoMensal[m]??0,g)*tarifa))+12*(e.taxaSem-e.disponibilidadeReais-e.taxaCom);
     const resultadoAnual=beneficio-custos, anterior=saldo;
     let parcelasAno=0;
     for(let mes=0;mes<12;mes++) {
       const parcela=indice*12+mes<e.parcelas?e.parcela:0;
       parcelasAno+=parcela;
-      const fluxo=e.modo==='excel'?resultadoAnual/12:Math.min(consumoMensal[mes]??0,geracoes[mes]??0)*tarifa+e.taxaSem-e.disponibilidadeReais-e.taxaCom-custos/12;
+      const fluxo=e.fioB||e.modo==='excel'?resultadoAnual/12:Math.min(consumoMensal[mes]??0,geracoes[mes]??0)*tarifa+e.taxaSem-e.disponibilidadeReais-e.taxaCom-custos/12;
       saldoPoupanca+=(saldoPoupanca>0?saldoPoupanca*e.poupancaMesPct/100:0)+fluxo-(considerarParcelas?parcela:0);
     }
     const resultadoRetorno = resultadoAnual - (considerarParcelas ? parcelasAno : 0);
@@ -123,6 +139,6 @@ export function calcularProposta(e: EntradaSolar) {
     projecao.push({ano,tarifa,despesaAnual,despesaAcumulada:acumuladoSem,geracaoAnual:soma(geracoes),receitaAnual,custos,resultadoAnual,parcelasAno,resultadoAposParcelas:resultadoAnual-parcelasAno,saldoAcumulado:saldo,saldoComPoupanca:e.modo==='excel'?saldo*(1+e.poupancaMesPct/100):saldoPoupanca});
   }
   const resultado={versao:1 as const,entradas:e,completo:erros.length===0,erros,avisos,consumoMedio,compensacao,hspMedia,quantidadeCalculada,modulosQtd,potenciaKwp,potenciaNecessariaKwp,capacidadeInversor,areaEstimadaM2,geracaoMensal,geracaoMediaKwh,coberturaPct:consumoMedio>0?geracaoMediaKwh/consumoMedio*100:0,contaSemSolar,contaComSolar,valorGeracaoMensal:geracaoMediaKwh*e.tarifa,economiaOperacional,economiaMensal:economiaOperacional-(e.parcelas>0?e.parcela:0),economiaAnual:economiaOperacional*12,economia25Anos:saldo,paybackAnos,projecao};
-  return resultado;
+  return { ...resultado, ...camposFioB };
 }
 export type CalculoSolar = ReturnType<typeof calcularProposta>;

@@ -38,13 +38,23 @@ const bundle = await build({
     const root=createRoot(document.getElementById('root'));let chave=0;
     window.renderMode=(modo,extra={})=>{window.salva=null;window.abriuPDF=false;window.toast=null;
       const proposta={...p,...extra};
-      root.render(modo==='formulario'?<ProposalCalculatorView key={++chave} propostaExistente={proposta}
+      root.render(modo==='formulario'||modo==='nova'?<ProposalCalculatorView key={++chave} propostaExistente={modo==='nova'?undefined:proposta}
         propostas={[]} produtos={[]} kits={[]} leads={[]} config={{google_maps_ativo:false,parametros:[],concessionarias:[],telhados:[]}}
         currentUser={{id:'qa',nome:'Teste',cargo:'Administrador'}}
         onSaveProposal={async p=>{window.salva=p;return p;}} onOpenPDF={()=>{window.abriuPDF=true;}}
         showToast={(...args)=>{window.toast=args;}} />:
         <PDFModal key={++chave} type="proposta" data={proposta} variante={modo==='publico'?'pagina':'modal'} onClose={()=>{}}
           onSalvarGarantias={async g=>{if(window.falharGarantias)return false;window.garantiasSalvas=g;return true;}}/>);
+    };
+    window.renderFioB=(modo='formulario')=>{
+      const entradas={...e,modo:'excel',ucs:[{nome:'UC 1',meses:Array(12).fill(500),adicionalKwh:0,disponibilidadeKwh:0}],
+        geracaoAnualExcel:6000,tarifa:1.17,taxaSem:37,disponibilidadeReais:67,taxaCom:37,
+        parcela:0,parcelas:0,fioB:{componenteTarifaPct:30,cobrancaPct:60,consumoSimultaneoPct:40}};
+      const calculo=calcularProposta(entradas);
+      window.renderMode(modo,{formaPagamento:'avista',consumoKwh:500,tarifaKwh:1.17,descontoAvistaPct:0,
+        custoDisponibilidade:67,iluminacaoPublicaComSfcr:37,iluminacaoPublicaSemSfcr:37,calculoSolar:calculo,
+        economiaMensal:calculo.economiaMensal,economiaAnual:calculo.economiaAnual,
+        economia25Anos:calculo.economia25Anos,paybackAnos:calculo.paybackAnos});
     };
     window.renderMode('formulario');
   ` },
@@ -158,6 +168,51 @@ try {
   }
   await page.$eval('#root', e => { e.style.maxWidth=''; e.style.margin=''; });
   await page.setViewport({width:1440,height:1080,deviceScaleFactor:1});
+  // Fio B: entrada manual, recálculo imediato, persistência e memória da conta no PDF.
+  const inputFio=async(rotulo,valor)=>{
+    await page.$$eval('label',(labels,{rotulo,valor})=>{
+      const label=labels.find(l=>l.textContent.trim()===rotulo);
+      const el=document.getElementById(label.htmlFor);
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,String(valor));
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+    },{rotulo,valor});
+  };
+  await render('nova');
+  assert.equal(await page.$$eval('label',ls=>ls.some(l=>l.textContent.trim()==='Percentual de cobrança do Fio B (%)')),true,'nova proposta já oferece os campos do Fio B');
+  await page.evaluate(()=>window.renderFioB());
+  await page.waitForFunction(()=>document.body.innerText.replace(/\s+/g,' ').includes('R$ 63,18'));
+  await inputFio('Percentual de cobrança do Fio B (%)',100);
+  await page.waitForFunction(()=>document.body.innerText.replace(/\s+/g,' ').includes('R$ 105,30'));
+  await inputFio('Consumo simultâneo (%)',100);
+  await page.waitForFunction(()=>document.body.innerText.includes('Consumo simultâneo: 500 kWh/mês'));
+  await inputFio('Consumo simultâneo (%)',40);
+  await inputFio('Percentual de cobrança do Fio B (%)',60);
+  await clicar('Salvar alterações');await page.waitForFunction(()=>window.salva?.calculoSolar?.cobrancaFioB);
+  const salvaFio=await page.evaluate(()=>window.salva.calculoSolar);
+  assert.deepEqual(salvaFio.entradas.fioB,{componenteTarifaPct:30,cobrancaPct:60,consumoSimultaneoPct:40});
+  assert(Math.abs(salvaFio.contaComSolar-167.18)<1e-8);
+  for(const largura of [1280,390,320]) {
+    await page.setViewport({width:largura,height:900,deviceScaleFactor:1});
+    if(largura<768) await page.$eval('#proposta-etapas button:nth-child(2)',e=>e.click());
+    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,`Fio B cabe em ${largura}px`);
+    if(largura===390) await (await page.$('#proposta-etapa-2')).screenshot({path:join(destino,'fio-b-formulario-mobile.png')});
+  }
+  await page.setViewport({width:1440,height:1080,deviceScaleFactor:1});
+  for(const modo of ['pdf','publico']) {
+    await page.evaluate(m=>window.renderFioB(m),modo);
+    await page.waitForFunction(()=>document.body.innerText.includes('Fio B sobre energia compensada'));
+    assert.match(await texto(),/0,2106/);
+    assert.match(await texto(),/63,18/);
+    assert.match(await texto(),/167,18/);
+    const folhas=await page.$$('.folha-pdf');
+    for(const folha of folhas) if(await folha.evaluate(e=>e.textContent.includes('Fio B sobre energia compensada'))) {
+      assert.equal(await folha.evaluate(e=>e.scrollHeight<=e.clientHeight+2),true,'memória de cálculo cabe na folha');
+      await folha.screenshot({path:join(destino,`${modo}-fio-b.png`)});
+    }
+    const pdf=await page.pdf({format:'A4',printBackground:true});
+    assert.equal((Buffer.from(pdf).toString('latin1').match(/\/Type \/Page\b/g)||[]).length,folhas.length,'Fio B mantém a paginação impressa');
+  }
   for(const modo of ['pdf','publico']) {
     await render(modo);await page.waitForSelector('.folha-pdf');
     assert.match(await texto(),/647,66/);assert.match(await texto(),/23\.315,76/);assert.match(await texto(),/7\.325,76/);
@@ -218,5 +273,5 @@ try {
   await render('pdf',{status:'aceita',garantiasEquipamentos:salvas});await clicar('Customizar Layout PDF');
   assert.equal(await page.$eval('[aria-label="Módulos — garantia do produto"]',el=>el.matches(':disabled')),true);
   assert.deepEqual(erros,[]);
-  console.log(`Layout da proposta (320–1280 px), teclado, edição, restauração, salvamento e PDFs interno/público passaram. Evidências em ${destino}`);
+  console.log(`Proposta UI: layout (320–1280 px), Fio B, teclado, edição, salvamento e PDFs interno/público passaram. Evidências em ${destino}`);
 } finally {await browser?.close();await new Promise(r=>servidor.close(r));}

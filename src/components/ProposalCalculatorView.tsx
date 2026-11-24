@@ -23,6 +23,8 @@ import { listarPlacas, type PlacaSolar } from '../services/placas';
 import { calcularFinanciamento, moeda, type AjustesFinanciamento, type CampoFinanciamento } from '../../server/src/domain/financiamento';
 import { calcularProposta, entradaSolarZerada, type EntradaSolar } from '../../server/src/domain/propostaSolar';
 import { PropostaPremissas } from './PropostaPremissas';
+import { FioBPropostaCampos } from './FioBPropostaCampos';
+import { FIO_B_PADRAO } from '../../server/src/domain/fioB';
 import { GARANTIAS_PROPOSTA_PADRAO, textoGarantiasProposta } from './GarantiasPropostaCampos';
 import { PropostaDocumentoCampos } from './PropostaDocumentoCampos';
 import { CabecalhoSecaoProposta } from './CabecalhoSecaoProposta';
@@ -263,6 +265,7 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
   const [revisaoConfirmada, setRevisaoConfirmada] = useState(false);
   const [entradaSolar, setEntradaSolar] = useState<EntradaSolar>(() => propostaExistente?.calculoSolar?.entradas ?? {
     ...entradaSolarZerada(),
+    ...(!propostaExistente ? { fioB: { ...FIO_B_PADRAO } } : {}),
     ...(propostaExistente ? { ucs: [{ nome: 'UC 1', meses: Array(12).fill(propostaExistente.consumoKwh), adicionalKwh: 0, disponibilidadeKwh: 0 }], hspMensal: Array(12).fill(propostaExistente.hsp) } : {}),
   });
   const atualizarEntradaSolar = (e: EntradaSolar) => {
@@ -1340,6 +1343,12 @@ export const ProposalCalculatorView: React.FC<ProposalCalculatorViewProps> = ({
               anterior={propostaExistente}
               onConfirmar={() => setRevisaoConfirmada(true)}
             />
+
+            <FioBPropostaCampos valor={entradaSolar.fioB} cobranca={calculoSolar.cobrancaFioB}
+              onChange={fioB => {
+                setEntradaSolar(prev => ({ ...prev, fioB }));
+                if (legado) setRevisaoConfirmada(false);
+              }} />
 
             {/* Despesas Fixas da Conta */}
             <div>

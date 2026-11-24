@@ -613,6 +613,8 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                */
               const prestacao = formaPagamentoSelecionada === 'financiamento' ? financiamento.parcela : 0;
               const totalComSfcr = (snapshot?.contaComSolar ?? custoDisp + cipCom) + prestacao;
+              const fioB = snapshot?.cobrancaFioB;
+              const premissasFioB = snapshot?.entradas.fioB;
 
               // Perfil mensal de geração.
               //
@@ -1046,9 +1048,13 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                               </td>
                             </tr>
                             <tr>
-                              <td className="p-2.5 border-r border-slate-200">(I) Energia não compensada:</td>
-                              <td className="p-2.5 text-center font-bold">{formatCurrencyBRL(snapshot ? Math.max(0,snapshot.contaComSolar-custoDisp-cipCom) : 0)}</td>
+                              <td className="p-2.5 border-r border-slate-200">{fioB ? '(I) Fio B sobre energia compensada:' : '(I) Energia não compensada:'}</td>
+                              <td className="p-2.5 text-center font-bold">{formatCurrencyBRL(fioB ? fioB.valorFioB : snapshot ? Math.max(0,snapshot.contaComSolar-custoDisp-cipCom) : 0)}</td>
                             </tr>
+                            {fioB && fioB.energiaNaoAtendidaKwh > 0 && <tr>
+                              <td className="p-2.5 border-r border-slate-200">(I.1) Consumo além da geração:</td>
+                              <td className="p-2.5 text-center font-bold">{formatCurrencyBRL(fioB.valorEnergiaNaoAtendida)}</td>
+                            </tr>}
                             <tr>
                               <td className="p-2.5 border-r border-slate-200 font-bold">(J) Total:</td>
                               <td className="p-2.5 text-center text-sm font-black text-[#0070C0]">
@@ -1060,6 +1066,12 @@ export const PDFModal: React.FC<PDFModalProps> = ({
                       </div>
 
                       {/* EXCLUSÕES DE ESCOPO */}
+                      {fioB && premissasFioB && <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-[11px] leading-relaxed text-slate-700">
+                        <p className="font-bold text-[#004276]">Premissas da cobrança do Fio B</p>
+                        <p>Consumo simultâneo: {premissasFioB.consumoSimultaneoPct.toLocaleString('pt-BR')}% · Fio B na tarifa: {premissasFioB.componenteTarifaPct.toLocaleString('pt-BR')}% · Percentual cobrado: {premissasFioB.cobrancaPct.toLocaleString('pt-BR')}%.</p>
+                        <p>{fioB.energiaCompensadaKwh.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kWh/mês compensados pela rede × {fioB.tarifaAplicada.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 4, maximumFractionDigits: 4 })}/kWh = <strong>{formatCurrencyBRL(fioB.valorFioB)}/mês</strong>.</p>
+                        <p>Estimativa pelo balanço anual de consumo e geração. O consumo simultâneo não recebe cobrança do Fio B.</p>
+                      </div>}
                       {(prop.exclusoesEscopo ?? EXCLUSOES_ESCOPO_PADRAO).trim() && (
                         <div className="space-y-2 pt-1 break-words">
                           <p className="text-sm font-bold text-[#ED7D31] leading-snug">
